@@ -1,0 +1,270 @@
+//! Мост к `pi --mode rpc`. Один процесс на приложение, JSONL по stdin/stdout.
+
+use once_cell::sync::Lazy;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::io::{BufRead, BufReader, Write};
+use std::path::PathBuf;
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter};
+
+use crate::paths::find_pi_binary;
+
+#[derive(Default)]
+pub struct RpcManager {
+    inner: Mutex<Option<RpcInstance>>,
+    app: Mutex<Option<AppHandle>>,
+}
+
+struct RpcInstance {
+    child: Child,
+    stdin: ChildStdin,
+    generation: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RpcStartArgs {
+    pub cli_path: Option<String>,
+    pub cwd: String,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    /// Опциональный стартовый файл сессии для возобновления.
+    pub session_file: Option<String>,
+    /// Дополнительные переменные окружения.
+    pub env: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct RpcStartResult {
+    pub generation: u64,
+    pub pi_path: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct RpcStatusResult {
+    pub running: bool,
+    pub generation: u64,
+}
+
+impl RpcManager {
+    pub fn new(app: AppHandle) -> Self {
+        Self {
+            inner: Mutex::new(None),
+            app: Mutex::new(Some(app)),
+        }
+    }
+
+    fn app(&self) -> Option<AppHandle> {
+        self.app.lock().ok()?.clone()
+    }
+}
+
+static ANSI_RE: Lazy<Regex> = Lazy::new(|| {
+    // CSI / OSC последовательности
+    Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)").unwrap()
+});
+static CTRL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]").unwrap()
+});
+
+fn sanitize_line(s: &str) -> String {
+    let cleaned = ANSI_RE.replace_all(s, "");
+    let cleaned = CTRL_RE.replace_all(&cleaned, "");
+    let trimmed = cleaned.trim();
+    if let Some(idx) = trimmed.find('{') {
+        if idx > 0 {
+            return trimmed[idx..].to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+fn is_jsonish(s: &str) -> bool {
+    let s = s.trim_start();
+    s.starts_with('{') || s.starts_with('[')
+}
+
+#[tauri::command]
+pub fn rpc_start(
+    args: RpcStartArgs,
+    state: tauri::State<'_, Arc<RpcManager>>,
+    app: AppHandle,
+) -> Result<RpcStartResult, String> {
+    // Если уже запущен — погасим
+    rpc_stop(state.clone())?;
+    let pi_path = args
+        .cli_path
+        .clone()
+        .or_else(find_pi_binary)
+        .ok_or_else(|| "Бинарник pi не найден".to_string())?;
+
+    let cwd_path = PathBuf::from(&args.cwd);
+    if !cwd_path.is_dir() {
+        return Err(format!("Каталог не найден: {}", args.cwd));
+    }
+
+    let mut cmd = Command::new(&pi_path);
+    cmd.arg("--mode").arg("rpc");
+    if let Some(p) = &args.provider {
+        if !p.is_empty() {
+            cmd.arg("--provider").arg(p);
+        }
+    }
+    if let Some(m) = &args.model {
+        if !m.is_empty() {
+            cmd.arg("--model").arg(m);
+        }
+    }
+    if let Some(s) = &args.session_file {
+        if !s.is_empty() {
+            cmd.arg("--session").arg(s);
+        }
+    }
+    cmd.current_dir(&cwd_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(extra) = &args.env {
+        for (k, v) in extra {
+            cmd.env(k, v);
+        }
+    }
+    // Подавляем интерактивные TTY-фокусы
+    cmd.env("PI_NO_TTY", "1");
+    cmd.env("NO_COLOR", "1");
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Не удалось запустить pi: {}", e))?;
+    let stdout = child.stdout.take().ok_or("нет stdout")?;
+    let stderr = child.stderr.take().ok_or("нет stderr")?;
+    let stdin = child.stdin.take().ok_or("нет stdin")?;
+
+    let generation = {
+        let mut guard = state.inner.lock().unwrap();
+        let gen = guard.as_ref().map(|i| i.generation + 1).unwrap_or(1);
+        *guard = Some(RpcInstance {
+            child,
+            stdin,
+            generation: gen,
+        });
+        gen
+    };
+
+    // Reader stdout
+    {
+        let app = app.clone();
+        let gen = generation;
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                let Ok(line) = line else { break };
+                let cleaned = sanitize_line(&line);
+                if cleaned.is_empty() {
+                    continue;
+                }
+                if !is_jsonish(&cleaned) {
+                    let _ = app.emit(
+                        "rpc://stderr",
+                        serde_json::json!({ "generation": gen, "line": cleaned }),
+                    );
+                    continue;
+                }
+                let _ = app.emit(
+                    "rpc://line",
+                    serde_json::json!({ "generation": gen, "line": cleaned }),
+                );
+            }
+            let _ = app.emit(
+                "rpc://closed",
+                serde_json::json!({ "generation": gen, "reason": "stdout-eof" }),
+            );
+        });
+    }
+    // Reader stderr
+    {
+        let app = app.clone();
+        let gen = generation;
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                let Ok(line) = line else { break };
+                let cleaned = sanitize_line(&line);
+                if cleaned.is_empty() {
+                    continue;
+                }
+                let _ = app.emit(
+                    "rpc://stderr",
+                    serde_json::json!({ "generation": gen, "line": cleaned }),
+                );
+            }
+        });
+    }
+
+    // Сообщим фронту, что инстанс готов
+    let _ = state
+        .app()
+        .map(|a| a.emit("rpc://started", serde_json::json!({ "generation": generation })));
+
+    Ok(RpcStartResult {
+        generation,
+        pi_path,
+    })
+}
+
+#[tauri::command]
+pub fn rpc_send(line: String, state: tauri::State<'_, Arc<RpcManager>>) -> Result<(), String> {
+    let mut guard = state.inner.lock().unwrap();
+    let inst = guard
+        .as_mut()
+        .ok_or_else(|| "RPC не запущен".to_string())?;
+    let mut buf = line;
+    if !buf.ends_with('\n') {
+        buf.push('\n');
+    }
+    inst.stdin
+        .write_all(buf.as_bytes())
+        .map_err(|e| format!("Запись в stdin: {}", e))?;
+    inst.stdin
+        .flush()
+        .map_err(|e| format!("Flush stdin: {}", e))
+}
+
+#[tauri::command]
+pub fn rpc_stop(state: tauri::State<'_, Arc<RpcManager>>) -> Result<(), String> {
+    let mut guard = state.inner.lock().unwrap();
+    if let Some(mut inst) = guard.take() {
+        let _ = inst.child.kill();
+        let _ = inst.child.wait();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rpc_status(state: tauri::State<'_, Arc<RpcManager>>) -> RpcStatusResult {
+    let mut guard = state.inner.lock().unwrap();
+    if let Some(inst) = guard.as_mut() {
+        // Проверим, не помер ли
+        match inst.child.try_wait() {
+            Ok(Some(_)) => {
+                let gen = inst.generation;
+                *guard = None;
+                return RpcStatusResult {
+                    running: false,
+                    generation: gen,
+                };
+            }
+            _ => {
+                return RpcStatusResult {
+                    running: true,
+                    generation: inst.generation,
+                };
+            }
+        }
+    }
+    RpcStatusResult {
+        running: false,
+        generation: 0,
+    }
+}

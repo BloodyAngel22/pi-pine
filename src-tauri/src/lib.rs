@@ -1,0 +1,66 @@
+mod favorites;
+mod mcp;
+mod paths;
+mod plans;
+mod rpc;
+mod sessions;
+mod themes;
+
+use rpc::RpcManager;
+use std::sync::Arc;
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let manager = Arc::new(RpcManager::new(app.handle().clone()));
+            app.manage(manager);
+            // Запускаем watcher файла auth.json
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                paths::watch_auth(handle);
+            });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            // pi binary discovery + paths
+            paths::find_pi_binary,
+            paths::detect_environment,
+            paths::parse_cli_cwd,
+            paths::open_in_default_app,
+            paths::read_auth_status,
+            paths::list_themes,
+            // themes (full)
+            themes::list_themes_full,
+            themes::read_theme,
+            // mcp
+            mcp::read_mcp_config,
+            mcp::toggle_mcp_server,
+            // favorites + pi settings
+            favorites::read_favorites,
+            favorites::write_favorites,
+            favorites::read_pi_settings,
+            favorites::write_pi_settings_partial,
+            // sessions
+            sessions::list_project_sessions,
+            sessions::delete_session_file,
+            sessions::rename_session_file,
+            sessions::truncate_session_at,
+            // plans
+            plans::ensure_plan_file,
+            plans::read_plan_file,
+            plans::write_plan_file,
+            plans::list_plan_files,
+            // RPC bridge
+            rpc::rpc_start,
+            rpc::rpc_send,
+            rpc::rpc_stop,
+            rpc::rpc_status,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1f2e"/>
+      <stop offset="100%" stop-color="#0a0c14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7aa2f7"/>
+      <stop offset="100%" stop-color="#bb9af7"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" rx="48" fill="url(#bg)"/>
+  <!-- Pine: ствол -->
+  <rect x="118" y="180" width="20" height="40" rx="4" fill="#7c5d3a"/>
+  <!-- три яруса хвои -->
+  <polygon points="128,40 88,108 168,108" fill="url(#accent)"/>
+  <polygon points="128,84 76,156 180,156" fill="url(#accent)" opacity="0.92"/>
+  <polygon points="128,128 64,200 192,200" fill="url(#accent)" opacity="0.85"/>
+  <!-- буква π -->
+  <g transform="translate(128 195)" fill="#0a0c14" font-family="Georgia, serif" font-size="48" text-anchor="middle" font-weight="700">
+    <text y="0">π</text>
+  </g>
+</svg>

@@ -1,0 +1,308 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { AlertCircle, X, GitFork } from "lucide-react";
+import { useChat, type UiMessage } from "@/store/chat";
+import { useExt } from "@/store/ext";
+import { useTheme } from "@/store/theme";
+import { compact as rpcCompact } from "@/rpc/bridge";
+import { Header } from "@/components/Chat/Header";
+import { MessageList } from "@/components/Chat/MessageList";
+import { Composer } from "@/components/Chat/Composer";
+import { BashPanel } from "@/components/Chat/BashPanel";
+import { StatusBar } from "@/components/Chat/StatusBar";
+import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
+import { SidePanel } from "@/components/SidePanel/SidePanel";
+import { SettingsModal } from "@/components/Settings/SettingsModal";
+import { PiMissingCard } from "@/components/Onboarding/PiMissingCard";
+import { SplashScreen, type BootStage } from "@/components/Onboarding/SplashScreen";
+import { Toasts } from "@/components/ExtUI/Toasts";
+import { DialogQueue } from "@/components/ExtUI/DialogQueue";
+import { Button } from "@/components/ui/Button";
+
+interface EnvironmentInfo {
+  home?: string;
+  agent_dir?: string;
+  pi_binary?: string;
+  default_cwd: string;
+}
+
+export default function App() {
+  const init = useChat((s) => s.init);
+  const startRpc = useChat((s) => s.startRpc);
+  const restartRpc = useChat((s) => s.restartRpc);
+  const refreshState = useChat((s) => s.refreshState);
+  const newSession = useChat((s) => s.newSession);
+  const setError = useChat((s) => s.setError);
+  const errorBanner = useChat((s) => s.errorBanner);
+  const forkBanner = useChat((s) => s.forkBanner);
+  const clearForkBanner = useChat((s) => s.clearForkBanner);
+  const piPath = useChat((s) => s.piPath);
+  const cliPathOverride = useChat((s) => s.cliPathOverride);
+  const cwd = useChat((s) => s.cwd);
+  const setCwd = useChat((s) => s.setCwd);
+  const rpcRunning = useChat((s) => s.rpcRunning);
+  const loadAvailableModels = useChat((s) => s.loadAvailableModels);
+  const initExt = useExt((s) => s.init);
+  const loadTheme = useTheme((s) => s.load);
+
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const [bootStage, setBootStage] = useState<BootStage>("init");
+  const [bootCwd, setBootCwd] = useState<string | null>(null);
+  const [bootNote, setBootNote] = useState<string | null>(null);
+  const [piResolved, setPiResolved] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bashOpen, setBashOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      initExt();
+      void loadTheme();
+      setBootStage("init");
+      await init();
+      if (cancelled) return;
+
+      setBootStage("detect");
+      // Параллельно запрашиваем env и CLI-аргумент `pi-pine [path]`.
+      const [env, cliCwd] = await Promise.all([
+        invoke<EnvironmentInfo>("detect_environment"),
+        invoke<string | null>("parse_cli_cwd").catch(() => null),
+      ]);
+      if (cancelled) return;
+      useChat.getState().setHome(env.home ?? null);
+
+      // Приоритет cwd: CLI-аргумент → сохранённый в localStorage → default_cwd
+      // CLI-аргумент перебивает сохранённый, чтобы `pi-pine .` всегда открывал
+      // именно эту директорию (как в VSCode).
+      if (cliCwd) {
+        setCwd(cliCwd);
+        setBootCwd(cliCwd);
+      } else if (!localStorage.getItem("pi-pine.cwd") && env.default_cwd) {
+        setCwd(env.default_cwd);
+        setBootCwd(env.default_cwd);
+      } else {
+        setBootCwd(localStorage.getItem("pi-pine.cwd") || env.default_cwd);
+      }
+
+      const cliPath = cliPathOverride || env.pi_binary || null;
+      if (!cliPath) {
+        setBootNote("Не найден бинарник pi — настрой путь на следующем экране.");
+        setBootstrapped(true);
+        return;
+      }
+      setPiResolved(cliPath);
+
+      setBootStage("starting");
+      await startRpc();
+      if (cancelled) return;
+
+      setBootStage("ready");
+      // Минимальная задержка, чтобы splash успел показать «готово».
+      await new Promise((r) => setTimeout(r, 120));
+      if (cancelled) return;
+      setBootstrapped(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen("pi://auth-changed", () => {
+      void refreshState();
+      void loadAvailableModels();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [refreshState, loadAvailableModels]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inEditable =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key.toLowerCase() === "b" && !e.shiftKey) {
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
+        return;
+      }
+      if (ctrl && e.shiftKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setPanelOpen((v) => !v);
+        return;
+      }
+      if (ctrl && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen(true);
+        return;
+      }
+      if (ctrl && e.key.toLowerCase() === "n") {
+        if (inEditable) return;
+        e.preventDefault();
+        void newSession();
+      }
+      if (ctrl && (e.key === "`" || e.code === "Backquote")) {
+        e.preventDefault();
+        setBashOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [newSession]);
+
+  const onSlash = (cmd: string) => {
+    switch (cmd) {
+      case "/new":
+        void newSession();
+        break;
+      case "/sessions":
+        setSidebarOpen(true);
+        break;
+      case "/model":
+        setPanelOpen(true);
+        break;
+      case "/settings":
+        setSettingsOpen(true);
+        break;
+      case "/compact":
+        rpcCompact().catch((e) => setError(String(e)));
+        break;
+      case "/abort":
+        void useChat.getState().abortStreaming();
+        break;
+    }
+  };
+
+  const onCopy = (_text: string) => {
+    // toast уведомление можно добавить, но navigator.clipboard уже сработал
+  };
+  const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
+  const onFork = (m: UiMessage) => {
+    if (isStreaming) return;
+    void useChat.getState().forkAt(m.id);
+  };
+  const onRegenerate = (m: UiMessage) => {
+    if (isStreaming) return;
+    void useChat.getState().regenerateAt(m.id);
+  };
+  const onEdit = (m: UiMessage, text: string) => {
+    if (isStreaming) return;
+    void useChat.getState().editUserMessage(m.id, text);
+  };
+
+  if (!bootstrapped) {
+    return <SplashScreen stage={bootStage} cwd={bootCwd} note={bootNote} />;
+  }
+
+  const cliPath = cliPathOverride || piPath || piResolved;
+  if (!cliPath) {
+    return (
+      <PiMissingCard
+        onResolved={async (found) => {
+          setPiResolved(found);
+          await startRpc();
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="h-full w-full flex flex-col">
+      <div className="flex-1 flex min-h-0">
+        {sidebarOpen && <SessionsSidebar onClose={() => setSidebarOpen(false)} />}
+        <main className="flex-1 flex flex-col min-w-0">
+          <Header
+            onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            onToggleSidePanel={() => setPanelOpen((v) => !v)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onNewSession={() => void newSession()}
+            onToggleBash={() => setBashOpen((v) => !v)}
+          />
+          {errorBanner && (
+            <div className="px-3 py-1.5 bg-(--color-danger)/15 border-b border-(--color-danger)/30 text-(--color-danger) text-xs flex items-center gap-2">
+              <AlertCircle size={12} />
+              <span className="flex-1">{errorBanner}</span>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => void restartRpc()}
+                title="Перезапустить pi с сохранённой моделью"
+              >
+                Перезапустить
+              </Button>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => void restartRpc({ safe: true })}
+                title="Сбросить provider/model и стартовать с дефолтами pi"
+              >
+                Безопасный режим
+              </Button>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-(--color-danger) hover:text-(--color-fg)"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+          {forkBanner && (
+            <div className="px-3 py-1.5 bg-(--color-accent)/10 border-b border-(--color-accent)/30 text-(--color-accent) text-xs flex items-center gap-2">
+              <GitFork size={12} />
+              <span className="flex-1">{forkBanner}</span>
+              <button
+                type="button"
+                onClick={clearForkBanner}
+                className="opacity-60 hover:opacity-100"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+          {!rpcRunning && !errorBanner && (
+            <div className="px-3 py-2 bg-(--color-warn)/10 border-b border-(--color-warn)/30 text-(--color-warn) text-xs flex items-center gap-2">
+              <span className="flex-1">RPC не запущен</span>
+              <Button variant="subtle" size="sm" onClick={() => void startRpc()}>
+                Запустить
+              </Button>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => void restartRpc({ safe: true })}
+                title="Сбросить provider/model и стартовать с дефолтами pi"
+              >
+                Безопасный режим
+              </Button>
+            </div>
+          )}
+          <MessageList
+            onCopy={onCopy}
+            onFork={onFork}
+            onRegenerate={onRegenerate}
+            onEdit={onEdit}
+          />
+          {bashOpen && <BashPanel onClose={() => setBashOpen(false)} />}
+          <Composer onSlash={onSlash} onToggleBash={() => setBashOpen((v) => !v)} />
+        </main>
+        {panelOpen && <SidePanel onClose={() => setPanelOpen(false)} />}
+      </div>
+      <StatusBar />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Toasts />
+      <DialogQueue />
+    </div>
+  );
+}
