@@ -216,6 +216,19 @@ export async function switchSession(sessionPath: string): Promise<void> {
   await request("switch_session", { sessionPath });
 }
 
+export interface NavigateTreeResult {
+  editorText?: string;
+  cancelled: boolean;
+  aborted?: boolean;
+}
+
+export async function navigateTree(
+  targetId: string,
+  opts?: { summarize?: boolean; customInstructions?: string; label?: string },
+): Promise<NavigateTreeResult> {
+  return request<NavigateTreeResult>("navigate_tree", { targetId, ...opts });
+}
+
 export async function setSessionName(name: string): Promise<void> {
   await request("set_session_name", { name });
 }
@@ -275,8 +288,11 @@ export async function bash(command: string, timeoutMs = 120_000): Promise<BashRe
 export async function abortBash(): Promise<void> {
   await request("abort_bash").catch(() => undefined);
 }
-export async function fork(entryId: string): Promise<{ text: string; cancelled: boolean }> {
-  return request("fork", { entryId });
+export async function fork(
+  entryId: string,
+  opts?: { position?: "at" | "before" },
+): Promise<{ text: string; cancelled: boolean }> {
+  return request("fork", { entryId, ...opts });
 }
 
 /** Обрезать JSONL-файл сессии до строки с entryId (включительно). */

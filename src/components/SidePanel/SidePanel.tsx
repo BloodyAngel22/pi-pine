@@ -27,21 +27,21 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
 
   return (
     <aside
-      className="shrink-0 border-l border-(--color-border) bg-(--color-bg-soft) flex flex-col relative"
+      className="shrink-0 min-w-0 overflow-hidden border-l border-(--color-border) bg-(--color-bg-soft) flex flex-col relative"
       style={{ width }}
     >
       <div
         className={clsx("pi-resizer pi-resizer-left", resize.active && "pi-resizer-active")}
         onMouseDown={resize.onMouseDown}
       />
-      <div className="flex items-center border-b border-(--color-border)">
+      <div className="flex items-center min-w-0 border-b border-(--color-border)">
         <TabBtn icon={<Layers size={12} />} label="Модели" active={tab === "models"} onClick={() => setTab("models")} />
         <TabBtn icon={<Database size={12} />} label="MCP" active={tab === "mcp"} onClick={() => setTab("mcp")} />
         <TabBtn icon={<ListTodo size={12} />} label="План" active={tab === "plan"} onClick={() => setTab("plan")} />
         <TabBtn icon={<Activity size={12} />} label="Статус" active={tab === "status"} onClick={() => setTab("status")} />
         <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} className="ml-auto mr-1" />
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
         {tab === "models" && <ModelsTab />}
         {tab === "mcp" && <McpTab />}
         {tab === "plan" && <PlanTab />}

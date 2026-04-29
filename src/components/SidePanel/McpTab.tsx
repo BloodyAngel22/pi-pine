@@ -62,15 +62,17 @@ export function McpTab() {
     try {
       await stopRpc();
       await startRpc();
+      const c = await invoke<McpConfig>("read_mcp_config");
+      setCfg(c);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center gap-2 text-xs">
-        <Button variant="ghost" size="sm" onClick={() => void reload()} icon={<RefreshCw size={12} />} disabled={busy}>
+    <div className="p-3 space-y-3 min-w-0">
+      <div className="flex items-center gap-2 text-xs min-w-0 flex-wrap">
+        <Button variant="ghost" size="sm" onClick={() => void restart()} icon={<RefreshCw size={12} />} disabled={busy}>
           обновить
         </Button>
         <Button variant="ghost" size="sm" onClick={() => void restart()} disabled={busy}>
@@ -88,18 +90,18 @@ export function McpTab() {
         )}
       </div>
       {mcpStatus && (
-        <div className="px-2 py-1.5 rounded bg-(--color-bg-mute) text-xs text-(--color-fg-mute)">
+        <div className="px-2 py-1.5 rounded bg-(--color-bg-mute) text-xs text-(--color-fg-mute) min-w-0 break-words">
           <span className="text-(--color-fg-dim) mr-1">статус:</span>
           {mcpStatus}
         </div>
       )}
       {!cfg?.exists && (
-        <div className="text-xs text-(--color-fg-dim)">
+        <div className="text-xs text-(--color-fg-dim) min-w-0 break-words">
           mcp-config.json не найден
           {cfg?.path && (
             <>
               {" — "}
-              <span className="font-mono">{cfg.path}</span>
+              <span className="font-mono break-all">{cfg.path}</span>
             </>
           )}
         </div>
@@ -107,22 +109,22 @@ export function McpTab() {
       {cfg?.servers.length === 0 && cfg.exists && (
         <div className="text-xs text-(--color-fg-dim)">Нет серверов в mcp-config.json</div>
       )}
-      <div className="space-y-1">
+      <div className="space-y-1 min-w-0">
         {cfg?.servers.map((s) => (
           <div
             key={s.name}
             className={clsx(
-              "px-2 py-1.5 rounded border",
+              "px-2 py-1.5 rounded border min-w-0",
               s.disabled ? "border-(--color-border-muted) opacity-60" : "border-(--color-border)",
             )}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {s.kind === "remote" ? (
                 <Cloud size={12} className="text-(--color-fg-mute)" />
               ) : (
                 <Server size={12} className="text-(--color-fg-mute)" />
               )}
-              <span className="font-mono text-xs flex-1 truncate">{s.name}</span>
+              <span className="font-mono text-xs flex-1 min-w-0 truncate">{s.name}</span>
               <span className="text-[10px] text-(--color-fg-dim) uppercase">{s.kind}</span>
               <Toggle
                 value={!s.disabled}
@@ -130,11 +132,11 @@ export function McpTab() {
                 disabled={pending === s.name}
               />
             </div>
-            <div className="text-[11px] text-(--color-fg-dim) mt-0.5 truncate font-mono">
+            <div className="text-[11px] text-(--color-fg-dim) mt-0.5 truncate font-mono min-w-0" title={s.kind === "remote" ? s.url : `${s.command ?? ""} ${s.args.join(" ")}`}>
               {s.kind === "remote" ? s.url : `${s.command ?? ""} ${s.args.join(" ")}`}
             </div>
             {(s.env_keys.length > 0 || s.headers_keys.length > 0) && (
-              <div className="text-[10px] text-(--color-fg-dim) mt-0.5">
+              <div className="text-[10px] text-(--color-fg-dim) mt-0.5 break-words">
                 {s.env_keys.length > 0 && <span>env: {s.env_keys.join(", ")} </span>}
                 {s.headers_keys.length > 0 && <span>headers: {s.headers_keys.join(", ")}</span>}
               </div>

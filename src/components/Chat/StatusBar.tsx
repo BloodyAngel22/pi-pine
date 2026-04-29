@@ -17,7 +17,6 @@ export function StatusBar() {
   const agent = useChat((s) => s.agentState);
   const stats = useChat((s) => s.sessionStats);
   const isStreaming = agent?.isStreaming;
-  const switching = useChat((s) => s.switching);
   const statuses = useExt((s) => s.statuses);
 
   // Раскладываем ext-статусы по двум корзинам:
@@ -25,14 +24,9 @@ export function StatusBar() {
   // - всё остальное → в пилюлю с popover
   // Также скрываем:
   // - cwd (extension cwd.ts — свой показ)
-  // - mcp во время switching — pi эмитит шумные промежуточные статусы
   const contextStatus = statuses["context"];
   const extEntries: [string, string][] = Object.entries(statuses).filter(
-    ([k]) => {
-      if (k === "cwd" || k === "context") return false;
-      if (switching && k === "mcp") return false;
-      return true;
-    },
+    ([k]) => k !== "cwd" && k !== "context",
   );
 
   const cwdShort = shortenPath(cwd, home);
@@ -128,11 +122,6 @@ export function StatusBar() {
         {isStreaming && (
           <span className="pi-statusbar-item text-(--color-accent)">
             ● стрим
-          </span>
-        )}
-        {switching && (
-          <span className="pi-statusbar-item text-(--color-warn)">
-            ◌ переключение сессии
           </span>
         )}
         {extEntries.length > 0 && <ExtensionsPill items={extEntries} />}

@@ -47,6 +47,8 @@ pub fn run() {
             favorites::write_pi_settings_partial,
             // sessions
             sessions::list_project_sessions,
+            sessions::read_last_session_file,
+            sessions::write_last_session_file,
             sessions::delete_session_file,
             sessions::rename_session_file,
             sessions::truncate_session_at,

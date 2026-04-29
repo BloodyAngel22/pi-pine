@@ -1,6 +1,7 @@
 //! Листинг файлов сессий из `~/.pi/agent/sessions/<encoded-cwd>/`.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Кодирование cwd → имя каталога: `/home/maximz/foo` → `--home-maximz-foo--`.
@@ -216,6 +217,46 @@ pub fn list_project_sessions(cwd: String) -> Vec<SessionInfo> {
     out
 }
 
+fn last_sessions_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".pi/pine-last-sessions.json"))
+}
+
+fn read_last_sessions_map(path: &Path) -> HashMap<String, String> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    serde_json::from_str::<HashMap<String, String>>(&text).unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn read_last_session_file(cwd: String) -> Option<String> {
+    let path = last_sessions_path()?;
+    let map = read_last_sessions_map(&path);
+    let file = map.get(&cwd)?.clone();
+    if PathBuf::from(&file).is_file() {
+        Some(file)
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+pub fn write_last_session_file(cwd: String, session_file: String) -> Result<(), String> {
+    if cwd.trim().is_empty() || session_file.trim().is_empty() {
+        return Ok(());
+    }
+    let path = last_sessions_path().ok_or("no home")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut map = read_last_sessions_map(&path);
+    map.insert(cwd, session_file);
+    let text = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn delete_session_file(file: String) -> Result<(), String> {
     let p = PathBuf::from(&file);
@@ -333,8 +374,10 @@ pub fn truncate_session_at(file: String, entry_id: String) -> Result<(), String>
         return Err(format!("Строка с entryId «{}» не найдена", entry_id));
     };
 
-    // Берём строки 0..=cut (включительно).
-    let kept: Vec<&str> = lines[..=cut].to_vec();
+    // Берём строки 0..cut (НЕ включая найденную строку),
+    // чтобы caller мог передать id редактируемого сообщения
+    // и получить сессию без него и всего последующего.
+    let kept: Vec<&str> = lines[..cut].to_vec();
 
     // Бэкап.
     let bak = p.with_extension("jsonl.bak");

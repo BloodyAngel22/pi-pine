@@ -46,7 +46,6 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
   const newSession = useChat((s) => s.newSession);
   const setSessionName = useChat((s) => s.setSessionName);
   const agentSessionFile = useChat((s) => s.agentState?.sessionFile);
-  const switching = useChat((s) => s.switching);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -196,12 +195,10 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
                     className={clsx(
                       "group px-3 py-2 border-b border-(--color-border)/40 text-xs relative",
                       active ? "bg-(--color-accent-soft)/30" : "hover:bg-(--color-bg-mute)",
-                      switching || active ? "cursor-default" : "cursor-pointer",
-                      switching && !active && "opacity-50 pointer-events-none",
+                      active ? "cursor-default" : "cursor-pointer",
                     )}
                     onClick={() => {
                       if (isMenu) return;
-                      if (switching) return;
                       if (active) {
                         onClose();
                         return;

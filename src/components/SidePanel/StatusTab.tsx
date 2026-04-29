@@ -12,18 +12,18 @@ export function StatusTab() {
   const widgetEntries = Object.entries(widgets);
 
   return (
-    <div className="p-3 space-y-4 text-xs">
+    <div className="p-3 space-y-4 text-xs min-w-0">
       <Section title="Статусы расширений">
         {statusEntries.length === 0 ? (
           <Empty />
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1 min-w-0">
             {statusEntries.map(([k, v]) => (
-              <div key={k} className="flex items-baseline gap-2">
-                <span className="text-(--color-fg-dim) font-mono w-16 truncate" title={k}>
+              <div key={k} className="flex items-baseline gap-2 min-w-0">
+                <span className="text-(--color-fg-dim) font-mono w-16 shrink-0 truncate" title={k}>
                   {k}
                 </span>
-                <span className="flex-1 truncate" title={v}>
+                <span className="flex-1 min-w-0 truncate" title={v}>
                   {v}
                 </span>
               </div>
@@ -36,12 +36,12 @@ export function StatusTab() {
         {widgetEntries.length === 0 ? (
           <Empty />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             {widgetEntries.map(([k, lines]) => (
-              <div key={k} className="border border-(--color-border) rounded p-2">
+              <div key={k} className="border border-(--color-border) rounded p-2 min-w-0">
                 <div className="text-(--color-fg-dim) text-[10px] uppercase mb-1">{k}</div>
                 {lines.map((l, i) => (
-                  <div key={i} className="font-mono whitespace-pre-wrap">
+                  <div key={i} className="font-mono whitespace-pre-wrap break-all">
                     {l}
                   </div>
                 ))}

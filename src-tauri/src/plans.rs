@@ -1,9 +1,9 @@
-//! Plan-mode: файлы планов в `<cwd>/.pi/plans/<sessionId>-<slug>.md`.
+//! Plan-mode: файлы планов в `/tmp/.pi/plans/<sessionId>-<slug>.md`.
 
 use std::path::PathBuf;
 
-fn plans_dir(cwd: &str) -> PathBuf {
-    PathBuf::from(cwd).join(".pi").join("plans")
+fn plans_dir() -> PathBuf {
+    std::env::temp_dir().join(".pi").join("plans")
 }
 
 fn sanitize_component(s: &str) -> String {
@@ -25,11 +25,8 @@ fn sanitize_component(s: &str) -> String {
 /// Создаёт каталог планов если нужно, возвращает абсолютный путь к файлу плана.
 /// Если файла нет — создаёт его с заголовком-шаблоном.
 #[tauri::command]
-pub fn ensure_plan_file(cwd: String, session_id: String, slug: String) -> Result<String, String> {
-    if cwd.is_empty() {
-        return Err("Пустой cwd".into());
-    }
-    let dir = plans_dir(&cwd);
+pub fn ensure_plan_file(session_id: String, slug: String) -> Result<String, String> {
+    let dir = plans_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("Создание {:?}: {}", dir, e))?;
     let sid = sanitize_component(&session_id);
     let sl = sanitize_component(&slug);
@@ -64,9 +61,9 @@ pub fn write_plan_file(path: String, text: String) -> Result<(), String> {
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    // sanity-check: файл должен быть в каталоге .pi/plans/
-    if !p.components().any(|c| c.as_os_str() == ".pi") {
-        return Err("Файл плана должен лежать в .pi/plans/".into());
+    let base = plans_dir();
+    if !p.starts_with(&base) {
+        return Err("Файл плана должен лежать в /tmp/.pi/plans/".into());
     }
     std::fs::write(&p, text).map_err(|e| e.to_string())
 }
@@ -74,7 +71,8 @@ pub fn write_plan_file(path: String, text: String) -> Result<(), String> {
 /// Список планов в текущем cwd.
 #[tauri::command]
 pub fn list_plan_files(cwd: String) -> Vec<String> {
-    let dir = plans_dir(&cwd);
+    let _ = cwd;
+    let dir = plans_dir();
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };

@@ -17,6 +17,7 @@ const THINKING_CYCLE: ThinkingLevel[] = ["off", "low", "medium", "high"];
 export function Composer({ onSlash, onToggleBash }: Props) {
   const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
   const isCompacting = useChat((s) => s.agentState?.isCompacting ?? false);
+  const mcpLoading = useChat((s) => s.mcpLoading);
   const pending = useChat((s) => s.pendingMessageCount);
   const streamingBehavior = useChat((s) => s.streamingBehavior);
   const setStreamingBehavior = useChat((s) => s.setStreamingBehavior);
@@ -94,6 +95,7 @@ export function Composer({ onSlash, onToggleBash }: Props) {
 
   const submit = async () => {
     if (!trimmed && attachments.length === 0) return;
+    if (mcpLoading) return;
     if (isSlash && slashItems.length > 0) {
       const picked = slashItems[Math.min(slashHighlight, slashItems.length - 1)];
       onSlash(picked.command);
@@ -420,14 +422,14 @@ export function Composer({ onSlash, onToggleBash }: Props) {
               <button
                 type="button"
                 onClick={() => void submit()}
-                disabled={!trimmed && attachments.length === 0}
+                disabled={(!trimmed && attachments.length === 0) || mcpLoading}
                 className={clsx(
                   "inline-flex items-center justify-center h-7 w-7 rounded-md transition-colors",
-                  !trimmed && attachments.length === 0
+                  (!trimmed && attachments.length === 0) || mcpLoading
                     ? "bg-(--color-bg-mute) text-(--color-fg-dim) cursor-not-allowed"
                     : "bg-(--color-accent) text-(--color-bg) hover:opacity-90",
                 )}
-                title={`${t.composer.send} (Enter)`}
+                title={mcpLoading ? "MCP загружаются…" : `${t.composer.send} (Enter)`}
               >
                 <Send size={13} />
               </button>
@@ -437,6 +439,9 @@ export function Composer({ onSlash, onToggleBash }: Props) {
 
         {/* Подсказка под композером */}
         <div className="mt-1 px-2 text-[10px] text-(--color-fg-dim) flex items-center gap-2">
+          {mcpLoading && (
+            <span className="text-(--color-warn)">MCP загружаются…</span>
+          )}
           <span>
             <kbd className="pi-kbd">Enter</kbd> отправить
           </span>

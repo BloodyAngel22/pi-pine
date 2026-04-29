@@ -50,6 +50,7 @@ interface ChatState {
   // транспорт
   generation: number;
   rpcRunning: boolean;
+  mcpLoading: boolean;
   piPath: string | null;
   cliPathOverride: string | null;
   cwd: string;
@@ -169,6 +170,58 @@ function newId(): string {
 
 /** Защита от двойной подписки (StrictMode/HMR). */
 let initOnce = false;
+let mcpLoadingTimer: number | null = null;
+let activeStartPromise: Promise<void> | null = null;
+let activeSwitch: { file: string; promise: Promise<void> } | null = null;
+/** null = ещё не прочитали конфиг; true/false = есть/нет активных MCP-серверов */
+let mcpHasServers: boolean | null = null;
+
+function debugMcp(phase: string, payload?: unknown) {
+  if (import.meta.env.DEV) {
+    console.debug("[mcp]", new Date().toISOString(), phase, payload ?? "");
+  }
+}
+
+function isMcpLoadingStatus(text: string): boolean {
+  const s = text.trim().toLowerCase();
+  if (!s) return false;
+  if (/\b(connected|loaded|complete|completed|done)\b/.test(s)) return false;
+  const ready = s.match(/(?:ready|готов[оы]?)\D+(\d+)\D+(\d+)/i);
+  if (ready) return Number(ready[1]) < Number(ready[2]);
+  if (/\b\d+\s*\/\s*\d+\b/.test(s)) {
+    const m = s.match(/(\d+)\s*\/\s*(\d+)/);
+    if (m) return Number(m[1]) < Number(m[2]);
+  }
+  return /\b(loading|initializing|connecting|starting|загруз|инициализ|подключ)\b/.test(s);
+}
+
+function setMcpLoading(
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  loading: boolean,
+) {
+  // Если MCP не настроен — никогда не показываем индикатор загрузки.
+  if (loading && mcpHasServers === false) return;
+  if (mcpLoadingTimer != null) {
+    window.clearTimeout(mcpLoadingTimer);
+    mcpLoadingTimer = null;
+  }
+  set({ mcpLoading: loading });
+  if (loading) {
+    mcpLoadingTimer = window.setTimeout(() => {
+      set({ mcpLoading: false });
+      mcpLoadingTimer = null;
+    }, 2_000);
+  }
+}
+
+async function rememberCurrentSession(cwd: string, sessionFile?: string) {
+  if (!cwd || !sessionFile) return;
+  await invoke("write_last_session_file", { cwd, sessionFile }).catch(() => undefined);
+}
 
 function joinText(blocks: UiBlock[]): string {
   return blocks
@@ -361,6 +414,7 @@ function extractToolText(value: unknown): string {
 export const useChat = create<ChatState>((set, get) => ({
   generation: 0,
   rpcRunning: false,
+  mcpLoading: false,
   piPath: null,
   cliPathOverride: localStorage.getItem(STORAGE_KEY_CLI),
   cwd:
@@ -411,67 +465,88 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   async startRpc(opts) {
-    const { cliPathOverride, cwd } = get();
-    try {
-      // ВАЖНО: НЕ передаём provider/model как CLI-флаги.
-      // У pi есть extension-провайдеры (devin, omniroute и т.п.),
-      // которые инициализируются лениво и НЕ известны на этапе argv-парсинга
-      // — pi падает с "Unknown provider". Поэтому стартуем с дефолтной
-      // моделью из ~/.pi/agent/settings.json, а нужную модель применяем
-      // через RPC `set_model` после того, как pi полностью поднялся
-      // (включая extension-провайдеры).
-      const res = await rpc.rpcStart({
-        cliPath: cliPathOverride ?? null,
-        cwd,
-        provider: undefined,
-        model: undefined,
-        sessionFile: opts?.sessionFile,
-      });
-      set({
-        rpcRunning: true,
-        generation: res.generation,
-        piPath: res.piPath,
-        errorBanner: null,
-        stderrBuffer: [],
-        messages: [],
-        currentAssistantId: null,
-        messageIdMap: new Map(),
-      });
-      // даем pi пару миллисекунд на инициализацию stdout
-      await new Promise((r) => setTimeout(r, 50));
-      await get().refreshState();
-      await get().reloadHistory().catch(() => undefined);
-      void get().loadAvailableModels();
+    if (activeStartPromise) return activeStartPromise;
+    const run = (async () => {
+      const { cliPathOverride, cwd } = get();
+      try {
+        const rememberedSessionFile =
+          opts?.sessionFile ??
+          (await invoke<string | null>("read_last_session_file", { cwd }).catch(() => null));
+        // ВАЖНО: НЕ передаём provider/model как CLI-флаги.
+        // У pi есть extension-провайдеры (devin, omniroute и т.п.),
+        // которые инициализируются лениво и НЕ известны на этапе argv-парсинга
+        // — pi падает с "Unknown provider". Поэтому стартуем с дефолтной
+        // моделью из ~/.pi/agent/settings.json, а нужную модель применяем
+        // через RPC `set_model` после того, как pi полностью поднялся
+        // (включая extension-провайдеры).
+        // Определяем наличие активных MCP-серверов ДО старта индикатора загрузки.
+        try {
+          const mcpCfg = await invoke<{ servers: { disabled: boolean }[] }>("read_mcp_config");
+          mcpHasServers = mcpCfg.servers.some((s) => !s.disabled);
+        } catch {
+          mcpHasServers = null;
+        }
+        const res = await rpc.rpcStart({
+          cliPath: cliPathOverride ?? null,
+          cwd,
+          provider: undefined,
+          model: undefined,
+          sessionFile: rememberedSessionFile ?? undefined,
+        });
+        setMcpLoading(set, true);
+        set({
+          rpcRunning: true,
+          generation: res.generation,
+          piPath: res.piPath,
+          errorBanner: null,
+          stderrBuffer: [],
+          messages: [],
+          currentAssistantId: null,
+          messageIdMap: new Map(),
+        });
+        // даем pi пару миллисекунд на инициализацию stdout
+        await new Promise((r) => setTimeout(r, 50));
+        await get().refreshState();
+        await get().reloadHistory().catch(() => undefined);
+        await rememberCurrentSession(cwd, get().agentState?.sessionFile);
+        void get().loadAvailableModels();
 
-      // Применяем сохранённую модель ПОСЛЕ старта.
-      // Если safe=true — пропускаем (использовать дефолт pi).
-      if (!opts?.safe) {
-        const savedProvider = localStorage.getItem(STORAGE_KEY_PROVIDER);
-        const savedModel = localStorage.getItem(STORAGE_KEY_MODEL);
-        if (savedProvider && savedModel) {
-          // Дать extension-провайдерам время поднять локальные сервера
-          // (devin запускает proxy на 127.0.0.1:42102 ~1-2 сек).
-          await new Promise((r) => setTimeout(r, 1500));
-          try {
-            await rpc.setModel(savedProvider, savedModel);
-            await get().refreshState();
-          } catch (e) {
-            // Не валим RPC — просто сообщаем, что нужная модель недоступна,
-            // pi работает на дефолтной.
-            get().setError(
-              `Не удалось активировать модель ${savedProvider}/${savedModel}: ${(e as Error).message}. Использую дефолтную.`,
-            );
+        // Применяем сохранённую модель ПОСЛЕ старта.
+        // Если safe=true — пропускаем (использовать дефолт pi).
+        if (!opts?.safe) {
+          const savedProvider = localStorage.getItem(STORAGE_KEY_PROVIDER);
+          const savedModel = localStorage.getItem(STORAGE_KEY_MODEL);
+          if (savedProvider && savedModel) {
+            void (async () => {
+              await new Promise((r) => setTimeout(r, 1500));
+              try {
+                await rpc.setModel(savedProvider, savedModel);
+                await get().refreshState();
+              } catch (e) {
+                localStorage.removeItem(STORAGE_KEY_PROVIDER);
+                localStorage.removeItem(STORAGE_KEY_MODEL);
+                get().setError(
+                  `Не удалось активировать модель ${savedProvider}/${savedModel}: ${(e as Error).message}. Использую дефолтную.`,
+                );
+              }
+            })();
           }
         }
+      } catch (e) {
+        get().setError((e as Error).message);
+        set({ rpcRunning: false });
+        setMcpLoading(set, false);
+      } finally {
+        activeStartPromise = null;
       }
-    } catch (e) {
-      get().setError((e as Error).message);
-      set({ rpcRunning: false });
-    }
+    })();
+    activeStartPromise = run;
+    return run;
   },
 
   async stopRpc() {
     await rpc.rpcStop().catch(() => undefined);
+    setMcpLoading(set, false);
     set({ rpcRunning: false, agentState: null });
   },
 
@@ -671,11 +746,12 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async newSession() {
     if (get().switching) return;
-    // Тот же UX-паттерн, что и switchSession: мгновенная очистка + спиннер.
-    set({ switching: true, messages: [], currentAssistantId: null });
+    set({ switching: true });
     try {
       await rpc.newSession();
       await get().refreshState().catch(() => undefined);
+      await rememberCurrentSession(get().cwd, get().agentState?.sessionFile);
+      get().clearMessages();
       await get().reloadHistory().catch(() => undefined);
       if (get().planMode) {
         await get().loadPlan().catch(() => undefined);
@@ -694,31 +770,45 @@ export const useChat = create<ChatState>((set, get) => ({
     //    прогонит полный MCP cleanup+reload цикл — `session_before_switch` +
     //    `session_switch` events).
     const st = get();
-    if (st.switching) return;
     if (st.agentState?.sessionFile === file) return;
-
-    // Очищаем UI ДО блокирующего RPC-вызова, чтобы пользователь сразу
-    // увидел переход и не кликал повторно. Сообщения будут заменены
-    // одним set после reloadHistory.
-    set({ switching: true, messages: [], currentAssistantId: null });
-    try {
-      // pi на switch_session эмитит session_before_switch (MCP cleanup) и
-      // session_switch (MCP reload). Это нормальное поведение pi — мы не
-      // вызываем этот RPC дважды и не делаем ничего, что добавило бы
-      // лишних циклов.
-      await rpc.switchSession(file);
-      // Последовательно. Параллельные state-запросы вызывают повторную
-      // отправку extension_ui_request (включая setStatus("mcp", ...)).
-      await get().refreshState().catch(() => undefined);
-      await get().reloadHistory().catch(() => undefined);
-      if (get().planMode) {
-        await get().loadPlan().catch(() => undefined);
-      }
-    } catch (e) {
-      get().setError((e as Error).message);
-    } finally {
-      set({ switching: false });
+    if (activeSwitch) {
+      if (activeSwitch.file === file) return activeSwitch.promise;
+      return;
     }
+
+    const run = (async () => {
+      set({ switching: true });
+      try {
+        debugMcp("switchSession:start", { file });
+        // Мгновенно очищаем сообщения ДО отправки switch — пользователь
+        // видит пустую сессию сразу, не ожидая завершения RPC.
+        get().clearMessages();
+        // pi на switch_session эмитит session_before_switch (MCP cleanup) и
+        // session_switch (MCP reload). Это нормальное поведение pi — мы не
+        // вызываем этот RPC дважды и не делаем ничего, что добавило бы
+        // лишних циклов.
+        await rpc.switchSession(file);
+        debugMcp("switchSession:after rpc.switchSession", { file });
+        await get().refreshState().catch(() => undefined);
+        debugMcp("switchSession:after refreshState", { file, sessionFile: get().agentState?.sessionFile });
+        await rememberCurrentSession(get().cwd, get().agentState?.sessionFile);
+        await get().reloadHistory().catch(() => undefined);
+        debugMcp("switchSession:after reloadHistory", { file });
+        if (get().planMode) {
+          await get().loadPlan().catch(() => undefined);
+          debugMcp("switchSession:after loadPlan", { file });
+        }
+      } catch (e) {
+        get().setError((e as Error).message);
+      } finally {
+        set({ switching: false });
+        activeSwitch = null;
+        // Принудительно снимаем mcpLoading после завершения switch.
+        setMcpLoading(set, false);
+      }
+    })();
+    activeSwitch = { file, promise: run };
+    return run;
   },
 
   async changeCwd(next) {
@@ -749,13 +839,12 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   async loadPlan() {
-    const { cwd, agentState } = get();
+    const { agentState } = get();
     const sid = agentState?.sessionId || agentState?.sessionFile || "session";
     const slug = slugify(agentState?.sessionName || sid);
     set({ planLoading: true });
     try {
       const path = await invoke<string>("ensure_plan_file", {
-        cwd,
         sessionId: String(sid),
         slug,
       });
@@ -829,36 +918,42 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   async forkAt(uiMessageId) {
-    const { messages, uiToPiId } = get();
-    const directPiId = uiToPiId[uiMessageId];
+    const { messages } = get();
     const msg = messages.find((m) => m.id === uiMessageId);
-    const userMsg =
-      msg?.role === "user"
-        ? msg
-        : [...messages]
-            .slice(0, messages.findIndex((m) => m.id === uiMessageId) + 1)
-            .reverse()
-            .find((m) => m.role === "user");
-    const promptText = userMsg ? joinText(userMsg.blocks) : "";
-    const piId = directPiId || (userMsg
-      ? await resolveUserForkPiId(userMsg.id, promptText, uiToPiId, userMsg.timestamp)
-      : null);
+    if (!msg) return;
+
+    // Resolve piId: for user messages fallback via getForkMessages,
+    // for assistant messages reload history first to get annotated entryIds.
+    let piId: string | null = get().uiToPiId[uiMessageId] ?? null;
+
+    if (!piId && msg.role === "user") {
+      const forkText = joinText(msg.blocks);
+      piId = await resolveUserForkPiId(uiMessageId, forkText, get().uiToPiId, msg.timestamp);
+    }
+
+    if (!piId) {
+      // Reload history to populate entryIds for assistant messages, then retry.
+      await get().reloadHistory().catch(() => undefined);
+      piId = get().uiToPiId[uiMessageId] ?? null;
+    }
+
     if (!piId) {
       get().setError("Не нашёл pi-id у сообщения для форка");
       return;
     }
     try {
       set({ switching: true });
-      const res = await rpc.fork(piId);
+      // position: "at" — новая сессия включает само нажатое сообщение.
+      const res = await rpc.fork(piId, { position: "at" });
       if (res.cancelled) { set({ switching: false }); return; }
       get().clearMessages();
       await get().refreshState();
       await get().reloadHistory();
       // показываем баннер «вы теперь в новой ветке», авто-скрываем через 5 с
-      const banner = res.text
+      const label = res.text
         ? `Форк от: «${res.text.slice(0, 80)}${res.text.length > 80 ? "…" : ""}»`
         : "Создан форк — вы в новой ветке";
-      set({ forkBanner: banner });
+      set({ forkBanner: label });
       setTimeout(() => set({ forkBanner: null }), 5000);
     } catch (e) {
       get().setError((e as Error).message);
@@ -868,8 +963,8 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   async regenerateAt(uiMessageId) {
-    // Используем rpc.fork() вместо stop/truncate/start — pi остаётся запущенным,
-    // не перезапускается процесс (= нет overhead перезапуска + 1500ms задержки).
+    // Используем navigate_tree вместо fork: остаёмся в том же файле сессии,
+    // MCP не перезагружаются (нет session_start), нет overhead fork-файла.
     const { messages, uiToPiId, agentState } = get();
     if (agentState?.isStreaming) await get().abortStreaming();
 
@@ -894,11 +989,12 @@ export const useChat = create<ChatState>((set, get) => ({
     }
     try {
       set({ switching: true });
-      const res = await rpc.fork(piId);
+      // navigate_tree на user-сообщение: leaf = parent (убирает это сообщение и всё после).
+      const res = await rpc.navigateTree(piId);
       if (res.cancelled) return;
       get().clearMessages();
-      await get().refreshState();
-      await get().reloadHistory();
+      await get().refreshState().catch(() => undefined);
+      await get().reloadHistory().catch(() => undefined);
       await rpc.sendPrompt(text);
     } catch (e) {
       get().setError((e as Error).message);
@@ -908,40 +1004,47 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   async editUserMessage(uiMessageId, newText) {
-    // Используем rpc.fork() вместо stop/truncate/start — pi остаётся запущенным.
     const { messages, uiToPiId, agentState } = get();
     if (agentState?.isStreaming) await get().abortStreaming();
-
-    const msg = messages.find((m) => m.id === uiMessageId);
-    const originalText = msg ? joinText(msg.blocks) : newText;
-
-    // Для edit нужно форкнуться до предыдущего сообщения (не самого user-msg),
-    // чтобы убрать сам редактируемый запрос и все последующее.
-    const idx = messages.findIndex((m) => m.id === uiMessageId);
-    let forkPiId: string | null = null;
-    if (idx > 0) {
-      for (let i = idx - 1; i >= 0; i--) {
-        const pm = messages[i];
-        const id = uiToPiId[pm.id];
-        if (id) { forkPiId = id; break; }
-      }
-    }
-    // Если нет предыдущего сообщения, форкаемся от самого user-msg
-    if (!forkPiId) {
-      forkPiId = await resolveUserForkPiId(uiMessageId, originalText, uiToPiId, msg?.timestamp);
-    }
-    if (!forkPiId) {
-      // fallback: просто подставим в композер
+    const sessionFile = agentState?.sessionFile;
+    if (!sessionFile) {
       get().injectComposer(newText);
+      return;
+    }
+
+    // Ищем pi-id САМОГО редактируемого сообщения (не предыдущего).
+    // truncate_session_at теперь ИСКЛЮЧАЕТ найденную строку, поэтому
+    // передача id редактируемого сообщения обрезает всё начиная с него.
+    const editedMsg = messages.find((m) => m.id === uiMessageId);
+    // Пробуем разрешить pi-id пока RPC ещё жив (нужен для getForkMessages-fallback).
+    const editedPiId: string | null =
+      uiToPiId[uiMessageId] ??
+      (editedMsg
+        ? await resolveUserForkPiId(uiMessageId, joinText(editedMsg.blocks), uiToPiId, editedMsg.timestamp).catch(() => null)
+        : null);
+
+    if (!editedPiId) {
+      get().setError("Не нашёл pi-id редактируемого сообщения — невозможно усечь сессию");
       return;
     }
     try {
       set({ switching: true });
-      const res = await rpc.fork(forkPiId);
-      if (res.cancelled) return;
+      try {
+        const treeRes = await rpc.navigateTree(editedPiId);
+        if (treeRes.cancelled) return;
+        await get().refreshState().catch(() => undefined);
+        get().clearMessages();
+        await get().reloadHistory().catch(() => undefined);
+        get().injectComposer(newText);
+        return;
+      } catch (treeError) {
+        get().setError(`navigate_tree не сработал, использую fallback с перезапуском: ${(treeError as Error).message}`);
+      }
+      await rpc.rpcStop().catch(() => undefined);
+      set({ rpcRunning: false, agentState: null });
+      await rpc.truncateSession(sessionFile, editedPiId);
       get().clearMessages();
-      await get().refreshState();
-      await get().reloadHistory();
+      await get().startRpc({ sessionFile });
       get().injectComposer(newText);
     } catch (e) {
       get().setError((e as Error).message);
@@ -1006,6 +1109,24 @@ function handleAgentEvent(
 ) {
   const t = event.type as string | undefined;
   if (!t) return;
+  if (t === "extension_ui_request") {
+    const method = String(event.method ?? "");
+    const key = String(event.statusKey ?? "");
+    if (method === "setStatus" && key === "mcp") {
+      const text = event.statusText;
+      debugMcp("setStatus:mcp", text);
+      if (typeof text !== "string" || text.length === 0) {
+        // Пустой статус — загрузка завершена, снимаем только если не идёт switch.
+        if (!activeSwitch) setMcpLoading(set, false);
+      } else if (isMcpLoadingStatus(text)) {
+        setMcpLoading(set, true);
+      } else {
+        // "✓ MCP: 9 ready" и подобные — снимаем только если нет активного switch.
+        // (switch сам вызывает setMcpLoading(false) в finally после завершения)
+        if (!activeSwitch) setMcpLoading(set, false);
+      }
+    }
+  }
 
   switch (t) {
     case "agent_start": {

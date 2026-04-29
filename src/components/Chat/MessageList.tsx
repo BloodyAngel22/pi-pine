@@ -34,13 +34,13 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     el.scrollTo({ top: el.scrollHeight, behavior: instant ? "instant" : "smooth" });
   }, []);
 
-  // При смене сессии/форке всегда прокручиваем вниз
+  // При очистке сообщений (смена сессии/форк) сбрасываем позицию прокрутки вниз
   useEffect(() => {
-    if (switching) {
+    if (messages.length === 0) {
       atBottom.current = true;
       setShowScrollBtn(false);
     }
-  }, [switching]);
+  }, [messages.length]);
 
   // Умный авто-скролл: прокручиваем только если пользователь уже был внизу
   useEffect(() => {
@@ -59,35 +59,35 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   }, []);
 
   if (messages.length === 0) {
+    if (switching) {
+      return (
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full flex items-center justify-center p-8">
+            <div className="flex items-center gap-2 text-sm text-(--color-fg-mute)">
+              <span className="w-2 h-2 rounded-full bg-(--color-accent) animate-pulse" />
+              Переключаем сессию…
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex-1 overflow-hidden">
         <div className="h-full flex items-center justify-center p-8">
-          {switching ? (
-            <div className="text-center space-y-3">
-              <div className="inline-flex items-center gap-2 text-sm text-(--color-fg-mute)">
-                <span className="w-2.5 h-2.5 rounded-full bg-(--color-accent) animate-pulse" />
-                Загружаем сессию…
+          <div className="max-w-md text-center space-y-3">
+            <Sparkles size={32} className="mx-auto text-(--color-accent)" />
+            <h2 className="text-base font-semibold">{t.chat.empty.title}</h2>
+            <p className="text-sm text-(--color-fg-mute)">{t.chat.empty.hint}</p>
+            {agentState?.model && (
+              <div className="text-xs text-(--color-fg-dim)">
+                {t.chat.empty.tipModel}:{" "}
+                <span className="font-mono text-(--color-fg-mute)">
+                  {agentState.model.provider}/{agentState.model.id}
+                </span>
               </div>
-              <div className="text-[11px] text-(--color-fg-dim) max-w-[360px]">
-                pi переподключает MCP-сервера. Обычно занимает ~10 сек.
-              </div>
-            </div>
-          ) : (
-            <div className="max-w-md text-center space-y-3">
-              <Sparkles size={32} className="mx-auto text-(--color-accent)" />
-              <h2 className="text-base font-semibold">{t.chat.empty.title}</h2>
-              <p className="text-sm text-(--color-fg-mute)">{t.chat.empty.hint}</p>
-              {agentState?.model && (
-                <div className="text-xs text-(--color-fg-dim)">
-                  {t.chat.empty.tipModel}:{" "}
-                  <span className="font-mono text-(--color-fg-mute)">
-                    {agentState.model.provider}/{agentState.model.id}
-                  </span>
-                </div>
-              )}
-              <div className="text-xs text-(--color-fg-dim)">{t.chat.empty.tipSlash}</div>
-            </div>
-          )}
+            )}
+            <div className="text-xs text-(--color-fg-dim)">{t.chat.empty.tipSlash}</div>
+          </div>
         </div>
       </div>
     );
@@ -95,12 +95,6 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
 
   return (
     <div ref={ref} className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
-      {switching && (
-        <div className="absolute top-2 right-3 z-10 inline-flex items-center gap-1.5 text-[11px] text-(--color-fg-mute) bg-(--color-bg-soft)/90 border border-(--color-border) px-2 py-1 rounded-md backdrop-blur">
-          <span className="w-2 h-2 rounded-full bg-(--color-accent) animate-pulse" />
-          Переключаем… MCP ~10 сек
-        </div>
-      )}
       <div className="pi-stream">
         {messages.map((m) => (
           <Message
