@@ -107,12 +107,13 @@
 
 ## Требования
 
-- **[pi-mono-x](https://github.com/BloodyAngel22/pi-mono-x)** — форк pi с расширенным RPC-протоколом.  
+- **[pi-mono-x](https://github.com/BloodyAngel22/pi-mono-x/tree/feature/pi-pine-rpc-integration)** — форк pi с расширенным RPC-протоколом.  
   Pi Pine **не совместим** с оригинальным [pi](https://pi.dev/) — требуется именно pi-mono-x,
-  в котором добавлены RPC-команды `cd`, `pwd`, `ls` и другие расширения протокола.
+  ветка `feature/pi-pine-rpc-integration`, в которой добавлены RPC-команды `cd`, `pwd`, `ls`
+  и другие расширения протокола.
 
   ```bash
-  git clone https://github.com/BloodyAngel22/pi-mono-x
+  git clone --branch feature/pi-pine-rpc-integration https://github.com/BloodyAngel22/pi-mono-x
   cd pi-mono-x
   npm install
   npm run build
