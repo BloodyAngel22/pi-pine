@@ -13,6 +13,9 @@ export const BUILTIN_SLASH: SlashCommand[] = [
   { command: "/model", description: "Сменить модель" },
   { command: "/compact", description: "Сжать контекст вручную" },
   { command: "/settings", description: "Открыть настройки" },
+  { command: "/search", description: "Поиск по prompt истории" },
+  { command: "/execute", description: "Выполнить текущий план" },
+  { command: "/btw", description: "Попутный вопрос в текущем контексте" },
   { command: "/abort", description: "Прервать стриминг" },
 ];
 

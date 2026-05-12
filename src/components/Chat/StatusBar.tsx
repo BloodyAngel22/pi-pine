@@ -1,4 +1,4 @@
-import { Folder, Cpu, Brain, Hash, DollarSign, Gauge } from "lucide-react";
+import { Folder, Cpu, Brain, Hash, DollarSign, Gauge, RefreshCw } from "lucide-react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { shortenPath } from "@/utils/path";
@@ -16,6 +16,7 @@ export function StatusBar() {
   const home = useChat((s) => s.home);
   const agent = useChat((s) => s.agentState);
   const stats = useChat((s) => s.sessionStats);
+  const retryStatus = useChat((s) => s.retryStatus);
   const isStreaming = agent?.isStreaming;
   const statuses = useExt((s) => s.statuses);
 
@@ -122,6 +123,15 @@ export function StatusBar() {
         {isStreaming && (
           <span className="pi-statusbar-item text-(--color-accent)">
             ● стрим
+          </span>
+        )}
+        {(agent?.isRetrying || retryStatus.active) && (
+          <span
+            className="pi-statusbar-item text-(--color-accent)"
+            title={retryStatus.errorMessage ?? "auto retry"}
+          >
+            <RefreshCw size={11} />
+            retry {retryStatus.attempt || agent?.retryAttempt || 0}
           </span>
         )}
         {extEntries.length > 0 && <ExtensionsPill items={extEntries} />}

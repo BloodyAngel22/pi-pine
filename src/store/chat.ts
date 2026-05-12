@@ -24,6 +24,7 @@ export interface UiBlockTool {
   name: string;
   input?: unknown;
   output?: unknown;
+  details?: unknown;
   status: "running" | "done" | "error";
 }
 export interface UiBlockImage {
@@ -66,6 +67,14 @@ interface ChatState {
   switching: boolean;
   // состояние агента
   agentState: RpcSessionState | null;
+  retryStatus: {
+    active: boolean;
+    attempt: number;
+    maxAttempts?: number;
+    delayMs?: number;
+    errorMessage?: string;
+    finalError?: string;
+  };
   availableModels: Model[];
   pendingMessageCount: number;
   sessionStats: import("@/rpc/bridge").SessionStats | null;
@@ -90,7 +99,11 @@ interface ChatState {
   startRpc(opts?: { sessionFile?: string; safe?: boolean }): Promise<void>;
   stopRpc(): Promise<void>;
   restartRpc(opts?: { safe?: boolean }): Promise<void>;
-  send(message: string, images?: import("@/rpc/types").ImageContent[]): Promise<void>;
+  send(
+    message: string,
+    images?: import("@/rpc/types").ImageContent[],
+    opts?: { streamingBehavior?: StreamingBehavior },
+  ): Promise<void>;
   abortStreaming(): Promise<void>;
   clearMessages(): void;
   setCwd(cwd: string): void;
@@ -107,6 +120,8 @@ interface ChatState {
   toggleAttachedSkill(name: string): void;
   setCliPathOverride(p: string | null): void;
   setStreamingBehavior(b: StreamingBehavior): void;
+  setAutoRetry(enabled: boolean): Promise<void>;
+  abortRetry(): Promise<void>;
   setThinking(level: ThinkingLevel): Promise<void>;
   switchModel(provider: string, modelId: string): Promise<void>;
   loadAvailableModels(): Promise<void>;
@@ -360,11 +375,13 @@ function agentContentToBlocks(content: unknown): UiBlock[] {
       const id = String(obj.tool_use_id ?? obj.toolUseId ?? obj.toolCallId ?? "");
       const text = extractToolText(obj.content ?? obj.result);
       const isError = Boolean(obj.is_error ?? obj.isError);
+      const details = obj.details;
       const existing = blocks.find(
         (b): b is UiBlockTool => b.kind === "tool" && b.toolUseId === id,
       );
       if (existing) {
         existing.output = text;
+        existing.details = details;
         existing.status = isError ? "error" : "done";
       } else {
         blocks.push({
@@ -372,6 +389,7 @@ function agentContentToBlocks(content: unknown): UiBlock[] {
           toolUseId: id || newId(),
           name: "tool",
           output: text,
+          details,
           status: isError ? "error" : "done",
         });
       }
@@ -411,6 +429,35 @@ function extractToolText(value: unknown): string {
   }
 }
 
+function extractToolDetails(value: unknown): unknown {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.details != null) return record.details;
+  if (Array.isArray(record.todos)) return record;
+  if (typeof record.text === "string") {
+    try {
+      const parsed = JSON.parse(record.text) as unknown;
+      if (parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).todos)) return parsed;
+    } catch {
+      // ignore
+    }
+  }
+  if (Array.isArray(record.content)) {
+    for (const item of record.content) {
+      if (!item || typeof item !== "object") continue;
+      const text = (item as Record<string, unknown>).text;
+      if (typeof text !== "string") continue;
+      try {
+        const parsed = JSON.parse(text) as unknown;
+        if (parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).todos)) return parsed;
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return value;
+}
+
 export const useChat = create<ChatState>((set, get) => ({
   generation: 0,
   rpcRunning: false,
@@ -427,6 +474,7 @@ export const useChat = create<ChatState>((set, get) => ({
   attachedSkills: readAttachedSkills(),
   switching: false,
   agentState: null,
+  retryStatus: { active: false, attempt: 0 },
   availableModels: [],
   pendingMessageCount: 0,
   sessionStats: null,
@@ -570,7 +618,7 @@ export const useChat = create<ChatState>((set, get) => ({
     await get().startRpc(opts?.safe ? { safe: true } : undefined);
   },
 
-  async send(message, images) {
+  async send(message, images, sendOpts) {
     const { agentState, streamingBehavior, planMode, planFilePath, attachedSkills } = get();
     const trimmed = message.trim();
     if (!trimmed && (!images || images.length === 0)) return;
@@ -583,7 +631,8 @@ export const useChat = create<ChatState>((set, get) => ({
         `[PLAN MODE] Не модифицируй файлы кроме \`${planPath}\`. ` +
         `Не запускай разрушительные команды (rm, mv, git push, drop и т.п.). ` +
         `Сначала исследуй кодовую базу через read-only инструменты (read_file, grep, list_dir). ` +
-        `Веди и обновляй план в \`${planPath}\` (markdown, чек-листы, ссылки на файлы). ` +
+        `Веди и обновляй план в \`${planPath}\` (markdown, секция "## Шаги" или "## Tasks" с чек-листами, ссылки на файлы). ` +
+        `Если доступен todo tool/todo_list, обязательно создай и обновляй видимый список задач. ` +
         `Жди явного «Реализуй» от пользователя — не приступай к изменениям сейчас.\n\n`;
       body = prefix + body;
     }
@@ -596,7 +645,11 @@ export const useChat = create<ChatState>((set, get) => ({
 
     try {
       const opts: { images?: import("@/rpc/types").ImageContent[]; streamingBehavior?: StreamingBehavior } = {};
-      if (agentState?.isStreaming) opts.streamingBehavior = streamingBehavior;
+      if (sendOpts?.streamingBehavior) {
+        opts.streamingBehavior = sendOpts.streamingBehavior;
+      } else if (agentState?.isStreaming) {
+        opts.streamingBehavior = streamingBehavior;
+      }
       if (images && images.length > 0) opts.images = images;
       await rpc.sendPrompt(body, Object.keys(opts).length > 0 ? opts : undefined);
     } catch (e) {
@@ -641,6 +694,28 @@ export const useChat = create<ChatState>((set, get) => ({
 
   setStreamingBehavior(b) {
     set({ streamingBehavior: b });
+  },
+
+  async setAutoRetry(enabled) {
+    try {
+      await rpc.setAutoRetry(enabled);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async abortRetry() {
+    try {
+      await rpc.abortRetry();
+      set((s) => ({
+        retryStatus: { ...s.retryStatus, active: false, finalError: "Retry cancelled" },
+        agentState: s.agentState ? { ...s.agentState, isRetrying: false, retryAttempt: 0 } : s.agentState,
+      }));
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
   },
 
   async setThinking(level) {
@@ -707,6 +782,7 @@ export const useChat = create<ChatState>((set, get) => ({
             );
             if (target) {
               target.output = text;
+              target.details = m.details;
               target.status = isError ? "error" : "done";
               if (!target.name || target.name === "tool") {
                 target.name = String(m.toolName ?? target.name);
@@ -872,7 +948,7 @@ export const useChat = create<ChatState>((set, get) => ({
     // Выключаем plan mode, шлём prompt
     localStorage.removeItem(STORAGE_KEY_PLAN_MODE);
     set({ planMode: false });
-    const prompt = `Реализуй план из файла \`${planFilePath}\` шаг за шагом. Можешь редактировать код, запускать команды. Если возникнут вопросы — спроси.`;
+    const prompt = `Реализуй план из файла \`${planFilePath}\`. Сначала прочитай plan file, затем выполняй задачи по порядку. По мере выполнения обновляй чекбоксы в plan file с [ ] на [x], измени Status на "executing", а после завершения на "done". Можешь редактировать код и запускать команды. Если возникнут вопросы — спроси.`;
     try {
       await rpc.sendPrompt(prompt);
     } catch (e) {
@@ -1162,6 +1238,7 @@ function handleAgentEvent(
           updateToolBlock(set, get, toolCallId, {
             name: String(piMsg.toolName ?? "tool"),
             output: text,
+            details: piMsg.details,
             status: isError ? "error" : "done",
           });
         }
@@ -1215,8 +1292,10 @@ function handleAgentEvent(
       if (!toolUseId) break;
       const isError = Boolean(event.isError ?? event.is_error);
       const output = extractToolText(event.result ?? event.output);
+      const details = extractToolDetails(event.result ?? event.output);
       updateToolBlock(set, get, toolUseId, {
         output,
+        details,
         status: isError ? "error" : "done",
       });
       break;
@@ -1254,8 +1333,32 @@ function handleAgentEvent(
     case "turn_start":
     case "turn_end":
     case "extension_error":
-    case "auto_retry_start":
-    case "auto_retry_end":
+      break;
+    case "auto_retry_start": {
+      const attempt = typeof event.attempt === "number" ? event.attempt : 0;
+      set((s) => ({
+        retryStatus: {
+          active: true,
+          attempt,
+          maxAttempts: typeof event.maxAttempts === "number" ? event.maxAttempts : undefined,
+          delayMs: typeof event.delayMs === "number" ? event.delayMs : undefined,
+          errorMessage: typeof event.errorMessage === "string" ? event.errorMessage : undefined,
+        },
+        agentState: s.agentState ? { ...s.agentState, isRetrying: true, retryAttempt: attempt } : s.agentState,
+      }));
+      break;
+    }
+    case "auto_retry_end": {
+      set((s) => ({
+        retryStatus: {
+          active: false,
+          attempt: typeof event.attempt === "number" ? event.attempt : s.retryStatus.attempt,
+          finalError: typeof event.finalError === "string" ? event.finalError : undefined,
+        },
+        agentState: s.agentState ? { ...s.agentState, isRetrying: false, retryAttempt: 0 } : s.agentState,
+      }));
+      break;
+    }
     default:
       // нерелевантные/будущие события — игнор
       break;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Sparkles, ArrowDown } from "lucide-react";
 import { useChat, type UiMessage } from "@/store/chat";
 import { Message } from "./Message";
+import { PlanTodoInline } from "./PlanTodoInline";
 import { t } from "@/i18n/ru";
 
 interface Props {
@@ -95,6 +96,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
 
   return (
     <div ref={ref} className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
+      <PlanTodoInline />
       <div className="pi-stream">
         {messages.map((m) => (
           <Message

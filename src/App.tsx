@@ -9,8 +9,11 @@ import { compact as rpcCompact } from "@/rpc/bridge";
 import { Header } from "@/components/Chat/Header";
 import { MessageList } from "@/components/Chat/MessageList";
 import { Composer } from "@/components/Chat/Composer";
-import { BashPanel } from "@/components/Chat/BashPanel";
+import { PromptSearchPalette } from "@/components/Chat/PromptSearchPalette";
+import { BtwOverlay } from "@/components/Chat/BtwOverlay";
 import { StatusBar } from "@/components/Chat/StatusBar";
+import { TerminalPanel } from "@/components/Terminal/TerminalPanel";
+import { TerminalErrorBoundary } from "@/components/Terminal/TerminalErrorBoundary";
 import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
 import { SidePanel } from "@/components/SidePanel/SidePanel";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
@@ -34,6 +37,7 @@ export default function App() {
   const refreshState = useChat((s) => s.refreshState);
   const newSession = useChat((s) => s.newSession);
   const setError = useChat((s) => s.setError);
+  const commitPlan = useChat((s) => s.commitPlan);
   const errorBanner = useChat((s) => s.errorBanner);
   const forkBanner = useChat((s) => s.forkBanner);
   const clearForkBanner = useChat((s) => s.clearForkBanner);
@@ -54,7 +58,10 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [bashOpen, setBashOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<"chat" | "terminal">("chat");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [btwOpen, setBtwOpen] = useState(false);
+  const [btwQuestion, setBtwQuestion] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +155,11 @@ export default function App() {
         setSettingsOpen(true);
         return;
       }
+      if (ctrl && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
       if (ctrl && e.key.toLowerCase() === "n") {
         if (inEditable) return;
         e.preventDefault();
@@ -155,12 +167,12 @@ export default function App() {
       }
       if (ctrl && (e.key === "`" || e.code === "Backquote")) {
         e.preventDefault();
-        setBashOpen((v) => !v);
+        setMainTab((v) => (v === "terminal" ? "chat" : "terminal"));
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [newSession]);
+  }, [commitPlan, newSession]);
 
   const onSlash = (cmd: string) => {
     switch (cmd) {
@@ -175,6 +187,12 @@ export default function App() {
         break;
       case "/settings":
         setSettingsOpen(true);
+        break;
+      case "/search":
+        setSearchOpen(true);
+        break;
+      case "/execute":
+        void commitPlan();
         break;
       case "/compact":
         rpcCompact().catch((e) => setError(String(e)));
@@ -200,6 +218,10 @@ export default function App() {
   const onEdit = (m: UiMessage, text: string) => {
     if (isStreaming) return;
     void useChat.getState().editUserMessage(m.id, text);
+  };
+  const onBtw = (question?: string) => {
+    setBtwQuestion(question);
+    setBtwOpen(true);
   };
 
   if (!bootstrapped) {
@@ -228,7 +250,7 @@ export default function App() {
             onToggleSidePanel={() => setPanelOpen((v) => !v)}
             onOpenSettings={() => setSettingsOpen(true)}
             onNewSession={() => void newSession()}
-            onToggleBash={() => setBashOpen((v) => !v)}
+            onToggleBash={() => setMainTab("terminal")}
           />
           {errorBanner && (
             <div className="px-3 py-1.5 bg-(--color-danger)/15 border-b border-(--color-danger)/30 text-(--color-danger) text-xs flex items-center gap-2">
@@ -288,14 +310,49 @@ export default function App() {
               </Button>
             </div>
           )}
-          <MessageList
-            onCopy={onCopy}
-            onFork={onFork}
-            onRegenerate={onRegenerate}
-            onEdit={onEdit}
-          />
-          {bashOpen && <BashPanel onClose={() => setBashOpen(false)} />}
-          <Composer onSlash={onSlash} onToggleBash={() => setBashOpen((v) => !v)} />
+          <div className="h-9 shrink-0 flex items-center gap-1 border-b border-(--color-border) bg-(--color-bg-soft) px-3">
+            <button
+              type="button"
+              onClick={() => setMainTab("chat")}
+              className={
+                "h-7 px-3 rounded-md text-xs font-medium transition-colors " +
+                (mainTab === "chat"
+                  ? "bg-(--color-bg) text-(--color-fg) border border-(--color-border)"
+                  : "text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)")
+              }
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainTab("terminal")}
+              className={
+                "h-7 px-3 rounded-md text-xs font-medium transition-colors " +
+                (mainTab === "terminal"
+                  ? "bg-(--color-bg) text-(--color-fg) border border-(--color-border)"
+                  : "text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)")
+              }
+            >
+              Terminal
+            </button>
+            <span className="ml-auto text-[10px] text-(--color-fg-dim)">Ctrl+`</span>
+          </div>
+          <div className={mainTab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
+            <MessageList
+              onCopy={onCopy}
+              onFork={onFork}
+              onRegenerate={onRegenerate}
+              onEdit={onEdit}
+            />
+            <Composer onSlash={onSlash} onToggleBash={() => setMainTab("terminal")} onBtw={onBtw} />
+          </div>
+          <div className={mainTab === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
+            <TerminalErrorBoundary onBack={() => setMainTab("chat")}>
+              <TerminalPanel open={mainTab === "terminal"} onClose={() => setMainTab("chat")} />
+            </TerminalErrorBoundary>
+          </div>
+          <PromptSearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+          <BtwOverlay open={btwOpen} initialQuestion={btwQuestion} onClose={() => setBtwOpen(false)} />
         </main>
         {panelOpen && <SidePanel onClose={() => setPanelOpen(false)} />}
       </div>

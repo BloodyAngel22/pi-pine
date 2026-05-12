@@ -38,11 +38,28 @@ export interface DialogEditor {
   prefill?: string;
   timeout?: number;
 }
+export interface DialogAskUser {
+  type: "askUser";
+  id: string;
+  question: string;
+  options: string[];
+  allowMultiple: boolean;
+  timeout?: number;
+}
+export interface DialogPermission {
+  type: "permission";
+  id: string;
+  permissionType: "bash" | "file" | "mcp";
+  permissionValue: string;
+  timeout?: number;
+}
 export type DialogRequest =
   | DialogSelect
   | DialogConfirm
   | DialogInput
-  | DialogEditor;
+  | DialogEditor
+  | DialogAskUser
+  | DialogPermission;
 
 interface ExtState {
   toasts: Toast[];
@@ -56,19 +73,33 @@ interface ExtState {
   composerInjection: { text: string; nonce: number } | null;
   /** заголовок окна (setTitle) */
   windowTitle: string;
+  yoloMode: boolean;
 
   init(): void;
-  resolveDialog(payload: { value?: string; confirmed?: boolean; cancelled?: boolean }): void;
+  toggleYoloMode(): void;
+  resolveDialog(payload: {
+    value?: string;
+    confirmed?: boolean;
+    cancelled?: boolean;
+    decision?: "allow-once" | "allow-always" | "deny-once" | "deny-always";
+    scope?: "local" | "global" | "session";
+    match?: string;
+  }): void;
   dismissToast(id: string): void;
   clearComposerInjection(): void;
 }
 
 let initialized = false;
 let toastSeq = 0;
+const STORAGE_KEY_YOLO = "pi-pine.yoloMode";
 
 function newToastId(): string {
   toastSeq += 1;
   return `t${toastSeq}`;
+}
+
+function isPlanFilePermission(permissionType: unknown, permissionValue: string): boolean {
+  return permissionType === "file" && permissionValue.includes("/tmp/.pi/plans/");
 }
 
 export const useExt = create<ExtState>((set, get) => ({
@@ -78,11 +109,19 @@ export const useExt = create<ExtState>((set, get) => ({
   dialogQueue: [],
   composerInjection: null,
   windowTitle: "Pi Pine",
+  yoloMode: localStorage.getItem(STORAGE_KEY_YOLO) === "1",
 
   init() {
     if (initialized) return;
     initialized = true;
     onEvent((event) => handleEvent(event, set, get));
+  },
+
+  toggleYoloMode() {
+    const next = !get().yoloMode;
+    if (next) localStorage.setItem(STORAGE_KEY_YOLO, "1");
+    else localStorage.removeItem(STORAGE_KEY_YOLO);
+    set({ yoloMode: next });
   },
 
   resolveDialog(payload) {
@@ -109,7 +148,7 @@ function handleEvent(
       | Partial<ExtState>
       | ((s: ExtState) => Partial<ExtState>),
   ) => void,
-  _get: () => ExtState,
+  get: () => ExtState,
 ) {
   if (event.type !== "extension_ui_request") return;
   const method = String(event.method ?? "");
@@ -148,7 +187,10 @@ function handleEvent(
     }
     case "setWidget": {
       const key = String(event.widgetKey ?? event.key ?? "");
-      const lines = Array.isArray(event.lines)
+      const rawLines = event.widgetLines ?? event.lines;
+      const lines = Array.isArray(rawLines)
+        ? (rawLines as unknown[]).map((x) => String(x))
+        : Array.isArray(event.lines)
         ? (event.lines as unknown[]).map((x) => String(x))
         : event.text != null
           ? [String(event.text)]
@@ -174,6 +216,61 @@ function handleEvent(
     case "set_editor_text": {
       const text = String(event.text ?? "");
       set({ composerInjection: { text, nonce: Date.now() } });
+      break;
+    }
+    case "askUser":
+    case "ask_user": {
+      if (!id) break;
+      const options = Array.isArray(event.options)
+        ? (event.options as unknown[]).map((option) => {
+            if (typeof option === "string") return option;
+            if (option && typeof option === "object") {
+              const o = option as Record<string, unknown>;
+              const label = o.label ?? o.value ?? o.text;
+              if (typeof label === "string") return label;
+            }
+            return String(option);
+          })
+        : [];
+      set((s) => ({
+        dialogQueue: [
+          ...s.dialogQueue,
+          {
+            type: "askUser",
+            id,
+            question: String(event.question ?? event.title ?? "What would you like to do?"),
+            options,
+            allowMultiple: event.allowMultiple === true,
+            timeout: typeof event.timeout === "number" ? (event.timeout as number) : undefined,
+          },
+        ],
+      }));
+      break;
+    }
+    case "permission": {
+      if (!id) break;
+      const permissionType = event.permissionType;
+      if (permissionType !== "bash" && permissionType !== "file" && permissionType !== "mcp") break;
+      const permissionValue = String(event.permissionValue ?? "");
+      if (get().yoloMode) {
+        void sendExtUiResponse(id, { decision: "allow-once" }).catch((e) => console.error(e));
+        break;
+      }
+      if (isPlanFilePermission(permissionType, permissionValue)) {
+        void sendExtUiResponse(id, { decision: "allow-once" }).catch((e) => console.error(e));
+        break;
+      }
+      set((s) => ({
+        dialogQueue: [
+          ...s.dialogQueue,
+          {
+            type: "permission",
+            id,
+            permissionType,
+            permissionValue,
+          },
+        ],
+      }));
       break;
     }
     case "select":

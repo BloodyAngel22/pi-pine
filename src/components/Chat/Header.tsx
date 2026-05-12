@@ -119,7 +119,9 @@ export function Header({ onToggleSidebar, onToggleSidePanel, onOpenSettings, onN
             <span>{agentState.thinkingLevel}</span>
           </button>
         )}
-        <Button variant="ghost" size="sm" onClick={onToggleBash} icon={<Terminal size={14} />} title="Bash (Ctrl+`)" />
+        <Button variant="ghost" size="sm" onClick={onToggleBash} icon={<Terminal size={14} />} title="Terminal (Ctrl+`)">
+          Terminal
+        </Button>
         <Button variant="ghost" size="sm" onClick={onNewSession} icon={<Plus size={14} />} title="Новая сессия (Ctrl+N)" />
         <Button variant="ghost" size="sm" onClick={onToggleSidePanel} icon={<Layers size={14} />} title="Модели/MCP/Статус (Ctrl+Shift+B)" />
         <Button variant="ghost" size="sm" onClick={onOpenSettings} icon={<SettingsIcon size={14} />} title="Настройки (Ctrl+,)" />

@@ -203,6 +203,10 @@ export async function sendPrompt(
   });
 }
 
+export async function askBtw(question: string): Promise<{ answer: string }> {
+  return request("btw", { question }, 120_000);
+}
+
 export async function abort(): Promise<void> {
   await request("abort").catch(() => undefined);
 }
@@ -224,9 +228,33 @@ export interface NavigateTreeResult {
 
 export async function navigateTree(
   targetId: string,
-  opts?: { summarize?: boolean; customInstructions?: string; label?: string },
+  opts?: { summarize?: boolean; customInstructions?: string; label?: string; exact?: boolean },
 ): Promise<NavigateTreeResult> {
   return request<NavigateTreeResult>("navigate_tree", { targetId, ...opts });
+}
+
+export interface SessionTreeEntry {
+  type: string;
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+  message?: import("./types").AgentMessage;
+  label?: string;
+  summary?: string;
+  customType?: string;
+  name?: string;
+  [k: string]: unknown;
+}
+
+export interface SessionTreeNode {
+  entry: SessionTreeEntry;
+  children: SessionTreeNode[];
+  label?: string;
+  labelTimestamp?: string;
+}
+
+export async function getSessionTree(): Promise<{ tree: SessionTreeNode[]; leafId: string | null }> {
+  return request("get_session_tree");
 }
 
 export async function setSessionName(name: string): Promise<void> {
@@ -311,6 +339,24 @@ export interface ForkPoint {
 export async function getForkMessages(): Promise<{ messages: ForkPoint[] }> {
   return request("get_fork_messages");
 }
+export interface FileCheckpointStatus {
+  modified: string[];
+  created: string[];
+}
+export interface FileCheckpointRestoreResult {
+  restored: string[];
+  deleted: string[];
+  errors: string[];
+}
+export async function getFileCheckpointStatus(): Promise<FileCheckpointStatus | null> {
+  return request("get_file_checkpoint_status");
+}
+export async function getFileCheckpointTurnStatus(turnIndex: number): Promise<FileCheckpointStatus | null> {
+  return request("get_file_checkpoint_turn_status", { turnIndex });
+}
+export async function restoreFileChangesToTurn(turnIndex: number): Promise<FileCheckpointRestoreResult | null> {
+  return request("restore_file_changes_to_turn", { turnIndex }, 120_000);
+}
 export interface SessionStats {
   sessionFile?: string;
   sessionId?: string;
@@ -338,7 +384,14 @@ export async function exportHtml(outputPath?: string): Promise<{ path: string }>
 export interface PiCommand {
   name: string;
   description?: string;
-  source: "extension" | "prompt" | "skill";
+  source: "extension" | "markdown" | "prompt" | "skill";
+  sourceInfo?: {
+    source?: string;
+    scope?: string;
+    displayName?: string;
+    path?: string;
+    baseDir?: string;
+  };
   location?: "user" | "project" | "path";
   path?: string;
 }
@@ -358,7 +411,14 @@ export async function abortRetry(): Promise<void> {
 /** Ответ на extension UI dialog request (select/confirm/input/editor). */
 export async function sendExtUiResponse(
   id: string,
-  payload: { value?: string; confirmed?: boolean; cancelled?: boolean },
+  payload: {
+    value?: string;
+    confirmed?: boolean;
+    cancelled?: boolean;
+    decision?: "allow-once" | "allow-always" | "deny-once" | "deny-always";
+    scope?: "local" | "global" | "session";
+    match?: string;
+  },
 ): Promise<void> {
   // Это fire-and-forget по протоколу; pi сам ждёт по `id`.
   await invoke("rpc_send", {

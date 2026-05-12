@@ -30,6 +30,8 @@ export function McpTab() {
   const stopRpc = useChat((s) => s.stopRpc);
   const statuses = useExt((s) => s.statuses);
   const mcpStatus = statuses["mcp"];
+  const activeServers = cfg?.servers.filter((s) => !s.disabled).length ?? 0;
+  const disabledServers = cfg?.servers.filter((s) => s.disabled).length ?? 0;
 
   const reload = async () => {
     setBusy(true);
@@ -72,7 +74,7 @@ export function McpTab() {
   return (
     <div className="p-3 space-y-3 min-w-0">
       <div className="flex items-center gap-2 text-xs min-w-0 flex-wrap">
-        <Button variant="ghost" size="sm" onClick={() => void restart()} icon={<RefreshCw size={12} />} disabled={busy}>
+        <Button variant="ghost" size="sm" onClick={() => void reload()} icon={<RefreshCw size={12} />} disabled={busy}>
           обновить
         </Button>
         <Button variant="ghost" size="sm" onClick={() => void restart()} disabled={busy}>
@@ -89,6 +91,13 @@ export function McpTab() {
           </Button>
         )}
       </div>
+      {cfg?.exists && (
+        <div className="grid grid-cols-3 gap-1 text-xs">
+          <Metric label="total" value={cfg.servers.length} />
+          <Metric label="active" value={activeServers} accent />
+          <Metric label="disabled" value={disabledServers} />
+        </div>
+      )}
       {mcpStatus && (
         <div className="px-2 py-1.5 rounded bg-(--color-bg-mute) text-xs text-(--color-fg-mute) min-w-0 break-words">
           <span className="text-(--color-fg-dim) mr-1">статус:</span>
@@ -147,6 +156,15 @@ export function McpTab() {
       <div className="text-[10px] text-(--color-fg-dim) mt-2">
         После переключения нажми «перезапустить pi», чтобы pi подхватил конфигурацию.
       </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div className="border border-(--color-border) rounded bg-(--color-bg) px-2 py-1">
+      <div className="text-[10px] text-(--color-fg-dim)">{label}</div>
+      <div className={accent ? "font-mono text-(--color-accent)" : "font-mono text-(--color-fg-mute)"}>{value}</div>
     </div>
   );
 }

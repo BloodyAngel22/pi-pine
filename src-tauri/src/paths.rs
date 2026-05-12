@@ -34,6 +34,12 @@ fn candidate_paths() -> Vec<PathBuf> {
         // npm prefix-овский каталог пользователя
         out.push(home.join(".npm-global/bin/pi"));
         out.push(home.join("node_modules/.bin/pi"));
+        out.push(home.join("programming/pi-mono-x/packages/coding-agent/dist/cli.js"));
+    }
+    if let Ok(current) = std::env::current_dir() {
+        if let Some(parent) = current.parent() {
+            out.push(parent.join("pi-mono-x/packages/coding-agent/dist/cli.js"));
+        }
     }
     // системные
     out.push(PathBuf::from("/usr/local/bin/pi"));

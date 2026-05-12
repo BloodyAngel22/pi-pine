@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { Send, Square, Paperclip, X, Terminal, Slash, Brain, Sparkles, ListTodo } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { Send, Square, Paperclip, X, Terminal, Slash, Brain, Sparkles, ListTodo, Play } from "lucide-react";
 import clsx from "clsx";
-import { useChat } from "@/store/chat";
+import { useChat, type UiBlock } from "@/store/chat";
+import { useExt } from "@/store/ext";
 import { t } from "@/i18n/ru";
 import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
 import { SkillsPalette } from "./SkillsPalette";
@@ -10,11 +12,48 @@ import type { ImageContent, ThinkingLevel } from "@/rpc/types";
 interface Props {
   onSlash(cmd: string): void;
   onToggleBash?(): void;
+  onBtw?(question?: string): void;
 }
 
 const THINKING_CYCLE: ThinkingLevel[] = ["off", "low", "medium", "high"];
 
-export function Composer({ onSlash, onToggleBash }: Props) {
+function countPlanTasks(markdown: string): number {
+  let count = 0;
+  let inTasksSection = false;
+  for (const line of markdown.split(/\r?\n/)) {
+    if (/^##\s/.test(line)) {
+      inTasksSection = /^##\s+(tasks|todos|todo|шаги|задачи|план)\b/i.test(line);
+      continue;
+    }
+    if (!inTasksSection) continue;
+    const match = line.match(/^\s*-\s+\[[ xX]\]\s+(.+)$/);
+    const text = match?.[1]?.trim();
+    if (text) count += 1;
+  }
+  return count;
+}
+
+function hasMeaningfulPlan(markdown: string): boolean {
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^#+\s*(план|контекст|шаги|tasks|todos|todo|открытые вопросы)\s*$/i.test(line)) continue;
+    if (/^_?Файл создан pi-pine\b/i.test(line)) continue;
+    if (/^ID сессии:\s*`[^`]+`\s*$/i.test(line)) continue;
+    if (/^-\s*(?:\[[ xX]\])?\s*$/.test(line)) continue;
+    return true;
+  }
+  return false;
+}
+
+function blocksText(blocks: UiBlock[]): string {
+  return blocks
+    .filter((block) => block.kind === "text")
+    .map((block) => block.text)
+    .join("\n");
+}
+
+export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
   const isCompacting = useChat((s) => s.agentState?.isCompacting ?? false);
   const mcpLoading = useChat((s) => s.mcpLoading);
@@ -29,9 +68,14 @@ export function Composer({ onSlash, onToggleBash }: Props) {
   const thinkingLevel = useChat((s) => s.agentState?.thinkingLevel);
   const setThinking = useChat((s) => s.setThinking);
   const planMode = useChat((s) => s.planMode);
+  const planFilePath = useChat((s) => s.planFilePath);
+  const messages = useChat((s) => s.messages);
   const togglePlanMode = useChat((s) => s.togglePlanMode);
+  const commitPlan = useChat((s) => s.commitPlan);
   const attachedSkills = useChat((s) => s.attachedSkills);
   const toggleAttachedSkill = useChat((s) => s.toggleAttachedSkill);
+  const yoloMode = useExt((s) => s.yoloMode);
+  const toggleYoloMode = useExt((s) => s.toggleYoloMode);
 
   const [value, setValue] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -40,8 +84,18 @@ export function Composer({ onSlash, onToggleBash }: Props) {
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [attachments, setAttachments] = useState<ImageContent[]>([]);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [planReady, setPlanReady] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const assistantPlanReady = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role !== "assistant") continue;
+      const text = blocksText(message.blocks);
+      if (countPlanTasks(text) > 0 || hasMeaningfulPlan(text)) return true;
+    }
+    return false;
+  }, [messages]);
 
   // авторесайз
   useEffect(() => {
@@ -98,8 +152,30 @@ export function Composer({ onSlash, onToggleBash }: Props) {
     if (mcpLoading) return;
     if (isSlash && slashItems.length > 0) {
       const picked = slashItems[Math.min(slashHighlight, slashItems.length - 1)];
+      if (picked.command === "/btw") {
+        onBtw?.();
+        setValue("");
+        setSlashOpen(false);
+        return;
+      }
       onSlash(picked.command);
       setValue("");
+      return;
+    }
+    const btwMatch = trimmed.match(/^\/btw(?:\s+([\s\S]+))?$/i);
+    if (btwMatch) {
+      const question = (btwMatch[1] ?? "").trim();
+      if (!question) {
+        setValue("/btw ");
+        setSlashOpen(false);
+        setTimeout(() => ref.current?.focus(), 0);
+        return;
+      }
+      setHistory((h) => [...h, trimmed].slice(-50));
+      setAttachments([]);
+      setHIndex(-1);
+      setValue("");
+      onBtw?.(question);
       return;
     }
     if (trimmed) {
@@ -138,6 +214,38 @@ export function Composer({ onSlash, onToggleBash }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPlanTasks = () => {
+      if (!planMode || !planFilePath) {
+        setPlanReady(false);
+        return;
+      }
+      void invoke<string>("read_plan_file", { path: planFilePath })
+        .then((text) => {
+          if (!cancelled) {
+            setPlanReady(hasMeaningfulPlan(text));
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPlanReady(false);
+          }
+        });
+    };
+    loadPlanTasks();
+    if (!planMode || !planFilePath) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const timer = window.setInterval(loadPlanTasks, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [planMode, planFilePath, isStreaming]);
 
   return (
     <div className="bg-(--color-bg) px-3 pb-3 pt-1 relative">
@@ -224,6 +332,33 @@ export function Composer({ onSlash, onToggleBash }: Props) {
           </div>
         )}
 
+        {planMode && planFilePath && (planReady || assistantPlanReady) && (
+          <div className="mb-2 rounded-lg border border-(--color-warn)/35 bg-(--color-warn)/10 px-3 py-2 flex items-center gap-2">
+            <ListTodo size={14} className="text-(--color-warn) shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-(--color-fg)">План готов к реализации</div>
+              <div className="text-[10px] text-(--color-fg-dim) truncate" title={planFilePath}>
+                {planFilePath}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void commitPlan()}
+              disabled={isStreaming || mcpLoading}
+              className={clsx(
+                "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors shrink-0",
+                isStreaming || mcpLoading
+                  ? "bg-(--color-bg-mute) text-(--color-fg-dim) cursor-not-allowed"
+                  : "bg-(--color-warn) text-(--color-bg) hover:opacity-90",
+              )}
+              title="Выполнить текущий план (/execute)"
+            >
+              <Play size={12} />
+              Реализовать
+            </button>
+          </div>
+        )}
+
         {/* Карточка композера в стиле Windsurf */}
         <div className={clsx("relative pi-composer-card group/composer", planMode && "!border-(--color-warn)/40")}>
           {isSlash && slashItems.length > 0 && slashOpen && (
@@ -231,6 +366,12 @@ export function Composer({ onSlash, onToggleBash }: Props) {
               query={trimmed}
               highlight={slashHighlight}
               onPick={(cmd) => {
+                if (cmd === "/btw") {
+                  onBtw?.();
+                  setValue("");
+                  setSlashOpen(false);
+                  return;
+                }
                 onSlash(cmd);
                 setValue("");
               }}
@@ -376,6 +517,19 @@ export function Composer({ onSlash, onToggleBash }: Props) {
               onClick={() => void togglePlanMode()}
               title={planMode ? "Выключить Plan mode" : "Включить Plan mode"}
             />
+            <button
+              type="button"
+              onClick={toggleYoloMode}
+              className={clsx(
+                "h-6 px-1.5 rounded text-[10px] font-semibold transition-colors",
+                yoloMode
+                  ? "bg-(--color-danger)/15 text-(--color-danger) border border-(--color-danger)/30"
+                  : "text-(--color-fg-dim) hover:text-(--color-fg-mute) hover:bg-(--color-bg-mute)",
+              )}
+              title={yoloMode ? "YOLO включён: разрешения подтверждаются автоматически" : "YOLO: автоматически разрешать команды и доступы"}
+            >
+              YOLO
+            </button>
             {onToggleBash && (
               <ToolBtn
                 icon={<Terminal size={13} />}
