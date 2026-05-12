@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { X, Layers, Database, Activity, ListTodo, GitBranch, Bot, Terminal } from "lucide-react";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
@@ -28,6 +28,15 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
     onChange: setWidth,
   });
 
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const onTabsWheel = (e: React.WheelEvent) => {
+    const el = tabsRef.current;
+    if (!el) return;
+    if (el.scrollWidth <= el.clientWidth) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY || e.deltaX;
+  };
+
   return (
     <aside
       className="shrink-0 min-w-0 overflow-hidden border-l border-(--color-border) bg-(--color-bg-soft) flex flex-col relative"
@@ -38,7 +47,11 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
         onMouseDown={resize.onMouseDown}
       />
       <div className="flex items-center min-w-0 border-b border-(--color-border)">
-        <div className="pi-sidepanel-tabs flex items-center min-w-0 overflow-x-auto overflow-y-hidden flex-1">
+        <div
+          ref={tabsRef}
+          onWheel={onTabsWheel}
+          className="pi-sidepanel-tabs flex items-center min-w-0 overflow-x-hidden overflow-y-hidden flex-1"
+        >
           <TabBtn icon={<Layers size={12} />} label="Модели" active={tab === "models"} onClick={() => setTab("models")} />
           <TabBtn icon={<Database size={12} />} label="MCP" active={tab === "mcp"} onClick={() => setTab("mcp")} />
           <TabBtn icon={<ListTodo size={12} />} label="План" active={tab === "plan"} onClick={() => setTab("plan")} />
@@ -49,7 +62,7 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
         </div>
         <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} className="shrink-0 mr-1" />
       </div>
-      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-3">
         {tab === "models" && <ModelsTab />}
         {tab === "mcp" && <McpTab />}
         {tab === "plan" && <PlanTab />}

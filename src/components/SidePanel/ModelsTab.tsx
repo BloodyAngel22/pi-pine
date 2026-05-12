@@ -35,7 +35,7 @@ export function ModelsTab() {
   const favList = favorites.filter((f) => available.some((m) => m.provider === f.provider && m.id === f.id));
 
   return (
-    <div className="p-3 space-y-3">
+    <div className="p-3 space-y-3 min-w-0">
       <div className="flex items-center gap-2">
         <Search size={12} className="text-(--color-fg-dim)" />
         <Input
