@@ -32,6 +32,7 @@ pub fn run() {
             // pi binary discovery + paths
             paths::find_pi_binary,
             paths::detect_environment,
+            paths::complete_directories,
             paths::parse_cli_cwd,
             paths::open_in_default_app,
             paths::read_auth_status,

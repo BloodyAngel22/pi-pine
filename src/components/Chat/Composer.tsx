@@ -9,8 +9,14 @@ import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
 import { SkillsPalette } from "./SkillsPalette";
 import type { ImageContent, ThinkingLevel } from "@/rpc/types";
 
+interface DirectoryCompletion {
+  value: string;
+  label: string;
+  path: string;
+}
+
 interface Props {
-  onSlash(cmd: string): void;
+  onSlash(cmd: string, arg?: string): void;
   onToggleBash?(): void;
   onBtw?(question?: string): void;
 }
@@ -58,6 +64,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const isCompacting = useChat((s) => s.agentState?.isCompacting ?? false);
   const mcpLoading = useChat((s) => s.mcpLoading);
   const pending = useChat((s) => s.pendingMessageCount);
+  const cwd = useChat((s) => s.cwd);
   const streamingBehavior = useChat((s) => s.streamingBehavior);
   const setStreamingBehavior = useChat((s) => s.setStreamingBehavior);
   const send = useChat((s) => s.send);
@@ -82,6 +89,8 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const [hIndex, setHIndex] = useState(-1);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);
+  const [cdCompletions, setCdCompletions] = useState<DirectoryCompletion[]>([]);
+  const [cdHighlight, setCdHighlight] = useState(0);
   const [attachments, setAttachments] = useState<ImageContent[]>([]);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [planReady, setPlanReady] = useState(false);
@@ -141,9 +150,13 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
 
   const trimmed = value.trim();
   const isSlash = trimmed.startsWith("/") && !trimmed.includes("\n");
+  const slashMatch = trimmed.match(/^(\/\S+)(?:\s+([\s\S]*))?$/);
+  const slashCommand = slashMatch?.[1] ?? trimmed;
+  const slashArg = slashMatch?.[2]?.trim() ?? "";
+  const isCdCommand = isSlash && slashCommand === "/cd";
   const slashItems = isSlash
     ? BUILTIN_SLASH.filter((c) =>
-        c.command.toLowerCase().startsWith(trimmed.toLowerCase()),
+        c.command.toLowerCase().startsWith(slashCommand.toLowerCase()),
       )
     : [];
 
@@ -158,7 +171,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
         setSlashOpen(false);
         return;
       }
-      onSlash(picked.command);
+      onSlash(picked.command, slashArg);
       setValue("");
       return;
     }
@@ -186,6 +199,34 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
     setHIndex(-1);
     setValue("");
     await send(trimmed, imgs);
+  };
+
+  const completeCd = async () => {
+    if (!isCdCommand) return false;
+    const current = slashMatch?.[2] ?? "";
+    try {
+      const items = await invoke<DirectoryCompletion[]>("complete_directories", {
+        cwd,
+        input: current.trimStart(),
+        limit: 80,
+      });
+      if (items.length === 0) {
+        setCdCompletions([]);
+        return true;
+      }
+      if (items.length === 1) {
+        setValue(`/cd ${items[0].value}`);
+        setCdCompletions([]);
+        setTimeout(() => ref.current?.focus(), 0);
+        return true;
+      }
+      setCdCompletions(items);
+      setCdHighlight(0);
+      return true;
+    } catch {
+      setCdCompletions([]);
+      return true;
+    }
   };
 
   const cycleThinking = () => {
@@ -361,6 +402,32 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
 
         {/* Карточка композера в стиле Windsurf */}
         <div className={clsx("relative pi-composer-card group/composer", planMode && "!border-(--color-warn)/40")}>
+          {isCdCommand && cdCompletions.length > 0 && (
+            <div className="absolute left-3 right-3 bottom-full mb-2 max-h-56 overflow-y-auto bg-(--color-bg-soft) border border-(--color-border) rounded-md shadow-2xl text-xs">
+              <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-(--color-fg-dim) border-b border-(--color-border)">
+                cd directories
+              </div>
+              {cdCompletions.map((item, i) => (
+                <button
+                  key={item.path}
+                  type="button"
+                  onMouseEnter={() => setCdHighlight(i)}
+                  onClick={() => {
+                    setValue(`/cd ${item.value}`);
+                    setCdCompletions([]);
+                    setTimeout(() => ref.current?.focus(), 0);
+                  }}
+                  className={clsx(
+                    "w-full text-left px-3 py-1.5 flex items-center gap-2 font-mono",
+                    i === cdHighlight ? "bg-(--color-bg-mute)" : "hover:bg-(--color-bg-mute)/60",
+                  )}
+                  title={item.path}
+                >
+                  <span className="text-(--color-accent) truncate">{item.value}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {isSlash && slashItems.length > 0 && slashOpen && (
             <SlashMenu
               query={trimmed}
@@ -372,7 +439,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                   setSlashOpen(false);
                   return;
                 }
-                onSlash(cmd);
+                onSlash(cmd, slashArg);
                 setValue("");
               }}
               onHover={setSlashHighlight}
@@ -426,6 +493,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               const tt = e.target.value.trim();
               setSlashOpen(tt.startsWith("/") && !tt.includes("\n"));
               setSlashHighlight(0);
+              setCdCompletions([]);
             }}
             onFocus={() => {
               if (trimmed.startsWith("/") && !trimmed.includes("\n")) {
@@ -433,6 +501,32 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               }
             }}
             onKeyDown={(e) => {
+              if (isCdCommand && cdCompletions.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setCdHighlight((i) => (i + 1) % cdCompletions.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setCdHighlight((i) => (i <= 0 ? cdCompletions.length - 1 : i - 1));
+                  return;
+                }
+                if (e.key === "Tab" || e.key === "Enter") {
+                  e.preventDefault();
+                  const picked = cdCompletions[cdHighlight];
+                  if (picked) {
+                    setValue(`/cd ${picked.value}`);
+                    setCdCompletions([]);
+                  }
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCdCompletions([]);
+                  return;
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void submit();
@@ -453,6 +547,11 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                 }
                 if (e.key === "Tab") {
                   e.preventDefault();
+                  if (isCdCommand && slashCommand === "/cd") {
+                    setSlashOpen(false);
+                    void completeCd();
+                    return;
+                  }
                   setValue(slashItems[slashHighlight].command + " ");
                   setSlashOpen(false);
                   return;

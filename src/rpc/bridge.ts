@@ -265,6 +265,30 @@ export async function getState(): Promise<RpcSessionState> {
   return request<RpcSessionState>("get_state");
 }
 
+export interface CwdCommandResult {
+  cwd: string;
+  displayPath: string;
+  entries: string;
+}
+
+export interface LsCommandResult {
+  path: string;
+  displayPath: string;
+  entries: string;
+}
+
+export async function cd(path: string): Promise<CwdCommandResult> {
+  return request<CwdCommandResult>("cd", { path });
+}
+
+export async function pwd(): Promise<{ cwd: string }> {
+  return request<{ cwd: string }>("pwd");
+}
+
+export async function ls(path?: string): Promise<LsCommandResult> {
+  return request<LsCommandResult>("ls", path ? { path } : {});
+}
+
 export async function getMessages(): Promise<{ messages: unknown[] }> {
   return request("get_messages");
 }

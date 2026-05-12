@@ -35,6 +35,7 @@ export interface RpcSessionState {
   retryAttempt: number;
   messageCount: number;
   pendingMessageCount: number;
+  cwd?: string;
 }
 
 export interface ImageContent {

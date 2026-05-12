@@ -7,6 +7,90 @@ use std::sync::mpsc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
+#[derive(Serialize, Clone)]
+pub struct DirectoryCompletion {
+    pub value: String,
+    pub label: String,
+    pub path: String,
+}
+
+fn expand_home(raw: &str) -> PathBuf {
+    if raw == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from(raw));
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(raw)
+}
+
+#[tauri::command]
+pub fn complete_directories(cwd: String, input: String, limit: Option<usize>) -> Result<Vec<DirectoryCompletion>, String> {
+    let max = limit.unwrap_or(80).min(200);
+    let expanded = expand_home(&input);
+    let candidate = if expanded.is_absolute() {
+        expanded
+    } else {
+        PathBuf::from(&cwd).join(expanded)
+    };
+    let (base_dir, prefix) = if input.ends_with('/') || input.is_empty() {
+        (candidate, String::new())
+    } else {
+        (
+            candidate.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(&cwd)),
+            candidate.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+        )
+    };
+    let entries = std::fs::read_dir(&base_dir).map_err(|e| format!("{}: {}", base_dir.display(), e))?;
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        if out.len() >= max {
+            break;
+        }
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !prefix.is_empty() && !name.starts_with(&prefix) {
+            continue;
+        }
+        let absolute = entry.path();
+        let value = if input.starts_with("~/") || input == "~" {
+            if let Some(home) = dirs::home_dir() {
+                if let Ok(stripped) = absolute.strip_prefix(home) {
+                    format!("~/{}", stripped.to_string_lossy())
+                } else {
+                    absolute.to_string_lossy().into_owned()
+                }
+            } else {
+                absolute.to_string_lossy().into_owned()
+            }
+        } else if input.starts_with('/') {
+            absolute.to_string_lossy().into_owned()
+        } else {
+            let cwd_path = PathBuf::from(&cwd);
+            absolute
+                .strip_prefix(&cwd_path)
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|_| absolute.clone())
+                .to_string_lossy()
+                .into_owned()
+        };
+        out.push(DirectoryCompletion {
+            value: format!("{}/", value.trim_end_matches('/')),
+            label: format!("{}/", name),
+            path: absolute.to_string_lossy().into_owned(),
+        });
+    }
+    out.sort_by(|a, b| a.label.cmp(&b.label));
+    Ok(out)
+}
+
 /// Возможные пути для поиска `pi` (npm-пакет `@mariozechner/pi-coding-agent`).
 fn candidate_paths() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();

@@ -110,6 +110,7 @@ interface ChatState {
   setHome(home: string | null): void;
   /** Сменить cwd и перезапустить pi RPC. */
   changeCwd(next: string): Promise<void>;
+  runSlashCommand(command: string, arg?: string): Promise<void>;
   /** Plan mode actions */
   togglePlanMode(): Promise<void>;
   loadPlan(): Promise<void>;
@@ -404,6 +405,19 @@ function agentContentToBlocks(content: unknown): UiBlock[] {
   return blocks;
 }
 
+function isHiddenCwdChangeMessage(message: Record<string, unknown>): boolean {
+  if (message.customType === "cwd-change" || message.display === false) return true;
+  const content = message.content;
+  if (typeof content === "string") {
+    return /^\[Working directory changed to: .+\]$/.test(content.trim());
+  }
+  if (Array.isArray(content) && content.length === 1) {
+    const item = content[0] as Record<string, unknown>;
+    return item?.type === "text" && typeof item.text === "string" && /^\[Working directory changed to: .+\]$/.test(item.text.trim());
+  }
+  return false;
+}
+
 /** Извлечь текст из tool result (`{content:[{type:"text",text:"..."}]}`). */
 function extractToolText(value: unknown): string {
   if (value == null) return "";
@@ -456,6 +470,16 @@ function extractToolDetails(value: unknown): unknown {
     }
   }
   return value;
+}
+
+function createSystemMessage(text: string): UiMessage {
+  return {
+    id: newId(),
+    role: "assistant",
+    blocks: [{ kind: "text", text }],
+    streaming: false,
+    timestamp: Date.now(),
+  };
 }
 
 export const useChat = create<ChatState>((set, get) => ({
@@ -768,6 +792,7 @@ export const useChat = create<ChatState>((set, get) => ({
       const uiToPi: Record<string, string> = {};
       for (const raw of messages) {
         const m = raw as Record<string, unknown>;
+        if (isHiddenCwdChangeMessage(m)) continue;
         const rawRole = String(m.role ?? "assistant");
         // toolResult — не отдельное сообщение, мерджим output в предыдущий toolCall
         if (rawRole === "toolResult") {
@@ -901,6 +926,33 @@ export const useChat = create<ChatState>((set, get) => ({
       get().setError((e as Error).message);
     } finally {
       set({ switching: false });
+    }
+  },
+
+  async runSlashCommand(command, arg = "") {
+    try {
+      if (command === "/pwd") {
+        const result = await rpc.pwd();
+        set((state) => ({ messages: [...state.messages, createSystemMessage(`pwd\n\n${result.cwd}`)] }));
+        return;
+      }
+      if (command === "/ls") {
+        const result = await rpc.ls(arg.trim() || undefined);
+        set((state) => ({
+          messages: [...state.messages, createSystemMessage(`${result.displayPath}:\n\n${result.entries}`)],
+        }));
+        return;
+      }
+      if (command === "/cd") {
+        const result = await rpc.cd(arg.trim());
+        get().setCwd(result.cwd);
+        await get().refreshState().catch(() => undefined);
+        set((state) => ({
+          messages: [...state.messages, createSystemMessage(`→ ${result.displayPath}\n\n${result.entries}`)],
+        }));
+      }
+    } catch (e) {
+      get().setError((e as Error).message);
     }
   },
 
@@ -1228,6 +1280,7 @@ function handleAgentEvent(
     case "message_update":
     case "message_end": {
       const piMsg = (event.message ?? {}) as Record<string, unknown>;
+      if (isHiddenCwdChangeMessage(piMsg)) break;
       const rawRole = String(piMsg.role ?? event.role ?? "assistant");
       // toolResult-сообщения мерджим в предыдущий ассистент по toolCallId
       if (rawRole === "toolResult") {

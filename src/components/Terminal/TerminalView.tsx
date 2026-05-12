@@ -28,7 +28,6 @@ export function TerminalView({ id, active, onReady }: Props) {
       term = new Terminal({
         allowProposedApi: true,
         cursorBlink: true,
-        convertEol: true,
         customGlyphs: true,
         fontFamily: '"MesloLGS NF", "MesloLGS Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "JetBrains Mono NL", "JetBrains Mono", "Symbols Nerd Font Mono", ui-monospace, "SF Mono", Menlo, monospace',
         fontSize: 12,
@@ -70,10 +69,28 @@ export function TerminalView({ id, active, onReady }: Props) {
     termRef.current = term;
     fitRef.current = fit;
     onReady?.(id, term);
+    let lastSize = { cols: term.cols, rows: term.rows };
+    let fitTimer: number | null = null;
 
     const fitAndResize = () => {
+      if (fitTimer != null) window.clearTimeout(fitTimer);
+      fitTimer = window.setTimeout(() => {
+        fitTimer = null;
+        try {
+          if (host.offsetWidth === 0 || host.offsetHeight === 0) return;
+          fit.fit();
+          if (term.cols === lastSize.cols && term.rows === lastSize.rows) return;
+          lastSize = { cols: term.cols, rows: term.rows };
+          void resizeTerminal(id, term.cols, term.rows);
+        } catch {}
+      }, 25);
+    };
+
+    const fitNow = () => {
       try {
+        if (host.offsetWidth === 0 || host.offsetHeight === 0) return;
         fit.fit();
+        lastSize = { cols: term.cols, rows: term.rows };
         void resizeTerminal(id, term.cols, term.rows);
       } catch {}
     };
@@ -87,7 +104,7 @@ export function TerminalView({ id, active, onReady }: Props) {
 
     const ro = new ResizeObserver(fitAndResize);
     ro.observe(host);
-    window.setTimeout(fitAndResize, 0);
+    window.setTimeout(fitNow, 0);
 
     let unlisten: (() => void) | null = null;
     onTerminalData((event) => {
@@ -98,6 +115,7 @@ export function TerminalView({ id, active, onReady }: Props) {
 
     return () => {
       unlisten?.();
+      if (fitTimer != null) window.clearTimeout(fitTimer);
       ro.disconnect();
       inputDisposable.dispose();
       resizeDisposable.dispose();
@@ -111,10 +129,18 @@ export function TerminalView({ id, active, onReady }: Props) {
     if (!active) return;
     window.setTimeout(() => {
       try {
-        fitRef.current?.fit();
         termRef.current?.focus();
         const term = termRef.current;
-        if (term) void resizeTerminal(id, term.cols, term.rows);
+        fitRef.current?.fit();
+        if (term) {
+          void resizeTerminal(id, term.cols, term.rows);
+          window.setTimeout(() => {
+            try {
+              fitRef.current?.fit();
+              if (termRef.current) void resizeTerminal(id, termRef.current.cols, termRef.current.rows);
+            } catch {}
+          }, 100);
+        }
       } catch {}
     }, 0);
   }, [active, id]);

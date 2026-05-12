@@ -13,6 +13,9 @@ export const BUILTIN_SLASH: SlashCommand[] = [
   { command: "/model", description: "Сменить модель" },
   { command: "/compact", description: "Сжать контекст вручную" },
   { command: "/settings", description: "Открыть настройки" },
+  { command: "/cd", description: "Сменить рабочую директорию агента" },
+  { command: "/pwd", description: "Показать рабочую директорию агента" },
+  { command: "/ls", description: "Показать файлы в директории" },
   { command: "/search", description: "Поиск по prompt истории" },
   { command: "/execute", description: "Выполнить текущий план" },
   { command: "/btw", description: "Попутный вопрос в текущем контексте" },
@@ -27,7 +30,7 @@ interface Props {
 }
 
 export function SlashMenu({ query, highlight, onPick, onHover }: Props) {
-  const q = query.toLowerCase();
+  const q = query.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
   const items = BUILTIN_SLASH.filter((c) => c.command.toLowerCase().startsWith(q));
   if (items.length === 0) return null;
   return (

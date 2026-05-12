@@ -174,7 +174,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [commitPlan, newSession]);
 
-  const onSlash = (cmd: string) => {
+  const onSlash = (cmd: string, arg = "") => {
     switch (cmd) {
       case "/new":
         void newSession();
@@ -187,6 +187,11 @@ export default function App() {
         break;
       case "/settings":
         setSettingsOpen(true);
+        break;
+      case "/cd":
+      case "/pwd":
+      case "/ls":
+        void useChat.getState().runSlashCommand(cmd, arg);
         break;
       case "/search":
         setSearchOpen(true);
