@@ -15,6 +15,38 @@
 > **Стек**: Tauri 2 · Rust · React 18 · TypeScript · Vite · Tailwind CSS 4 · Zustand · xterm.js  
 > **Статус**: alpha / MVP
 
+---
+
+<table>
+<tr>
+<td width="50%">
+
+**Чат · tool-calls**
+
+![Чат с tool-calls](assets/screenshots/chat.png)
+
+</td>
+<td width="50%">
+
+**Встроенный терминал**
+
+![Встроенный терминал](assets/screenshots/terminal.png)
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
+**`/cd` с Tab-автодополнением директорий**
+
+![Автодополнение /cd](assets/screenshots/cd-autocomplete.png)
+
+</td>
+</tr>
+</table>
+
+---
+
 ## Чем отличается от pi CLI
 
 | | pi CLI | Pi Pine |
