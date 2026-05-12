@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { X, Layers, Database, Activity, ListTodo } from "lucide-react";
+import { X, Layers, Database, Activity, ListTodo, GitBranch, Bot, Terminal } from "lucide-react";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import { ModelsTab } from "./ModelsTab";
 import { McpTab } from "./McpTab";
 import { StatusTab } from "./StatusTab";
 import { PlanTab } from "./PlanTab";
+import { TreeTab } from "./TreeTab";
+import { SubagentsTab } from "./SubagentsTab";
+import { CommandsTab } from "./CommandsTab";
 import { useUiPrefs, SIDEPANEL_MIN, SIDEPANEL_MAX } from "@/store/uiPrefs";
 import { useResize } from "@/lib/useResize";
 import { useChat } from "@/store/chat";
 
-type Tab = "models" | "mcp" | "status" | "plan";
+type Tab = "models" | "mcp" | "status" | "plan" | "tree" | "subagents" | "commands";
 
 export function SidePanel({ onClose }: { onClose: () => void }) {
   const planMode = useChat((s) => s.planMode);
@@ -35,16 +38,24 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
         onMouseDown={resize.onMouseDown}
       />
       <div className="flex items-center min-w-0 border-b border-(--color-border)">
-        <TabBtn icon={<Layers size={12} />} label="Модели" active={tab === "models"} onClick={() => setTab("models")} />
-        <TabBtn icon={<Database size={12} />} label="MCP" active={tab === "mcp"} onClick={() => setTab("mcp")} />
-        <TabBtn icon={<ListTodo size={12} />} label="План" active={tab === "plan"} onClick={() => setTab("plan")} />
-        <TabBtn icon={<Activity size={12} />} label="Статус" active={tab === "status"} onClick={() => setTab("status")} />
-        <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} className="ml-auto mr-1" />
+        <div className="pi-sidepanel-tabs flex items-center min-w-0 overflow-x-auto overflow-y-hidden flex-1">
+          <TabBtn icon={<Layers size={12} />} label="Модели" active={tab === "models"} onClick={() => setTab("models")} />
+          <TabBtn icon={<Database size={12} />} label="MCP" active={tab === "mcp"} onClick={() => setTab("mcp")} />
+          <TabBtn icon={<ListTodo size={12} />} label="План" active={tab === "plan"} onClick={() => setTab("plan")} />
+          <TabBtn icon={<GitBranch size={12} />} label="Tree" active={tab === "tree"} onClick={() => setTab("tree")} />
+          <TabBtn icon={<Bot size={12} />} label="Agents" active={tab === "subagents"} onClick={() => setTab("subagents")} />
+          <TabBtn icon={<Terminal size={12} />} label="Cmd" active={tab === "commands"} onClick={() => setTab("commands")} />
+          <TabBtn icon={<Activity size={12} />} label="Статус" active={tab === "status"} onClick={() => setTab("status")} />
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} className="shrink-0 mr-1" />
       </div>
       <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
         {tab === "models" && <ModelsTab />}
         {tab === "mcp" && <McpTab />}
         {tab === "plan" && <PlanTab />}
+        {tab === "tree" && <TreeTab />}
+        {tab === "subagents" && <SubagentsTab />}
+        {tab === "commands" && <CommandsTab />}
         {tab === "status" && <StatusTab />}
       </div>
     </aside>
@@ -57,7 +68,7 @@ function TabBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label
       type="button"
       onClick={onClick}
       className={clsx(
-        "flex items-center gap-1.5 px-3 py-2 text-xs border-b-2 transition-colors",
+        "flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs border-b-2 transition-colors",
         active
           ? "border-(--color-accent) text-(--color-fg)"
           : "border-transparent text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)",

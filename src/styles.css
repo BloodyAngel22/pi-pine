@@ -42,7 +42,7 @@ body {
 /* тонкий скролл */
 *::-webkit-scrollbar {
   width: 8px;
-  height: 8px;
+  height: 20px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -53,6 +53,15 @@ body {
 }
 *::-webkit-scrollbar-thumb:hover {
   background: #333;
+}
+.pi-sidepanel-tabs {
+  scrollbar-gutter: stable;
+}
+.pi-sidepanel-tabs::-webkit-scrollbar {
+  height: 20px;
+}
+.pi-sidepanel-tabs::-webkit-scrollbar-thumb {
+  min-width: 32px;
 }
 
 /* markdown в сообщениях */

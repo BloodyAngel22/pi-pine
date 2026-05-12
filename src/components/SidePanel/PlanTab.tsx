@@ -1,8 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink, RefreshCw, Save, Play } from "lucide-react";
+import { CheckCircle2, Circle, ExternalLink, RefreshCw, Save, Play } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
+
+interface PlanTask {
+  text: string;
+  done: boolean;
+  level: number;
+}
+
+function parsePlanTasks(markdown: string): PlanTask[] {
+  const tasks: PlanTask[] = [];
+  let inTasksSection = false;
+  for (const line of markdown.split(/\r?\n/)) {
+    if (/^##\s/.test(line)) {
+      inTasksSection = /^##\s+(tasks|todos|todo|шаги|задачи|план)\b/i.test(line);
+      continue;
+    }
+    if (!inTasksSection) continue;
+    const match = line.match(/^(\s*)-\s+\[([ xX])\]\s+(.+)$/);
+    if (!match) continue;
+    const text = match[3]?.trim();
+    if (!text) continue;
+    tasks.push({
+      text,
+      done: match[2]?.toLowerCase() === "x",
+      level: Math.floor((match[1]?.length ?? 0) / 2),
+    });
+  }
+  return tasks;
+}
 
 export function PlanTab() {
   const planMode = useChat((s) => s.planMode);
@@ -17,6 +45,9 @@ export function PlanTab() {
   const [dirty, setDirty] = useState(false);
   const lastLoadedFor = useRef<string | null>(null);
   const saveTimer = useRef<number | null>(null);
+  const tasks = parsePlanTasks(text);
+  const completedTasks = tasks.filter((task) => task.done).length;
+  const activeTask = tasks.find((task) => !task.done);
 
   // при изменении planFilePath — перечитать
   useEffect(() => {
@@ -104,6 +135,44 @@ export function PlanTab() {
       <div className="font-mono text-[10px] text-(--color-fg-dim) truncate" title={planFilePath ?? ""}>
         {planFilePath ?? "—"}
       </div>
+      {tasks.length > 0 && (
+        <div className="border border-(--color-border) rounded bg-(--color-bg) p-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-(--color-accent)">Tasks</span>
+            <span className="ml-auto font-mono text-(--color-fg-dim)">
+              {completedTasks}/{tasks.length}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-(--color-bg-mute) overflow-hidden">
+            <div
+              className="h-full bg-(--color-accent) transition-all"
+              style={{ width: `${Math.round((completedTasks / tasks.length) * 100)}%` }}
+            />
+          </div>
+          {activeTask && (
+            <div className="text-(--color-fg-mute) truncate" title={activeTask.text}>
+              Сейчас: {activeTask.text}
+            </div>
+          )}
+          <div className="max-h-28 overflow-y-auto space-y-1">
+            {tasks.slice(0, 8).map((task, idx) => (
+              <div key={`${idx}:${task.text}`} className="flex items-start gap-1.5" style={{ paddingLeft: task.level * 10 }}>
+                {task.done ? (
+                  <CheckCircle2 size={12} className="mt-0.5 text-(--color-success) shrink-0" />
+                ) : (
+                  <Circle size={12} className="mt-0.5 text-(--color-fg-dim) shrink-0" />
+                )}
+                <span className={task.done ? "text-(--color-fg-dim) line-through truncate" : "text-(--color-fg-mute) truncate"}>
+                  {task.text}
+                </span>
+              </div>
+            ))}
+            {tasks.length > 8 && (
+              <div className="text-(--color-fg-dim)">… ещё {tasks.length - 8}</div>
+            )}
+          </div>
+        </div>
+      )}
       <textarea
         value={text}
         onChange={(e) => {

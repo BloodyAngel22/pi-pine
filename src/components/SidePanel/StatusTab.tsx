@@ -1,11 +1,16 @@
 import { useExt } from "@/store/ext";
 import { useChat } from "@/store/chat";
+import { Button } from "@/components/ui/Button";
 
 export function StatusTab() {
   const statuses = useExt((s) => s.statuses);
   const widgets = useExt((s) => s.widgets);
   const stats = useChat((s) => s.sessionStats);
   const stderr = useChat((s) => s.stderrBuffer);
+  const agent = useChat((s) => s.agentState);
+  const retryStatus = useChat((s) => s.retryStatus);
+  const setAutoRetry = useChat((s) => s.setAutoRetry);
+  const abortRetry = useChat((s) => s.abortRetry);
 
   // Скрываем `cwd` от extension cwd.ts — мы уже показываем его в StatusBar.
   const statusEntries = Object.entries(statuses).filter(([k]) => k !== "cwd");
@@ -30,6 +35,41 @@ export function StatusTab() {
             ))}
           </div>
         )}
+      </Section>
+
+      <Section title="Auto retry">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-(--color-fg-dim) w-16">режим</span>
+            <button
+              type="button"
+              onClick={() => void setAutoRetry(!(agent?.autoRetryEnabled ?? true))}
+              className={
+                "px-2 py-1 rounded border text-xs " +
+                (agent?.autoRetryEnabled ?? true
+                  ? "border-(--color-success)/60 text-(--color-success)"
+                  : "border-(--color-border) text-(--color-fg-dim)")
+              }
+            >
+              {agent?.autoRetryEnabled ?? true ? "enabled" : "disabled"}
+            </button>
+            {(agent?.isRetrying || retryStatus.active) && (
+              <Button variant="ghost" size="sm" onClick={() => void abortRetry()}>
+                abort
+              </Button>
+            )}
+          </div>
+          {(agent?.isRetrying || retryStatus.active) && (
+            <div className="rounded border border-(--color-accent)/30 bg-(--color-accent)/5 p-2 space-y-1">
+              <Pair k="attempt" v={`${retryStatus.attempt || agent?.retryAttempt || 0}/${retryStatus.maxAttempts ?? "?"}`} />
+              <Pair k="delay" v={retryStatus.delayMs != null ? `${Math.round(retryStatus.delayMs / 1000)}s` : undefined} />
+              <Pair k="error" v={retryStatus.errorMessage} />
+            </div>
+          )}
+          {!retryStatus.active && retryStatus.finalError && (
+            <div className="text-(--color-danger) break-words">{retryStatus.finalError}</div>
+          )}
+        </div>
       </Section>
 
       <Section title="Виджеты">

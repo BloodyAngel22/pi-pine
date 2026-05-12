@@ -1,6 +1,8 @@
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { open } from "@tauri-apps/plugin-shell";
 
 interface Props {
   text: string;
@@ -102,12 +104,49 @@ function normalize(raw: string): string {
   return merged.join("\n\n");
 }
 
+function isHttpUrl(href: string): boolean {
+  try {
+    const url = new URL(href);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const components: Components = {
+  a({ href, children, ...props }) {
+    const external = typeof href === "string" && isHttpUrl(href);
+    return (
+      <a
+        {...props}
+        href={href}
+        target={external ? undefined : props.target}
+        rel={external ? "noreferrer" : props.rel}
+        onClick={
+          external
+            ? (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void open(href).catch(() => {
+                  window.open(href, "_blank", "noopener,noreferrer");
+                });
+              }
+            : props.onClick
+        }
+      >
+        {children}
+      </a>
+    );
+  },
+};
+
 export function Markdown({ text }: Props) {
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
+        components={components}
       >
         {normalize(text)}
       </ReactMarkdown>

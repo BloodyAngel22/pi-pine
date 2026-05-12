@@ -4,6 +4,7 @@ mod paths;
 mod plans;
 mod rpc;
 mod sessions;
+mod terminal;
 mod themes;
 
 use rpc::RpcManager;
@@ -19,6 +20,7 @@ pub fn run() {
         .setup(|app| {
             let manager = Arc::new(RpcManager::new(app.handle().clone()));
             app.manage(manager);
+            app.manage(Arc::new(terminal::TerminalManager::default()));
             // Запускаем watcher файла auth.json
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -30,6 +32,7 @@ pub fn run() {
             // pi binary discovery + paths
             paths::find_pi_binary,
             paths::detect_environment,
+            paths::complete_directories,
             paths::parse_cli_cwd,
             paths::open_in_default_app,
             paths::read_auth_status,
@@ -52,6 +55,11 @@ pub fn run() {
             sessions::delete_session_file,
             sessions::rename_session_file,
             sessions::truncate_session_at,
+            terminal::terminal_spawn,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_kill,
+            terminal::terminal_list,
             // plans
             plans::ensure_plan_file,
             plans::read_plan_file,

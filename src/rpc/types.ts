@@ -30,8 +30,12 @@ export interface RpcSessionState {
   sessionId: string;
   sessionName?: string;
   autoCompactionEnabled: boolean;
+  autoRetryEnabled: boolean;
+  isRetrying: boolean;
+  retryAttempt: number;
   messageCount: number;
   pendingMessageCount: number;
+  cwd?: string;
 }
 
 export interface ImageContent {
