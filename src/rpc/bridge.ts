@@ -207,6 +207,22 @@ export async function askBtw(question: string): Promise<{ answer: string }> {
   return request("btw", { question }, 120_000);
 }
 
+export interface FastContextFile {
+  path: string;
+  ranges?: string[];
+  score?: number;
+  reason?: string;
+}
+export interface FastContextResult {
+  query?: string;
+  files: FastContextFile[];
+  fallback?: "lexical";
+  elapsedMs?: number;
+}
+export async function fastContext(query: string): Promise<FastContextResult> {
+  return request<FastContextResult>("fast_context", { query }, 120_000);
+}
+
 export async function abort(): Promise<void> {
   await request("abort").catch(() => undefined);
 }
@@ -397,6 +413,12 @@ export interface SessionStats {
     total?: number;
   };
   cost?: number;
+  /** Текущая оценка заполнения LLM context window; не путать с cumulative tokens.total. */
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+  };
   [k: string]: unknown;
 }
 export async function getSessionStats(): Promise<SessionStats> {

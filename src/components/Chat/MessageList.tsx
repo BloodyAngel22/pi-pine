@@ -14,9 +14,19 @@ interface Props {
 
 /** Порог в пикселях от низа, при котором считаем пользователя «внизу». */
 const SCROLL_THRESHOLD = 120;
+/** Показываем кнопку «вниз», когда пользователь ушёл от низа примерно на один экран. */
+const SHOW_SCROLL_BUTTON_VIEWPORTS = 0.9;
+
+function distanceFromBottom(el: HTMLDivElement): number {
+  return el.scrollHeight - el.scrollTop - el.clientHeight;
+}
 
 function isNearBottom(el: HTMLDivElement): boolean {
-  return el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD;
+  return distanceFromBottom(el) <= SCROLL_THRESHOLD;
+}
+
+function shouldShowScrollButton(el: HTMLDivElement): boolean {
+  return distanceFromBottom(el) > el.clientHeight * SHOW_SCROLL_BUTTON_VIEWPORTS;
 }
 
 export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
@@ -28,6 +38,8 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   const atBottom = useRef(true);
   /** управляет видимостью кнопки «прокрутить вниз» */
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  /** индекс последнего сообщения, которое видел пользователь (когда был внизу) */
+  const [lastSeenIndex, setLastSeenIndex] = useState(0);
 
   const scrollToBottom = useCallback((instant?: boolean) => {
     const el = ref.current;
@@ -40,6 +52,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     if (messages.length === 0) {
       atBottom.current = true;
       setShowScrollBtn(false);
+      setLastSeenIndex(0);
     }
   }, [messages.length]);
 
@@ -49,6 +62,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     const el = ref.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    setLastSeenIndex(messages.length);
   }, [messages]);
 
   const handleScroll = useCallback(() => {
@@ -56,8 +70,15 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     if (!el) return;
     const near = isNearBottom(el);
     atBottom.current = near;
-    setShowScrollBtn(!near);
-  }, []);
+    if (near) {
+      setShowScrollBtn(false);
+      setLastSeenIndex(messages.length);
+    } else {
+      setShowScrollBtn(shouldShowScrollButton(el));
+    }
+  }, [messages.length]);
+
+  const unreadCount = showScrollBtn ? Math.max(0, messages.length - lastSeenIndex) : 0;
 
   if (messages.length === 0) {
     if (switching) {
@@ -110,19 +131,27 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
         ))}
       </div>
       {showScrollBtn && (
-        <button
-          type="button"
-          onClick={() => {
-            atBottom.current = true;
-            setShowScrollBtn(false);
-            scrollToBottom();
-          }}
-          className="absolute bottom-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-(--color-bg-soft) border border-(--color-border) text-(--color-fg-mute) hover:text-(--color-fg) hover:border-(--color-accent)/50 shadow-md transition-colors"
-          title="Прокрутить вниз"
-        >
-          <ArrowDown size={12} />
-          Вниз
-        </button>
+        <div className="sticky bottom-6 z-30 flex justify-end pr-6 pointer-events-none">
+          <button
+            type="button"
+            onClick={() => {
+              atBottom.current = true;
+              setShowScrollBtn(false);
+              setLastSeenIndex(messages.length);
+              scrollToBottom();
+            }}
+            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-(--color-accent) text-white shadow-lg hover:bg-(--color-accent) hover:brightness-110 transition-all duration-200 animate-in fade-in slide-in-from-bottom-2"
+            title="Прокрутить вниз"
+          >
+            <ArrowDown size={12} />
+            <span>Вниз</span>
+            {unreadCount > 0 && (
+              <span className="ml-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/20 text-[10px] font-bold">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
       )}
     </div>
   );

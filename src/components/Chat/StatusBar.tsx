@@ -3,6 +3,8 @@ import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { shortenPath } from "@/utils/path";
 import { ExtensionsPill } from "./ExtensionsPill";
+import { ContextIndicator } from "./ContextIndicator";
+import { FastContextIndicator } from "./FastContextIndicator";
 
 /** Форматирует число токенов как 137k, 12.5k, 980 */
 function fmtTokens(n: number): string {
@@ -20,12 +22,6 @@ export function StatusBar() {
   const isStreaming = agent?.isStreaming;
   const statuses = useExt((s) => s.statuses);
 
-  // Раскладываем ext-статусы по двум корзинам:
-  // - context → отдельный inline-элемент (его смотрят чаще всего)
-  // - всё остальное → в пилюлю с popover
-  // Также скрываем:
-  // - cwd (extension cwd.ts — свой показ)
-  const contextStatus = statuses["context"];
   const extEntries: [string, string][] = Object.entries(statuses).filter(
     ([k]) => k !== "cwd" && k !== "context",
   );
@@ -102,18 +98,8 @@ export function StatusBar() {
           </span>
         </>
       )}
-      {contextStatus && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span
-            className="pi-statusbar-context"
-            title={`context fill: ${contextStatus}`}
-          >
-            <span className="text-(--color-fg-dim)">ctx</span>
-            <span className="font-mono">{contextStatus}</span>
-          </span>
-        </>
-      )}
+      <ContextIndicator />
+      <FastContextIndicator />
 
       </div>
 

@@ -6,6 +6,7 @@ import { useChat, type UiBlock } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { t } from "@/i18n/ru";
 import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
+import { ContextIndicator } from "./ContextIndicator";
 import { SkillsPalette } from "./SkillsPalette";
 import type { ImageContent, ThinkingLevel } from "@/rpc/types";
 
@@ -662,6 +663,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               </button>
             )}
             <div className="flex-1" />
+            <ContextIndicator variant="composer" />
             {isStreaming ? (
               <button
                 type="button"

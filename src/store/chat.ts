@@ -94,6 +94,12 @@ interface ChatState {
   composerInjection: { text: string; nonce: number } | null;
   /** баннер после fork: пользователь теперь в новой ветке */
   forkBanner: string | null;
+  /** Fast Context статус и результаты */
+  fastContextStatus: "idle" | "searching" | "done" | "error" | null;
+  fastContextResults: import("@/rpc/bridge").FastContextResult | null;
+  fastContextQuery: string | null;
+  fastContextError: string | null;
+  fastContextRunId: number;
   // действия
   init(): Promise<void>;
   startRpc(opts?: { sessionFile?: string; safe?: boolean }): Promise<void>;
@@ -136,6 +142,8 @@ interface ChatState {
   regenerateAt(uiMessageId: string): Promise<void>;
   editUserMessage(uiMessageId: string, text: string): Promise<void>;
   clearForkBanner(): void;
+  runFastContext(query: string): Promise<void>;
+  clearFastContext(): void;
   runBash(command: string): Promise<void>;
   injectComposer(text: string): void;
   clearComposerInjection(): void;
@@ -472,6 +480,27 @@ function extractToolDetails(value: unknown): unknown {
   return value;
 }
 
+function isFastContextResult(value: unknown): value is import("@/rpc/bridge").FastContextResult {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      Array.isArray((value as Record<string, unknown>).files),
+  );
+}
+
+function extractFastContextResult(
+  details: unknown,
+  raw: unknown,
+): import("@/rpc/bridge").FastContextResult | null {
+  if (isFastContextResult(details)) return details;
+  if (isFastContextResult(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const record = raw as Record<string, unknown>;
+    if (isFastContextResult(record.details)) return record.details;
+  }
+  return null;
+}
+
 function createSystemMessage(text: string): UiMessage {
   return {
     id: newId(),
@@ -511,6 +540,11 @@ export const useChat = create<ChatState>((set, get) => ({
   stderrBuffer: [],
   composerInjection: null,
   forkBanner: null,
+  fastContextStatus: null,
+  fastContextResults: null,
+  fastContextQuery: null,
+  fastContextError: null,
+  fastContextRunId: 0,
 
   async init() {
     if (initOnce) return;
@@ -572,6 +606,7 @@ export const useChat = create<ChatState>((set, get) => ({
           piPath: res.piPath,
           errorBanner: null,
           stderrBuffer: [],
+          sessionStats: null,
           messages: [],
           currentAssistantId: null,
           messageIdMap: new Map(),
@@ -580,6 +615,7 @@ export const useChat = create<ChatState>((set, get) => ({
         await new Promise((r) => setTimeout(r, 50));
         await get().refreshState();
         await get().reloadHistory().catch(() => undefined);
+        await get().refreshSessionStats().catch(() => undefined);
         await rememberCurrentSession(cwd, get().agentState?.sessionFile);
         void get().loadAvailableModels();
 
@@ -854,6 +890,7 @@ export const useChat = create<ChatState>((set, get) => ({
       await rememberCurrentSession(get().cwd, get().agentState?.sessionFile);
       get().clearMessages();
       await get().reloadHistory().catch(() => undefined);
+      await get().refreshSessionStats().catch(() => undefined);
       if (get().planMode) {
         await get().loadPlan().catch(() => undefined);
       }
@@ -884,6 +921,7 @@ export const useChat = create<ChatState>((set, get) => ({
         // Мгновенно очищаем сообщения ДО отправки switch — пользователь
         // видит пустую сессию сразу, не ожидая завершения RPC.
         get().clearMessages();
+        set({ sessionStats: null });
         // pi на switch_session эмитит session_before_switch (MCP cleanup) и
         // session_switch (MCP reload). Это нормальное поведение pi — мы не
         // вызываем этот RPC дважды и не делаем ничего, что добавило бы
@@ -894,6 +932,7 @@ export const useChat = create<ChatState>((set, get) => ({
         debugMcp("switchSession:after refreshState", { file, sessionFile: get().agentState?.sessionFile });
         await rememberCurrentSession(get().cwd, get().agentState?.sessionFile);
         await get().reloadHistory().catch(() => undefined);
+        await get().refreshSessionStats().catch(() => undefined);
         debugMcp("switchSession:after reloadHistory", { file });
         if (get().planMode) {
           await get().loadPlan().catch(() => undefined);
@@ -1219,6 +1258,37 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ forkBanner: null });
   },
 
+  async runFastContext(query) {
+    const q = query.trim();
+    if (!q) {
+      get().setError("Fast Context: введите запрос для поиска по проекту");
+      return;
+    }
+    const runId = get().fastContextRunId + 1;
+    set({
+      fastContextRunId: runId,
+      fastContextStatus: "searching",
+      fastContextResults: null,
+      fastContextQuery: q,
+      fastContextError: null,
+    });
+    try {
+      const result = await rpc.fastContext(q);
+      if (get().fastContextRunId !== runId) return;
+      set({ fastContextStatus: "done", fastContextResults: result, fastContextError: null });
+    } catch (e) {
+      if (get().fastContextRunId !== runId) return;
+      const message = (e as Error).message;
+      console.error("fastContext failed:", e);
+      set({ fastContextStatus: "error", fastContextResults: null, fastContextError: message });
+      get().setError(`Fast Context: ${message}`);
+    }
+  },
+
+  clearFastContext() {
+    set({ fastContextStatus: null, fastContextResults: null, fastContextQuery: null, fastContextError: null });
+  },
+
   setError(msg) {
     set({ errorBanner: msg });
   },
@@ -1344,13 +1414,28 @@ function handleAgentEvent(
       const toolUseId = String(event.toolCallId ?? event.toolUseId ?? event.id ?? "");
       if (!toolUseId) break;
       const isError = Boolean(event.isError ?? event.is_error);
+      const name = String(event.toolName ?? event.name ?? "tool");
       const output = extractToolText(event.result ?? event.output);
       const details = extractToolDetails(event.result ?? event.output);
       updateToolBlock(set, get, toolUseId, {
+        name,
         output,
         details,
         status: isError ? "error" : "done",
       });
+      if (name === "fast_context") {
+        const result = extractFastContextResult(details, event.result ?? event.output);
+        if (!isError && result) {
+          set({
+            fastContextStatus: "done",
+            fastContextResults: result,
+            fastContextQuery: result.query ?? null,
+            fastContextError: null,
+          });
+        } else if (isError) {
+          set({ fastContextStatus: "error", fastContextError: output || "fast_context failed" });
+        }
+      }
       break;
     }
     case "queue_update": {
