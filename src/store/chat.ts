@@ -100,6 +100,12 @@ interface ChatState {
   fastContextQuery: string | null;
   fastContextError: string | null;
   fastContextRunId: number;
+  /** Fast Fetch статус и результаты */
+  fastFetchStatus: "idle" | "fetching" | "done" | "error" | null;
+  fastFetchResult: import("@/rpc/bridge").FastFetchResult | null;
+  fastFetchQuery: string | null;
+  fastFetchError: string | null;
+  fastFetchRunId: number;
   // действия
   init(): Promise<void>;
   startRpc(opts?: { sessionFile?: string; safe?: boolean }): Promise<void>;
@@ -144,6 +150,8 @@ interface ChatState {
   clearForkBanner(): void;
   runFastContext(query: string): Promise<void>;
   clearFastContext(): void;
+  runFastFetch(query: string, options?: import("@/rpc/bridge").FastFetchOptions): Promise<void>;
+  clearFastFetch(): void;
   runBash(command: string): Promise<void>;
   injectComposer(text: string): void;
   clearComposerInjection(): void;
@@ -501,6 +509,38 @@ function extractFastContextResult(
   return null;
 }
 
+function isFastFetchDetails(value: unknown): value is import("@/rpc/bridge").FastFetchToolDetails {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.url === "string" ||
+    record.mode === "search" ||
+    record.mode === "url" ||
+    typeof record.status === "number" ||
+    typeof record.contentType === "string" ||
+    typeof record.bytes === "number"
+  );
+}
+
+function extractFastFetchResult(
+  details: unknown,
+  text: string,
+  raw: unknown,
+): import("@/rpc/bridge").FastFetchResult | null {
+  if (raw && typeof raw === "object") {
+    const record = raw as Record<string, unknown>;
+    if (typeof record.text === "string") {
+      return {
+        text: record.text,
+        details: isFastFetchDetails(record.details) ? record.details : undefined,
+      };
+    }
+    if (isFastFetchDetails(record.details)) return { text, details: record.details };
+  }
+  if (isFastFetchDetails(details)) return { text, details };
+  return text ? { text } : null;
+}
+
 function createSystemMessage(text: string): UiMessage {
   return {
     id: newId(),
@@ -545,6 +585,11 @@ export const useChat = create<ChatState>((set, get) => ({
   fastContextQuery: null,
   fastContextError: null,
   fastContextRunId: 0,
+  fastFetchStatus: null,
+  fastFetchResult: null,
+  fastFetchQuery: null,
+  fastFetchError: null,
+  fastFetchRunId: 0,
 
   async init() {
     if (initOnce) return;
@@ -1289,6 +1334,41 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ fastContextStatus: null, fastContextResults: null, fastContextQuery: null, fastContextError: null });
   },
 
+  async runFastFetch(query, options) {
+    const q = query.trim();
+    if (!q) {
+      get().setError("Fast Fetch: введите URL или поисковый запрос");
+      return;
+    }
+    const runId = get().fastFetchRunId + 1;
+    set({
+      fastFetchRunId: runId,
+      fastFetchStatus: "fetching",
+      fastFetchResult: null,
+      fastFetchQuery: q,
+      fastFetchError: null,
+    });
+    try {
+      const result = await rpc.fastFetch(q, options);
+      if (get().fastFetchRunId !== runId) return;
+      set({ fastFetchStatus: "done", fastFetchResult: result, fastFetchError: null });
+      const title = result.details?.url ? `Fast Fetch: ${result.details.url}` : `Fast Fetch: ${q}`;
+      set((state) => ({
+        messages: [...state.messages, createSystemMessage(`${title}\n\n${result.text}`)],
+      }));
+    } catch (e) {
+      if (get().fastFetchRunId !== runId) return;
+      const message = (e as Error).message;
+      console.error("fastFetch failed:", e);
+      set({ fastFetchStatus: "error", fastFetchResult: null, fastFetchError: message });
+      get().setError(`Fast Fetch: ${message}`);
+    }
+  },
+
+  clearFastFetch() {
+    set({ fastFetchStatus: null, fastFetchResult: null, fastFetchQuery: null, fastFetchError: null });
+  },
+
   setError(msg) {
     set({ errorBanner: msg });
   },
@@ -1434,6 +1514,19 @@ function handleAgentEvent(
           });
         } else if (isError) {
           set({ fastContextStatus: "error", fastContextError: output || "fast_context failed" });
+        }
+      }
+      if (name === "fast_fetch") {
+        const result = extractFastFetchResult(details, output, event.result ?? event.output);
+        if (!isError && result) {
+          set({
+            fastFetchStatus: "done",
+            fastFetchResult: result,
+            fastFetchQuery: result.details?.url ?? null,
+            fastFetchError: null,
+          });
+        } else if (isError) {
+          set({ fastFetchStatus: "error", fastFetchError: output || "fast_fetch failed" });
         }
       }
       break;

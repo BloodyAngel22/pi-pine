@@ -223,6 +223,30 @@ export async function fastContext(query: string): Promise<FastContextResult> {
   return request<FastContextResult>("fast_context", { query }, 120_000);
 }
 
+export interface FastFetchToolDetails {
+  url?: string;
+  mode?: "search" | "url";
+  status?: number;
+  contentType?: string;
+  truncated?: boolean;
+  bytes?: number;
+}
+export interface FastFetchResult {
+  text: string;
+  details?: FastFetchToolDetails;
+}
+export interface FastFetchOptions {
+  mode?: "search" | "url";
+  maxResults?: number;
+  timeoutMs?: number;
+}
+export async function fastFetch(
+  query: string,
+  options?: FastFetchOptions,
+): Promise<FastFetchResult> {
+  return request<FastFetchResult>("fast_fetch", { query, ...options }, options?.timeoutMs ?? 120_000);
+}
+
 export async function abort(): Promise<void> {
   await request("abort").catch(() => undefined);
 }

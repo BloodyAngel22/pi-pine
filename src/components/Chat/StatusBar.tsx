@@ -5,6 +5,7 @@ import { shortenPath } from "@/utils/path";
 import { ExtensionsPill } from "./ExtensionsPill";
 import { ContextIndicator } from "./ContextIndicator";
 import { FastContextIndicator } from "./FastContextIndicator";
+import { FastFetchIndicator } from "./FastFetchIndicator";
 
 /** Форматирует число токенов как 137k, 12.5k, 980 */
 function fmtTokens(n: number): string {
@@ -100,6 +101,7 @@ export function StatusBar() {
       )}
       <ContextIndicator />
       <FastContextIndicator />
+      <FastFetchIndicator />
 
       </div>
 

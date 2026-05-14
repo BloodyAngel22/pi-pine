@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe } from "lucide-react";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
 
@@ -220,6 +220,25 @@ function taskDetails(details: unknown): {
   };
 }
 
+function fastFetchDetails(details: unknown): {
+  url?: string;
+  mode?: string;
+  status?: number;
+  contentType?: string;
+  truncated?: boolean;
+  bytes?: number;
+} {
+  const o = asRecord(details);
+  return {
+    url: typeof o.url === "string" ? o.url : undefined,
+    mode: typeof o.mode === "string" ? o.mode : undefined,
+    status: typeof o.status === "number" ? o.status : undefined,
+    contentType: typeof o.contentType === "string" ? o.contentType : undefined,
+    truncated: typeof o.truncated === "boolean" ? o.truncated : undefined,
+    bytes: typeof o.bytes === "number" ? o.bytes : undefined,
+  };
+}
+
 export function ToolCall({ block }: { block: UiBlockTool }) {
   const [open, setOpen] = useState(false);
   const isError = block.status === "error";
@@ -232,6 +251,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   }
   if (block.name === "task") {
     return <TaskToolCall block={block} open={open} setOpen={setOpen} />;
+  }
+  if (block.name === "fast_fetch") {
+    return <FastFetchToolCall block={block} open={open} setOpen={setOpen} />;
   }
   if (isFileMutationTool(block.name)) {
     return <FileMutationToolCall block={block} />;
@@ -281,6 +303,71 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
                 {pretty(block.output)}
               </pre>
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FastFetchToolCall({
+  block,
+  open,
+  setOpen,
+}: {
+  block: UiBlockTool;
+  open: boolean;
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
+}) {
+  const isError = block.status === "error";
+  const isRunning = block.status === "running";
+  const input = asRecord(block.input);
+  const details = fastFetchDetails(block.details);
+  const query = String(input.query ?? details.url ?? "");
+  const meta = [
+    details.mode,
+    details.status != null ? String(details.status) : undefined,
+    details.contentType,
+    details.bytes != null ? `${details.bytes}b` : undefined,
+    details.truncated ? "truncated" : undefined,
+  ].filter(Boolean).join(" · ");
+  return (
+    <div
+      className={clsx(
+        "my-1 rounded-md border text-xs",
+        isError
+          ? "border-(--color-danger)/30 bg-(--color-danger)/5"
+          : "border-(--color-accent)/20 bg-(--color-accent)/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-(--color-bg-mute) rounded-md text-left"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {isError ? (
+          <AlertCircle size={12} className="text-(--color-danger)" />
+        ) : (
+          <Globe size={12} className="text-(--color-accent)" />
+        )}
+        <span className="font-mono text-(--color-accent)">fast_fetch</span>
+        <span className="font-mono text-(--color-fg) truncate min-w-0" title={details.url ?? query}>
+          {details.url ?? query}
+        </span>
+        <span className="ml-auto shrink-0 text-(--color-fg-dim)">
+          {isRunning ? "загрузка…" : isError ? "ошибка" : meta}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-2">
+          {query && details.url && details.url !== query && (
+            <div className="text-[11px] text-(--color-fg-dim)">query: {query}</div>
+          )}
+          {block.output != null && block.output !== "" && (
+            <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-80 overflow-y-auto">
+              {pretty(block.output)}
+            </pre>
           )}
         </div>
       )}
