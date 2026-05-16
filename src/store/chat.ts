@@ -459,6 +459,13 @@ function extractToolText(value: unknown): string {
   }
 }
 
+function mergeToolDetails(current: unknown, next: unknown): unknown {
+  if (current && next && typeof current === "object" && typeof next === "object" && !Array.isArray(current) && !Array.isArray(next)) {
+    return { ...(current as Record<string, unknown>), ...(next as Record<string, unknown>) };
+  }
+  return next ?? current;
+}
+
 function extractToolDetails(value: unknown): unknown {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
@@ -1482,11 +1489,16 @@ function handleAgentEvent(
       break;
     }
     case "tool_execution_update": {
-      const toolUseId = String(event.toolCallId ?? event.toolUseId ?? "");
+      const toolUseId = String(event.toolCallId ?? event.toolUseId ?? event.id ?? "");
       if (!toolUseId) break;
-      const partial = event.partialResult ?? event.result;
+      const partial = event.partialResult ?? event.result ?? event.delta;
+      const details = extractToolDetails(partial);
+      const current = get()
+        .messages.flatMap((m) => m.blocks)
+        .find((b): b is UiBlockTool => b.kind === "tool" && b.toolUseId === toolUseId);
       updateToolBlock(set, get, toolUseId, {
         output: extractToolText(partial),
+        details: mergeToolDetails(current?.details, details),
       });
       break;
     }

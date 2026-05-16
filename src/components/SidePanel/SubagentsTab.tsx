@@ -1,4 +1,4 @@
-import { Bot, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { Bot, CheckCircle2, Circle, AlertCircle, Wrench } from "lucide-react";
 import { useChat, type UiBlockTool } from "@/store/chat";
 import { useExt } from "@/store/ext";
 
@@ -12,10 +12,16 @@ interface TaskInfo {
   outputTokens?: number;
   savedTokens?: number;
   cwd?: string;
+  activities: string[];
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function toTaskInfo(block: UiBlockTool): TaskInfo {
@@ -31,6 +37,7 @@ function toTaskInfo(block: UiBlockTool): TaskInfo {
     outputTokens: typeof details.outputTokens === "number" ? details.outputTokens : undefined,
     savedTokens: typeof details.savedTokens === "number" ? details.savedTokens : undefined,
     cwd: typeof details.cwd === "string" ? details.cwd : undefined,
+    activities: toStringList(details.activities ?? details.recentActivities),
   };
 }
 
@@ -94,6 +101,20 @@ export function SubagentsTab() {
                 <Metric label="out" value={task.outputTokens} />
                 <Metric label="saved" value={task.savedTokens} accent />
               </div>
+              {task.activities.length > 0 && (
+                <div className="border border-(--color-border) rounded bg-(--color-bg-mute) p-1.5 space-y-1">
+                  <div className="flex items-center gap-1 text-[10px] text-(--color-fg-dim)">
+                    <Wrench size={11} /> tools
+                  </div>
+                  <div className="space-y-0.5">
+                    {task.activities.map((activity, idx) => (
+                      <div key={`${task.id}-${idx}`} className="font-mono text-[10px] text-(--color-fg-mute) truncate" title={activity}>
+                        └─ {activity}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {task.cwd && <div className="font-mono text-[10px] text-(--color-fg-dim) truncate" title={task.cwd}>cwd: {task.cwd}</div>}
               {typeof task.output === "string" && task.output && (
                 <div className="max-h-24 overflow-y-auto whitespace-pre-wrap text-(--color-fg-dim) border border-(--color-border) rounded p-1.5">

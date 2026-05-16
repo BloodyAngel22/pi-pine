@@ -21,6 +21,9 @@ const EMOJI_LEAD =
 const SKIP_GROUPING = /^(?:[-*+] |\d+\. |#{1,6} |> |```|\||    )/;
 // Строго list-item.
 const LIST_ITEM = /^(?:[-*+] |\d+\. )/;
+// Однострочный «заголовок секции:» — LLM часто после него отдаёт
+// псевдо-список отдельными абзацами без markdown-маркеров.
+const COLON_SECTION = /^[^\n]{2,80}:$/;
 
 function isSingleLine(b: string) {
   return !b.includes("\n");
@@ -47,36 +50,53 @@ function normalize(raw: string): string {
     .filter(Boolean);
 
   const out: string[] = [];
-  // Текущая «emoji-секция»: заголовок + накопленные строки-пункты.
-  let section: { heading: string; items: string[] } | null = null;
+  // Текущая компактная секция: заголовок + накопленные строки-пункты.
+  let section: { heading: string; items: string[]; kind: "emoji" | "colon" } | null = null;
 
   const flush = () => {
     if (!section) return;
+    // Если после «Заголовок:» был всего один абзац — это скорее обычный текст,
+    // не превращаем его в список. Для emoji-секций старое поведение сохраняем.
     if (section.items.length === 0) {
-      // Один заголовок без пунктов — оставляем как обычный параграф.
       out.push(section.heading);
+    } else if (section.kind === "colon" && section.items.length === 1) {
+      out.push(`**${section.heading}**\n${section.items[0]}`);
     } else {
-      // Bold-«заголовок» (а не #### — чтобы не ломать визуальную иерархию
-      // основных markdown-headings).
-      out.push(`**${section.heading}**`);
-      out.push(section.items.map((x) => `- ${x}`).join("\n"));
+      // Держим heading и список в одном markdown-блоке: так между
+      // «Возможности:» и первым пунктом нет лишнего пустого абзаца.
+      out.push(`**${section.heading}**\n${section.items.map((x) => `- ${x}`).join("\n")}`);
     }
     section = null;
   };
 
   for (const block of blocks) {
+    const single = isSingleLine(block);
+    const readyMarkdown = !single || SKIP_GROUPING.test(block);
+
+    if (single && COLON_SECTION.test(block) && !SKIP_GROUPING.test(block)) {
+      flush();
+      section = { heading: block, items: [], kind: "colon" };
+      continue;
+    }
+
     // Если блок уже выглядит как готовая markdown-конструкция — выкладываем.
-    if (!isSingleLine(block) || SKIP_GROUPING.test(block)) {
+    if (readyMarkdown) {
       flush();
       out.push(block);
       continue;
     }
+
     // Однострочный блок. Решаем по контексту.
     if (isEmojiLed(block)) {
-      flush();
-      section = { heading: block, items: [] };
+      if (section?.kind === "colon") {
+        // «Ресурсы:» + emoji-строки — это элементы этой секции, не новые headings.
+        section.items.push(block);
+      } else {
+        flush();
+        section = { heading: block, items: [], kind: "emoji" };
+      }
     } else if (section) {
-      // Внутри emoji-секции — копим как пункты.
+      // Внутри секции — копим как пункты.
       section.items.push(block);
     } else {
       out.push(block);

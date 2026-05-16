@@ -3,7 +3,6 @@ import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { shortenPath } from "@/utils/path";
 import { ExtensionsPill } from "./ExtensionsPill";
-import { ContextIndicator } from "./ContextIndicator";
 import { FastContextIndicator } from "./FastContextIndicator";
 import { FastFetchIndicator } from "./FastFetchIndicator";
 
@@ -99,7 +98,6 @@ export function StatusBar() {
           </span>
         </>
       )}
-      <ContextIndicator />
       <FastContextIndicator />
       <FastFetchIndicator />
 

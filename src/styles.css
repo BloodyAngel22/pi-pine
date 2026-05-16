@@ -63,16 +63,19 @@ body {
 
 /* markdown в сообщениях */
 .md p {
-  margin: 0.15rem 0;
-  line-height: 1.45;
+  margin: 0.12rem 0;
+  line-height: 1.48;
+}
+.md p + p {
+  margin-top: 0.45rem;
 }
 .md li {
   margin: 0;
   padding: 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 .md li + li {
-  margin-top: 0.1rem;
+  margin-top: 0.08rem;
 }
 /* loose-list: <li> содержит <p> — обнуляем margin'ы, чтобы пункты
    выглядели как tight list. */
@@ -82,7 +85,7 @@ body {
 }
 .md li > p + p {
   display: block;
-  margin-top: 0.15rem;
+  margin-top: 0.12rem;
 }
 .md p:first-child {
   margin-top: 0;
@@ -93,7 +96,11 @@ body {
 .md ul,
 .md ol {
   padding-left: 1.25rem;
-  margin: 0.25rem 0;
+  margin: 0.12rem 0 0.4rem;
+}
+.md p + ul,
+.md p + ol {
+  margin-top: 0.04rem;
 }
 .md ul {
   list-style: disc;
@@ -131,7 +138,7 @@ body {
 .md h3,
 .md h4 {
   font-weight: 600;
-  margin: 0.6rem 0 0.3rem;
+  margin: 0.55rem 0 0.25rem;
 }
 .md h1 {
   font-size: 1.05rem;

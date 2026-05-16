@@ -203,12 +203,18 @@ function todoDetails(details: unknown): { todos: TodoItem[]; action?: string; er
 }
 
 
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
 function taskDetails(details: unknown): {
   description?: string;
   cwd?: string;
   inputTokens?: number;
   outputTokens?: number;
   savedTokens?: number;
+  activities: string[];
 } {
   const o = asRecord(details);
   return {
@@ -217,6 +223,7 @@ function taskDetails(details: unknown): {
     inputTokens: typeof o.inputTokens === "number" ? o.inputTokens : undefined,
     outputTokens: typeof o.outputTokens === "number" ? o.outputTokens : undefined,
     savedTokens: typeof o.savedTokens === "number" ? o.savedTokens : undefined,
+    activities: stringList(o.activities ?? o.recentActivities),
   };
 }
 
@@ -658,6 +665,18 @@ function TaskToolCall({
               <Metric label="input" value={details.inputTokens} />
               <Metric label="output" value={details.outputTokens} />
               <Metric label="saved" value={details.savedTokens} accent />
+            </div>
+          )}
+          {details.activities.length > 0 && (
+            <div>
+              <div className="text-(--color-fg-dim) mb-0.5">инструменты субагента</div>
+              <div className="bg-(--color-bg) border border-(--color-border) rounded p-2 space-y-1">
+                {details.activities.map((activity, idx) => (
+                  <div key={`${block.toolUseId}-activity-${idx}`} className="font-mono text-[11px] text-(--color-fg-mute) truncate" title={activity}>
+                    └─ {activity}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {details.cwd && (

@@ -77,7 +77,7 @@ function renderTextWithSkills(text: string, key: number) {
   const segs = parseSkillSegments(text);
   if (segs.length === 1 && segs[0].kind === "text") {
     return (
-      <div key={key} className="whitespace-pre-wrap">
+      <div key={key}>
         <Markdown text={segs[0].text} />
       </div>
     );
@@ -86,7 +86,7 @@ function renderTextWithSkills(text: string, key: number) {
     <div key={key} className="space-y-1">
       {segs.map((s, j) =>
         s.kind === "text" ? (
-          <div key={j} className="whitespace-pre-wrap">
+          <div key={j}>
             <Markdown text={s.text} />
           </div>
         ) : (
