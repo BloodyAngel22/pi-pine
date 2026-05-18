@@ -1,3 +1,4 @@
+import { memo } from "react";
 import clsx from "clsx";
 import type { UiMessage } from "@/store/chat";
 import { Markdown } from "./Markdown";
@@ -73,12 +74,16 @@ function parseSkillSegments(text: string): Segment[] {
   return out;
 }
 
-function renderTextWithSkills(text: string, key: number) {
+function PlainText({ text }: { text: string }) {
+  return <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</div>;
+}
+
+function renderTextWithSkills(text: string, key: number, light: boolean) {
   const segs = parseSkillSegments(text);
   if (segs.length === 1 && segs[0].kind === "text") {
     return (
       <div key={key}>
-        <Markdown text={segs[0].text} />
+        {light ? <PlainText text={segs[0].text} /> : <Markdown text={segs[0].text} />}
       </div>
     );
   }
@@ -87,7 +92,7 @@ function renderTextWithSkills(text: string, key: number) {
       {segs.map((s, j) =>
         s.kind === "text" ? (
           <div key={j}>
-            <Markdown text={s.text} />
+            {light ? <PlainText text={s.text} /> : <Markdown text={s.text} />}
           </div>
         ) : (
           <SkillBlock key={j} name={s.name} body={s.body} />
@@ -97,13 +102,14 @@ function renderTextWithSkills(text: string, key: number) {
   );
 }
 
-export function Message({ message, onCopy, onFork, onRegenerate, onEdit }: Props) {
+function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Props) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
+  const lightTextRender = message.streaming && message.role === "assistant";
   const blocks = message.blocks.map((b, i) => {
     if (b.kind === "text") {
-      return renderTextWithSkills(b.text, i);
+      return renderTextWithSkills(b.text, i, lightTextRender);
     }
     if (b.kind === "thinking") return <ThinkingBlock key={i} text={b.text} />;
     if (b.kind === "tool") return <ToolCall key={i} block={b} />;
@@ -158,3 +164,5 @@ export function Message({ message, onCopy, onFork, onRegenerate, onEdit }: Props
     </div>
   );
 }
+
+export const Message = memo(MessageComponent);

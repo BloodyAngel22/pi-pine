@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -160,7 +161,8 @@ const components: Components = {
   },
 };
 
-export function Markdown({ text }: Props) {
+function MarkdownComponent({ text }: Props) {
+  const normalized = useMemo(() => normalize(text), [text]);
   return (
     <div className="md">
       <ReactMarkdown
@@ -168,8 +170,10 @@ export function Markdown({ text }: Props) {
         rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={components}
       >
-        {normalize(text)}
+        {normalized}
       </ReactMarkdown>
     </div>
   );
 }
+
+export const Markdown = memo(MarkdownComponent);

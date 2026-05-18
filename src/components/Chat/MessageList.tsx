@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { Sparkles, ArrowDown } from "lucide-react";
 import { useChat, type UiMessage } from "@/store/chat";
+import { useThrottledValue } from "@/lib/useThrottledValue";
 import { Message } from "./Message";
 import { PlanTodoInline } from "./PlanTodoInline";
 import { t } from "@/i18n/ru";
@@ -12,28 +14,28 @@ interface Props {
   onEdit(message: UiMessage, text: string): void;
 }
 
-/** Порог в пикселях от низа, при котором считаем пользователя «внизу». */
-const SCROLL_THRESHOLD = 120;
-/** Показываем кнопку «вниз», когда пользователь ушёл от низа примерно на один экран. */
-const SHOW_SCROLL_BUTTON_VIEWPORTS = 0.9;
+const STREAM_RENDER_THROTTLE_MS = 50;
+const VIRTUOSO_OVERSCAN_PX = 900;
 
-function distanceFromBottom(el: HTMLDivElement): number {
-  return el.scrollHeight - el.scrollTop - el.clientHeight;
-}
+const VirtualizedMessageList = forwardRef<HTMLDivElement, React.ComponentPropsWithoutRef<"div">>(
+  (props, ref) => <div {...props} ref={ref} className="pi-stream" />,
+);
+VirtualizedMessageList.displayName = "VirtualizedMessageList";
 
-function isNearBottom(el: HTMLDivElement): boolean {
-  return distanceFromBottom(el) <= SCROLL_THRESHOLD;
-}
+const MessageListFooter = () => <div className="h-12" aria-hidden="true" />;
 
-function shouldShowScrollButton(el: HTMLDivElement): boolean {
-  return distanceFromBottom(el) > el.clientHeight * SHOW_SCROLL_BUTTON_VIEWPORTS;
-}
+const virtuosoComponents: Components<UiMessage> = {
+  Header: PlanTodoInline,
+  List: VirtualizedMessageList,
+  Footer: MessageListFooter,
+};
 
 export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
-  const messages = useChat((s) => s.messages);
+  const rawMessages = useChat((s) => s.messages);
+  const messages = useThrottledValue(rawMessages, STREAM_RENDER_THROTTLE_MS);
   const agentState = useChat((s) => s.agentState);
   const switching = useChat((s) => s.switching);
-  const ref = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   /** true пока пользователь находится вблизи низа списка */
   const atBottom = useRef(true);
   /** управляет видимостью кнопки «прокрутить вниз» */
@@ -41,13 +43,11 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   /** индекс последнего сообщения, которое видел пользователь (когда был внизу) */
   const [lastSeenIndex, setLastSeenIndex] = useState(0);
 
-  const scrollToBottom = useCallback((instant?: boolean) => {
-    const el = ref.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: instant ? "instant" : "smooth" });
+  const scrollToBottom = useCallback((behavior: "auto" | "smooth" = "smooth") => {
+    virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior });
   }, []);
 
-  // При очистке сообщений (смена сессии/форк) сбрасываем позицию прокрутки вниз
+  // При очистке сообщений (смена сессии/форк) сбрасываем позицию прокрутки вниз.
   useEffect(() => {
     if (messages.length === 0) {
       atBottom.current = true;
@@ -56,26 +56,26 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     }
   }, [messages.length]);
 
-  // Умный авто-скролл: прокручиваем только если пользователь уже был внизу
-  useEffect(() => {
-    if (!atBottom.current) return;
-    const el = ref.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-    setLastSeenIndex(messages.length);
-  }, [messages]);
+  const handleAtBottomChange = useCallback(
+    (bottom: boolean) => {
+      atBottom.current = bottom;
+      setShowScrollBtn(!bottom);
+      if (bottom) {
+        setLastSeenIndex(messages.length);
+      }
+    },
+    [messages.length],
+  );
 
-  const handleScroll = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    const near = isNearBottom(el);
-    atBottom.current = near;
-    if (near) {
-      setShowScrollBtn(false);
-      setLastSeenIndex(messages.length);
-    } else {
-      setShowScrollBtn(shouldShowScrollButton(el));
+  const followOutput = useCallback((isAtBottom: boolean) => {
+    if (!isAtBottom && !atBottom.current) {
+      setShowScrollBtn(true);
+      return false;
     }
+    atBottom.current = true;
+    setShowScrollBtn(false);
+    setLastSeenIndex(messages.length);
+    return "auto" as const;
   }, [messages.length]);
 
   const unreadCount = showScrollBtn ? Math.max(0, messages.length - lastSeenIndex) : 0;
@@ -116,22 +116,29 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   }
 
   return (
-    <div ref={ref} className="flex-1 overflow-y-auto relative" onScroll={handleScroll}>
-      <PlanTodoInline />
-      <div className="pi-stream">
-        {messages.map((m) => (
+    <div className="flex-1 min-h-0 relative">
+      <Virtuoso
+        ref={virtuosoRef}
+        className="h-full"
+        data={messages}
+        computeItemKey={(_, message) => message.id}
+        followOutput={followOutput}
+        atBottomStateChange={handleAtBottomChange}
+        increaseViewportBy={{ top: VIRTUOSO_OVERSCAN_PX, bottom: VIRTUOSO_OVERSCAN_PX }}
+        atBottomThreshold={120}
+        components={virtuosoComponents}
+        itemContent={(_, message) => (
           <Message
-            key={m.id}
-            message={m}
+            message={message}
             onCopy={onCopy}
             onFork={onFork}
             onRegenerate={onRegenerate}
             onEdit={onEdit}
           />
-        ))}
-      </div>
+        )}
+      />
       {showScrollBtn && (
-        <div className="sticky bottom-6 z-30 flex justify-end pr-6 pointer-events-none">
+        <div className="absolute bottom-6 right-6 z-30 pointer-events-none">
           <button
             type="button"
             onClick={() => {
