@@ -106,6 +106,7 @@ interface ChatState {
   fastFetchQuery: string | null;
   fastFetchError: string | null;
   fastFetchRunId: number;
+  lastCompactionMessageKey: string | null;
   // действия
   init(): Promise<void>;
   startRpc(opts?: { sessionFile?: string; safe?: boolean }): Promise<void>;
@@ -558,6 +559,27 @@ function createSystemMessage(text: string): UiMessage {
   };
 }
 
+function formatTokenCount(value: number): string {
+  return Math.round(value).toLocaleString("ru-RU");
+}
+
+function formatCompactionMessage(result: unknown): { key: string; text: string } {
+  const r = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+  const before = typeof r.tokensBefore === "number" ? r.tokensBefore : undefined;
+  const after = typeof r.tokensAfter === "number" ? r.tokensAfter : undefined;
+  let text = "Контекст сессии сжат.";
+  if (before !== undefined && after !== undefined && before > 0) {
+    const saved = Math.max(0, before - after);
+    const percent = Math.round((saved / before) * 100);
+    text = `Контекст сессии сжат: ${formatTokenCount(before)} → ${formatTokenCount(after)} токенов (−${formatTokenCount(saved)}, ${percent}%).`;
+  } else if (before !== undefined) {
+    text = `Контекст сессии сжат. До сжатия: ~${formatTokenCount(before)} токенов.`;
+  }
+  const keyParts = [before ?? "?", after ?? "?", String(r.firstKeptEntryId ?? "")];
+  if (typeof r.summary === "string") keyParts.push(String(r.summary.length));
+  return { key: keyParts.join(":"), text };
+}
+
 export const useChat = create<ChatState>((set, get) => ({
   generation: 0,
   rpcRunning: false,
@@ -597,6 +619,7 @@ export const useChat = create<ChatState>((set, get) => ({
   fastFetchQuery: null,
   fastFetchError: null,
   fastFetchRunId: 0,
+  lastCompactionMessageKey: null,
 
   async init() {
     if (initOnce) return;
@@ -1037,6 +1060,9 @@ export const useChat = create<ChatState>((set, get) => ({
       if (command === "/cd") {
         const result = await rpc.cd(arg.trim());
         get().setCwd(result.cwd);
+        set((state) => ({
+          agentState: state.agentState ? { ...state.agentState, cwd: result.cwd } : state.agentState,
+        }));
         await get().refreshState().catch(() => undefined);
         set((state) => ({
           messages: [...state.messages, createSystemMessage(`→ ${result.displayPath}\n\n${result.entries}`)],
@@ -1564,13 +1590,36 @@ function handleAgentEvent(
       break;
     }
     case "compaction_end": {
-      set((s) => ({
-        agentState: s.agentState
-          ? { ...s.agentState, isCompacting: false }
-          : s.agentState,
-      }));
-      // после компакции перезагружаем историю
-      void get().reloadHistory();
+      const result = event.result;
+      const aborted = event.aborted === true;
+      const errorMessage = typeof event.errorMessage === "string" ? event.errorMessage : undefined;
+      const compaction = !aborted && !errorMessage && result ? formatCompactionMessage(result) : null;
+      set((s) => {
+        const shouldAppend = Boolean(compaction && compaction.key !== s.lastCompactionMessageKey);
+        return {
+          agentState: s.agentState
+            ? { ...s.agentState, isCompacting: false }
+            : s.agentState,
+          lastCompactionMessageKey: compaction?.key ?? s.lastCompactionMessageKey,
+          messages: shouldAppend ? [...s.messages, createSystemMessage(compaction!.text)] : s.messages,
+        };
+      });
+      // после компакции обновляем историю и статистику контекста, но оставляем видимый системный маркер
+      void Promise.all([
+        get().reloadHistory(),
+        get().refreshSessionStats(),
+        get().refreshState(),
+      ]).then(() => {
+        if (!compaction) return;
+        const current = get();
+        if (current.lastCompactionMessageKey !== compaction.key) return;
+        const hasMarker = current.messages.some((message) =>
+          message.blocks.some((block) => block.kind === "text" && block.text === compaction.text),
+        );
+        if (!hasMarker) {
+          set((s) => ({ messages: [...s.messages, createSystemMessage(compaction.text)] }));
+        }
+      });
       break;
     }
     case "turn_start":

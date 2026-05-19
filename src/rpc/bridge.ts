@@ -311,6 +311,14 @@ export interface CwdCommandResult {
   entries: string;
 }
 
+export interface CompactResult {
+  summary?: string;
+  firstKeptEntryId?: string;
+  tokensBefore?: number;
+  tokensAfter?: number;
+  details?: unknown;
+}
+
 export interface LsCommandResult {
   path: string;
   displayPath: string;
@@ -357,8 +365,8 @@ export async function setFollowUpMode(mode: QueueMode): Promise<void> {
   await request("set_follow_up_mode", { mode });
 }
 
-export async function compact(): Promise<unknown> {
-  return request("compact", {}, 120_000);
+export async function compact(): Promise<CompactResult> {
+  return request<CompactResult>("compact", {}, 120_000);
 }
 
 export async function setAutoCompaction(enabled: boolean): Promise<void> {
