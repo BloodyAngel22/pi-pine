@@ -206,6 +206,10 @@ let initOnce = false;
 let mcpLoadingTimer: number | null = null;
 let activeStartPromise: Promise<void> | null = null;
 let activeSwitch: { file: string; promise: Promise<void> } | null = null;
+const LIVE_STATS_REFRESH_INTERVAL_MS = 750;
+let statsRefreshTimer: number | null = null;
+let statsRefreshInFlight = false;
+let statsRefreshQueued = false;
 /** null = ещё не прочитали конфиг; true/false = есть/нет активных MCP-серверов */
 let mcpHasServers: boolean | null = null;
 
@@ -249,6 +253,41 @@ function setMcpLoading(
       mcpLoadingTimer = null;
     }, 2_000);
   }
+}
+
+function scheduleSessionStatsRefresh(get: () => ChatState) {
+  if (statsRefreshTimer !== null) return;
+
+  const run = () => {
+    statsRefreshTimer = null;
+
+    if (statsRefreshInFlight) {
+      statsRefreshQueued = true;
+      return;
+    }
+
+    statsRefreshInFlight = true;
+    void get()
+      .refreshSessionStats()
+      .catch(() => undefined)
+      .finally(() => {
+        statsRefreshInFlight = false;
+        if (statsRefreshQueued) {
+          statsRefreshQueued = false;
+          scheduleSessionStatsRefresh(get);
+        }
+      });
+  };
+
+  statsRefreshTimer = window.setTimeout(run, LIVE_STATS_REFRESH_INTERVAL_MS);
+}
+
+function clearScheduledSessionStatsRefresh() {
+  if (statsRefreshTimer !== null) {
+    window.clearTimeout(statsRefreshTimer);
+    statsRefreshTimer = null;
+  }
+  statsRefreshQueued = false;
 }
 
 async function rememberCurrentSession(cwd: string, sessionFile?: string) {
@@ -728,12 +767,14 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   async stopRpc() {
+    clearScheduledSessionStatsRefresh();
     await rpc.rpcStop().catch(() => undefined);
     setMcpLoading(set, false);
     set({ rpcRunning: false, agentState: null });
   },
 
   async restartRpc(opts) {
+    clearScheduledSessionStatsRefresh();
     // Полный перезапуск: stop → пауза → start.
     // Если safe=true — стираем сохранённые provider/model из localStorage,
     // чтобы pi не использовал сломанную модель и подхватил дефолт.
@@ -958,6 +999,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async newSession() {
     if (get().switching) return;
+    clearScheduledSessionStatsRefresh();
     set({ switching: true });
     try {
       await rpc.newSession();
@@ -993,6 +1035,7 @@ export const useChat = create<ChatState>((set, get) => ({
       set({ switching: true });
       try {
         debugMcp("switchSession:start", { file });
+        clearScheduledSessionStatsRefresh();
         // Мгновенно очищаем сообщения ДО отправки switch — пользователь
         // видит пустую сессию сразу, не ожидая завершения RPC.
         get().clearMessages();
@@ -1449,6 +1492,7 @@ function handleAgentEvent(
       break;
     }
     case "agent_end": {
+      clearScheduledSessionStatsRefresh();
       set((s) => ({
         messages: s.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
         currentAssistantId: null,
@@ -1496,6 +1540,9 @@ function handleAgentEvent(
         markCurrent: !isFinal && role === "assistant",
         replace: true,
       });
+      if (t === "message_update" && role === "assistant") {
+        scheduleSessionStatsRefresh(get);
+      }
       break;
     }
     case "tool_execution_start": {
