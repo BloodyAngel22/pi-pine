@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Send, Square, Paperclip, X, Terminal, Slash, Brain, Sparkles, ListTodo, Play } from "lucide-react";
 import clsx from "clsx";
@@ -23,6 +23,21 @@ interface Props {
 }
 
 const THINKING_CYCLE: ThinkingLevel[] = ["off", "low", "medium", "high"];
+
+/** Snapshot текста в композере для undo/redo */
+interface ComposerSnapshot {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+}
+
+const COMPOSER_UNDO_LIMIT = 200;
+
+/** Пауза в мс между нажатиями, после которой создаётся новая undo-группа */
+const COALESCE_TIMEOUT = 300;
+
+/* Символы, создающие границу undo-шага: пробельные, пунктуация, разделители */
+const WORD_BOUNDARY_RE = /[\s\p{P}\p{Z}]/u;
 
 function countPlanTasks(markdown: string): number {
   let count = 0;
@@ -97,6 +112,16 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const [planReady, setPlanReady] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  /** undo/redo стеки для композера (useRef чтобы избежать ререндеров) */
+  const composerUndoStack = useRef<ComposerSnapshot[]>([]);
+  const composerRedoStack = useRef<ComposerSnapshot[]>([]);
+  const composerCurrentSnapshot = useRef<ComposerSnapshot>({
+    value: "",
+    selectionStart: 0,
+    selectionEnd: 0,
+  });
+  /** Время последнего пользовательского ввода (для coalescing) */
+  const lastTypingTime = useRef(0);
   const assistantPlanReady = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
@@ -106,6 +131,74 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
     }
     return false;
   }, [messages]);
+
+  // --- undo/redo helpers ---
+
+  const pushUndoSnapshot = useCallback((snap: ComposerSnapshot) => {
+    const stack = composerUndoStack.current;
+    stack.push(snap);
+    if (stack.length > COMPOSER_UNDO_LIMIT) {
+      stack.splice(0, stack.length - COMPOSER_UNDO_LIMIT);
+    }
+  }, []);
+
+  const applyComposerSnapshot = useCallback((snap: ComposerSnapshot) => {
+    lastTypingTime.current = 0;
+    setValue(snap.value);
+    composerCurrentSnapshot.current = snap;
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.setSelectionRange(snap.selectionStart, snap.selectionEnd);
+      el.focus();
+    });
+  }, [setValue]);
+
+  const undoComposer = useCallback(() => {
+    const stack = composerUndoStack.current;
+    if (stack.length === 0) return;
+    composerRedoStack.current.push(composerCurrentSnapshot.current);
+    const snap = stack.pop()!;
+    applyComposerSnapshot(snap);
+  }, [applyComposerSnapshot]);
+
+  const redoComposer = useCallback(() => {
+    const stack = composerRedoStack.current;
+    if (stack.length === 0) return;
+    pushUndoSnapshot(composerCurrentSnapshot.current);
+    const snap = stack.pop()!;
+    applyComposerSnapshot(snap);
+  }, [applyComposerSnapshot, pushUndoSnapshot]);
+
+  /** Программная установка значения с сохранением истории */
+  const setComposerValue = useCallback((next: string, undoable?: boolean) => {
+    lastTypingTime.current = 0;
+    if (undoable) {
+      pushUndoSnapshot(composerCurrentSnapshot.current);
+      composerRedoStack.current = [];
+    }
+    const snap: ComposerSnapshot = {
+      value: next,
+      selectionStart: next.length,
+      selectionEnd: next.length,
+    };
+    composerCurrentSnapshot.current = snap;
+    setValue(next);
+  }, [pushUndoSnapshot, setValue]);
+
+  /** Сброс undo/redo истории (после отправки / инжекции) */
+  const resetComposerUndo = useCallback((next = "") => {
+    lastTypingTime.current = 0;
+    composerUndoStack.current = [];
+    composerRedoStack.current = [];
+    const snap: ComposerSnapshot = {
+      value: next,
+      selectionStart: next.length,
+      selectionEnd: next.length,
+    };
+    composerCurrentSnapshot.current = snap;
+    setValue(next);
+  }, [setValue]);
 
   // авторесайз
   useEffect(() => {
@@ -123,7 +216,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   // подстановка из set_editor_text / Edit
   useEffect(() => {
     if (composerInjection) {
-      setValue(composerInjection.text);
+      resetComposerUndo(composerInjection.text);
       clearInjection();
       setTimeout(() => ref.current?.focus(), 0);
     }
@@ -168,19 +261,19 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
       const picked = slashItems[Math.min(slashHighlight, slashItems.length - 1)];
       if (picked.command === "/btw") {
         onBtw?.();
-        setValue("");
+        resetComposerUndo("");
         setSlashOpen(false);
         return;
       }
       onSlash(picked.command, slashArg);
-      setValue("");
+      resetComposerUndo("");
       return;
     }
     const btwMatch = trimmed.match(/^\/btw(?:\s+([\s\S]+))?$/i);
     if (btwMatch) {
       const question = (btwMatch[1] ?? "").trim();
       if (!question) {
-        setValue("/btw ");
+        setComposerValue("/btw ", true);
         setSlashOpen(false);
         setTimeout(() => ref.current?.focus(), 0);
         return;
@@ -188,7 +281,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
       setHistory((h) => [...h, trimmed].slice(-50));
       setAttachments([]);
       setHIndex(-1);
-      setValue("");
+      resetComposerUndo("");
       onBtw?.(question);
       return;
     }
@@ -198,7 +291,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
     const imgs = attachments;
     setAttachments([]);
     setHIndex(-1);
-    setValue("");
+    resetComposerUndo("");
     await send(trimmed, imgs);
   };
 
@@ -216,7 +309,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
         return true;
       }
       if (items.length === 1) {
-        setValue(`/cd ${items[0].value}`);
+        setComposerValue(`/cd ${items[0].value}`, true);
         setCdCompletions([]);
         setTimeout(() => ref.current?.focus(), 0);
         return true;
@@ -239,7 +332,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
 
   const insertSlash = () => {
     if (!value.startsWith("/")) {
-      setValue("/" + value);
+      setComposerValue("/" + value, true);
       setSlashOpen(true);
       setTimeout(() => ref.current?.focus(), 0);
     }
@@ -295,7 +388,8 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
         open={skillsOpen}
         onClose={() => setSkillsOpen(false)}
         onInsert={(text) => {
-          setValue((v) => (v ? `${v}\n\n${text}` : text));
+          const cur = composerCurrentSnapshot.current.value;
+          setComposerValue(cur ? `${cur}\n\n${text}` : text, true);
           setTimeout(() => ref.current?.focus(), 0);
         }}
       />
@@ -414,7 +508,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                   type="button"
                   onMouseEnter={() => setCdHighlight(i)}
                   onClick={() => {
-                    setValue(`/cd ${item.value}`);
+                    setComposerValue(`/cd ${item.value}`, true);
                     setCdCompletions([]);
                     setTimeout(() => ref.current?.focus(), 0);
                   }}
@@ -436,12 +530,12 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               onPick={(cmd) => {
                 if (cmd === "/btw") {
                   onBtw?.();
-                  setValue("");
+                  resetComposerUndo("");
                   setSlashOpen(false);
                   return;
                 }
                 onSlash(cmd, slashArg);
-                setValue("");
+                resetComposerUndo("");
               }}
               onHover={setSlashHighlight}
             />
@@ -490,8 +584,40 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
             ref={ref}
             value={value}
             onChange={(e) => {
-              setValue(e.target.value);
-              const tt = e.target.value.trim();
+              const el = e.target;
+              const now = Date.now();
+              const newValue = el.value;
+              const oldValue = composerCurrentSnapshot.current.value;
+
+              // Определяем, нужен ли новый undo-шаг:
+              //   1) стек пуст (первый символ после отправки/инжекции)
+              //   2) таймер: пауза > 300мс между нажатиями
+              //   3) граница слова: дописан пробел или пунктуация
+              //   4) вставка из буфера / drag-n-drop
+              const stackEmpty = composerUndoStack.current.length === 0;
+              const timerExpired = now - lastTypingTime.current >= COALESCE_TIMEOUT;
+              const wasAppended = newValue.startsWith(oldValue) && newValue.length > oldValue.length;
+              const addedChars = wasAppended ? newValue.slice(oldValue.length) : "";
+              const lastAdded = addedChars[addedChars.length - 1] || "";
+              const isWordBoundary = wasAppended && WORD_BOUNDARY_RE.test(lastAdded);
+              const nativeEvent = (e.nativeEvent) as { inputType?: string } | undefined;
+              const isPaste =
+                nativeEvent?.inputType === "insertFromPaste" ||
+                nativeEvent?.inputType === "insertFromDrop";
+
+              if (stackEmpty || timerExpired || isWordBoundary || isPaste) {
+                pushUndoSnapshot(composerCurrentSnapshot.current);
+              }
+              composerRedoStack.current = [];
+              lastTypingTime.current = now;
+              // обновить текущий snapshot
+              composerCurrentSnapshot.current = {
+                value: newValue,
+                selectionStart: el.selectionStart,
+                selectionEnd: el.selectionEnd,
+              };
+              setValue(newValue);
+              const tt = newValue.trim();
               setSlashOpen(tt.startsWith("/") && !tt.includes("\n"));
               setSlashHighlight(0);
               setCdCompletions([]);
@@ -502,6 +628,23 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               }
             }}
             onKeyDown={(e) => {
+              // undo/redo: Ctrl+Z / Ctrl+Shift+Z + русские Ctrl+Я / Ctrl+Shift+Я
+              const mod = e.ctrlKey || e.metaKey;
+              const zKey = e.key === "z" || e.key === "Z" || e.key === "я" || e.key === "Я" || e.code === "KeyZ";
+              if (mod && !e.altKey && zKey) {
+                e.preventDefault();
+                if (e.shiftKey) {
+                  redoComposer();
+                } else {
+                  undoComposer();
+                }
+                // восстановить slash-меню после undo
+                const newTrimmed = composerCurrentSnapshot.current.value.trim();
+                setSlashOpen(newTrimmed.startsWith("/") && !newTrimmed.includes("\n"));
+                setCdCompletions([]);
+                setSlashHighlight(0);
+                return;
+              }
               if (isCdCommand && cdCompletions.length > 0) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
@@ -517,7 +660,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                   e.preventDefault();
                   const picked = cdCompletions[cdHighlight];
                   if (picked) {
-                    setValue(`/cd ${picked.value}`);
+                    setComposerValue(`/cd ${picked.value}`, true);
                     setCdCompletions([]);
                   }
                   return;
@@ -553,7 +696,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                     void completeCd();
                     return;
                   }
-                  setValue(slashItems[slashHighlight].command + " ");
+                  setComposerValue(slashItems[slashHighlight].command + " ", true);
                   setSlashOpen(false);
                   return;
                 }
@@ -568,7 +711,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                 if (history.length === 0) return;
                 const next = hIndex < 0 ? history.length - 1 : Math.max(0, hIndex - 1);
                 setHIndex(next);
-                setValue(history[next] ?? "");
+                setComposerValue(history[next] ?? "", true);
                 return;
               }
               if (e.key === "ArrowDown" && hIndex >= 0) {
@@ -576,10 +719,10 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                 const next = hIndex + 1;
                 if (next >= history.length) {
                   setHIndex(-1);
-                  setValue("");
+                  setComposerValue("", true);
                 } else {
                   setHIndex(next);
-                  setValue(history[next] ?? "");
+                  setComposerValue(history[next] ?? "", true);
                 }
                 return;
               }
@@ -702,6 +845,9 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
           </span>
           <span>
             <kbd className="pi-kbd">Shift+Enter</kbd> новая строка
+          </span>
+          <span>
+            <kbd className="pi-kbd">Ctrl+Z</kbd>/<kbd className="pi-kbd">Ctrl+Я</kbd> отменить
           </span>
           <span>
             <kbd className="pi-kbd">/</kbd> команды
