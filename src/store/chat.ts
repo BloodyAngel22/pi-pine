@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import * as rpc from "@/rpc/bridge";
+import { useVirtualDisplay } from "@/store/virtualDisplay";
 import type {
   AnyContent,
   Model,
@@ -25,6 +26,8 @@ export interface UiBlockTool {
   input?: unknown;
   output?: unknown;
   details?: unknown;
+  /** Изображения, встроенные в результат инструмента (screenshot/interact) */
+  images?: UiBlockImage[];
   status: "running" | "done" | "error";
 }
 export interface UiBlockImage {
@@ -431,6 +434,7 @@ function agentContentToBlocks(content: unknown): UiBlock[] {
       // Иногда result inline в content — поддержим, но это редкий случай.
       const id = String(obj.tool_use_id ?? obj.toolUseId ?? obj.toolCallId ?? "");
       const text = extractToolText(obj.content ?? obj.result);
+      const images = extractToolImages(obj.content ?? obj.result);
       const isError = Boolean(obj.is_error ?? obj.isError);
       const details = obj.details;
       const existing = blocks.find(
@@ -438,6 +442,7 @@ function agentContentToBlocks(content: unknown): UiBlock[] {
       );
       if (existing) {
         existing.output = text;
+        existing.images = images.length > 0 ? images : existing.images;
         existing.details = details;
         existing.status = isError ? "error" : "done";
       } else {
@@ -446,6 +451,7 @@ function agentContentToBlocks(content: unknown): UiBlock[] {
           toolUseId: id || newId(),
           name: "tool",
           output: text,
+          images: images.length > 0 ? images : undefined,
           details,
           status: isError ? "error" : "done",
         });
@@ -472,6 +478,22 @@ function isHiddenCwdChangeMessage(message: Record<string, unknown>): boolean {
     return item?.type === "text" && typeof item.text === "string" && /^\[Working directory changed to: .+\]$/.test(item.text.trim());
   }
   return false;
+}
+
+/** Извлечь изображения из tool result (`{content:[{type:"image",data,mimeType}]}`). */
+function extractToolImages(value: unknown): UiBlockImage[] {
+  if (!value || typeof value !== "object") return [];
+  const o = value as Record<string, unknown>;
+  if (!Array.isArray(o.content)) return [];
+  const images: UiBlockImage[] = [];
+  for (const c of o.content) {
+    if (!c || typeof c !== "object") continue;
+    const co = c as Record<string, unknown>;
+    if (co.type === "image" && typeof co.data === "string" && typeof co.mimeType === "string") {
+      images.push({ kind: "image", mimeType: co.mimeType, data: co.data });
+    }
+  }
+  return images;
 }
 
 /** Извлечь текст из tool result (`{content:[{type:"text",text:"..."}]}`). */
@@ -706,12 +728,22 @@ export const useChat = create<ChatState>((set, get) => ({
         } catch {
           mcpHasServers = null;
         }
+        // Virtual display must exist before pi starts: GUI apps launched by the agent
+        // inherit DISPLAY=:99 and appear in the isolated environment instead of the user's desktop.
+        await useVirtualDisplay.getState().start();
         const res = await rpc.rpcStart({
           cliPath: cliPathOverride ?? null,
           cwd,
           provider: undefined,
           model: undefined,
           sessionFile: rememberedSessionFile ?? undefined,
+          env: {
+            DISPLAY: ":99",
+            GDK_BACKEND: "x11",
+            QT_QPA_PLATFORM: "xcb",
+            ELECTRON_OZONE_PLATFORM_HINT: "x11",
+            NO_AT_BRIDGE: "1",
+          },
         });
         setMcpLoading(set, true);
         set({
@@ -951,6 +983,7 @@ export const useChat = create<ChatState>((set, get) => ({
           const toolCallId = String(m.toolCallId ?? "");
           if (!toolCallId) continue;
           const text = extractToolText(m.content);
+          const images = extractToolImages(m.content);
           const isError = Boolean(m.isError);
           for (let i = ui.length - 1; i >= 0; i--) {
             const um = ui[i];
@@ -959,6 +992,7 @@ export const useChat = create<ChatState>((set, get) => ({
             );
             if (target) {
               target.output = text;
+              target.images = images.length > 0 ? images : target.images;
               target.details = m.details;
               target.status = isError ? "error" : "done";
               if (!target.name || target.name === "tool") {
@@ -1515,9 +1549,11 @@ function handleAgentEvent(
         if (toolCallId) {
           const isError = Boolean(piMsg.isError);
           const text = extractToolText(piMsg.content);
+          const images = extractToolImages(piMsg.content);
           updateToolBlock(set, get, toolCallId, {
             name: String(piMsg.toolName ?? "tool"),
             output: text,
+            images: images.length > 0 ? images : undefined,
             details: piMsg.details,
             status: isError ? "error" : "done",
           });
@@ -1582,10 +1618,12 @@ function handleAgentEvent(
       const name = String(event.toolName ?? event.name ?? "tool");
       const output = extractToolText(event.result ?? event.output);
       const details = extractToolDetails(event.result ?? event.output);
+      const images = extractToolImages(event.result ?? event.output);
       updateToolBlock(set, get, toolUseId, {
         name,
         output,
         details,
+        images: images.length > 0 ? images : undefined,
         status: isError ? "error" : "done",
       });
       if (name === "fast_context") {

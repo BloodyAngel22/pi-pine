@@ -6,10 +6,12 @@ mod rpc;
 mod sessions;
 mod terminal;
 mod themes;
+mod virtual_display;
 
 use rpc::RpcManager;
 use std::sync::Arc;
 use tauri::Manager;
+use virtual_display::VirtualDisplayManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +23,7 @@ pub fn run() {
             let manager = Arc::new(RpcManager::new(app.handle().clone()));
             app.manage(manager);
             app.manage(Arc::new(terminal::TerminalManager::default()));
+            app.manage(VirtualDisplayManager::new());
             // Запускаем watcher файла auth.json
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -70,6 +73,11 @@ pub fn run() {
             rpc::rpc_send,
             rpc::rpc_stop,
             rpc::rpc_status,
+            // Virtual display
+            virtual_display::start_virtual_display,
+            virtual_display::stop_virtual_display,
+            virtual_display::virtual_display_status,
+            virtual_display::screenshot_virtual_display,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

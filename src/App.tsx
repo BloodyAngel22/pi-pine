@@ -12,6 +12,7 @@ import { Composer } from "@/components/Chat/Composer";
 import { PromptSearchPalette } from "@/components/Chat/PromptSearchPalette";
 import { BtwOverlay } from "@/components/Chat/BtwOverlay";
 import { StatusBar } from "@/components/Chat/StatusBar";
+import { AgentScreen } from "@/components/VirtualDisplay";
 import { TerminalPanel } from "@/components/Terminal/TerminalPanel";
 import { TerminalErrorBoundary } from "@/components/Terminal/TerminalErrorBoundary";
 import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
@@ -365,6 +366,7 @@ export default function App() {
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <Toasts />
       <DialogQueue />
+      <AgentScreen />
     </div>
   );
 }

@@ -283,6 +283,30 @@ function AskUserDialog({
   );
 }
 
+function permissionLabel(permissionValue: string): { typeLabel: string; description: string } | null {
+  if (permissionValue === "screenshot:desktop") {
+    return {
+      typeLabel: "Скриншот рабочего стола",
+      description: "Агент делает скриншот вашего экрана. Изображение будет отправлено AI-модели для анализа.",
+    };
+  }
+  if (permissionValue.startsWith("interact:")) {
+    const action = permissionValue.slice("interact:".length);
+    const actionLabels: Record<string, string> = {
+      click: "Клик мышью",
+      move: "Перемещение мыши",
+      type: "Ввод текста с клавиатуры",
+      key: "Нажатие клавиш",
+      scroll: "Прокрутка",
+    };
+    return {
+      typeLabel: actionLabels[action] ?? `Interact: ${action}`,
+      description: "Агент управляет вашим рабочим столом: мышью и клавиатурой. Это может перемещать курсор, кликать, печатать текст или нажимать клавиши.",
+    };
+  }
+  return null;
+}
+
 function PermissionDialog({
   req,
   onResolve,
@@ -292,7 +316,9 @@ function PermissionDialog({
 }) {
   const [scope, setScope] = useState<"session" | "local" | "global">("session");
   const [match, setMatch] = useState(req.permissionValue);
-  const typeLabel = req.permissionType === "bash" ? "Команда" : req.permissionType === "file" ? "Файл" : "Инструмент";
+  const custom = permissionLabel(req.permissionValue);
+  const typeLabel = custom?.typeLabel ?? (req.permissionType === "bash" ? "Команда" : req.permissionType === "file" ? "Файл" : "Инструмент");
+  const description = custom?.description;
   const allowAlways = () => onResolve({ decision: "allow-always", scope, match: match.trim() || undefined });
   const denyAlways = () => onResolve({ decision: "deny-always", scope, match: match.trim() || undefined });
 
@@ -321,7 +347,7 @@ function PermissionDialog({
     >
       <div className="space-y-3">
         <div className="text-sm text-(--color-fg-mute)">
-          Агент хочет выполнить действие, которое требует подтверждения.
+          {description ?? "Агент хочет выполнить действие, которое требует подтверждения."}
         </div>
         <div className="border border-(--color-border) rounded bg-(--color-bg) p-3 space-y-1">
           <div className="text-[10px] uppercase text-(--color-fg-dim)">{typeLabel}</div>

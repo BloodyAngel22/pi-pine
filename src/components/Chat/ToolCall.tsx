@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2 } from "lucide-react";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
 
@@ -262,6 +262,12 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   if (block.name === "fast_fetch") {
     return <FastFetchToolCall block={block} open={open} setOpen={setOpen} />;
   }
+  if (block.name === "screenshot") {
+    return <ScreenshotToolCall block={block} open={open} setOpen={setOpen} />;
+  }
+  if (block.name === "interact") {
+    return <InteractToolCall block={block} open={open} setOpen={setOpen} />;
+  }
   if (isFileMutationTool(block.name)) {
     return <FileMutationToolCall block={block} />;
   }
@@ -289,7 +295,10 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
         <span className="font-mono text-(--color-fg-mute) truncate">
           {shortInput(block.input)}
         </span>
-        <span className="ml-auto text-(--color-fg-dim)">
+        <span className="ml-auto flex items-center gap-1.5 text-(--color-fg-dim)">
+          {block.images && block.images.length > 0 && (
+            <ImageIcon size={10} />
+          )}
           {isRunning ? "…" : isError ? "ошибка" : ""}
         </span>
       </button>
@@ -310,6 +319,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
                 {pretty(block.output)}
               </pre>
             </div>
+          )}
+          {block.images && block.images.length > 0 && (
+            <ToolImages images={block.images} />
           )}
         </div>
       )}
@@ -376,6 +388,221 @@ function FastFetchToolCall({
               {pretty(block.output)}
             </pre>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScreenshotToolCall({
+  block,
+  open,
+  setOpen,
+}: {
+  block: UiBlockTool;
+  open: boolean;
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
+}) {
+  const isError = block.status === "error";
+  const isRunning = block.status === "running";
+  const input = block.input as Record<string, unknown> | undefined;
+  const url = typeof input?.url === "string" ? input.url : undefined;
+  const mode = url ? "web" : "desktop";
+  const hasImages = block.images && block.images.length > 0;
+
+  return (
+    <div
+      className={clsx(
+        "my-1 rounded-md border text-xs",
+        isError
+          ? "border-(--color-danger)/30 bg-(--color-danger)/5"
+          : "border-(--color-accent)/20 bg-(--color-accent)/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-(--color-bg-mute) rounded-md text-left"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {isError ? (
+          <AlertCircle size={12} className="text-(--color-danger)" />
+        ) : (
+          <Camera size={12} className="text-(--color-accent)" />
+        )}
+        <span className="font-mono text-(--color-accent)">screenshot</span>
+        <span className="font-mono text-(--color-fg) truncate min-w-0" title={url ?? mode}>
+          {url ?? mode}
+        </span>
+        <span className="ml-auto shrink-0 text-(--color-fg-dim) flex items-center gap-1.5">
+          {hasImages && !open && (
+            <span className="flex -space-x-1">
+              {block.images!.slice(0, 3).map((img, idx) => (
+                <img
+                  key={idx}
+                  src={`data:${img.mimeType};base64,${img.data}`}
+                  alt=""
+                  className="w-5 h-5 rounded object-cover border border-(--color-border)"
+                />
+              ))}
+            </span>
+          )}
+          {isRunning ? "capturing…" : isError ? "ошибка" : hasImages ? "" : "done"}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-[11px] text-(--color-fg-dim)">
+            <div>
+              <span className="uppercase">mode</span>: {mode}
+            </div>
+            {url && (
+              <div className="truncate" title={url}>
+                <span className="uppercase">url</span>: {url}
+              </div>
+            )}
+          </div>
+          {block.output != null && block.output !== "" && (
+            <div>
+              <div className="text-(--color-fg-dim) mb-0.5">output</div>
+              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+                {pretty(block.output)}
+              </pre>
+            </div>
+          )}
+          {hasImages && <ToolImages images={block.images} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InteractToolCall({
+  block,
+  open,
+  setOpen,
+}: {
+  block: UiBlockTool;
+  open: boolean;
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
+}) {
+  const isError = block.status === "error";
+  const isRunning = block.status === "running";
+  const input = block.input as Record<string, unknown> | undefined;
+  const action = typeof input?.action === "string" ? input.action : "?";
+  const hasScreenshot = input?.screenshot === true;
+  const x = typeof input?.x === "number" ? input.x : undefined;
+  const y = typeof input?.y === "number" ? input.y : undefined;
+  const text = typeof input?.text === "string" ? input.text : undefined;
+  const keys = Array.isArray(input?.keys) ? (input.keys as string[]).join(" + ") : undefined;
+  const clicks = typeof input?.clicks === "number" ? input.clicks : undefined;
+
+  const detailText =
+    action === "click"
+      ? x != null && y != null
+        ? `(${x}, ${y})`
+        : ""
+      : action === "type" && text
+        ? `"${text.length > 30 ? text.slice(0, 30) + "…" : text}"`
+        : action === "key" && keys
+          ? keys
+          : action === "move" && x != null && y != null
+            ? `(${x}, ${y})`
+            : action === "scroll"
+              ? clicks != null
+                ? clicks > 0
+                  ? `${clicks} down`
+                  : `${Math.abs(clicks)} up`
+                : ""
+              : "";
+
+  const hasImages = block.images && block.images.length > 0;
+
+  return (
+    <div
+      className={clsx(
+        "my-1 rounded-md border text-xs",
+        isError
+          ? "border-(--color-danger)/30 bg-(--color-danger)/5"
+          : "border-(--color-accent)/20 bg-(--color-accent)/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-(--color-bg-mute) rounded-md text-left"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {isError ? (
+          <AlertCircle size={12} className="text-(--color-danger)" />
+        ) : (
+          <MousePointer2 size={12} className="text-(--color-accent)" />
+        )}
+        <span className="font-mono text-(--color-accent)">interact</span>
+        <span className="font-mono text-(--color-fg-mute)">{action}</span>
+        {detailText && (
+          <span className="font-mono text-(--color-fg) truncate min-w-0" title={detailText}>
+            {detailText}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 text-(--color-fg-dim) flex items-center gap-1.5">
+          {hasScreenshot && <Camera size={10} className="text-(--color-accent)" />}
+          {hasImages && !open && (
+            <span className="flex -space-x-1">
+              {block.images!.slice(0, 3).map((img, idx) => (
+                <img
+                  key={idx}
+                  src={`data:${img.mimeType};base64,${img.data}`}
+                  alt=""
+                  className="w-5 h-5 rounded object-cover border border-(--color-border)"
+                />
+              ))}
+            </span>
+          )}
+          {isRunning ? "…" : isError ? "ошибка" : ""}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-[11px] text-(--color-fg-dim)">
+            <div>
+              <span className="uppercase">action</span>: {action}
+            </div>
+            {x != null && (
+              <div>
+                <span className="uppercase">x</span>: {x}
+              </div>
+            )}
+            {y != null && (
+              <div>
+                <span className="uppercase">y</span>: {y}
+              </div>
+            )}
+            {text && (
+              <div className="col-span-2 truncate" title={text}>
+                <span className="uppercase">text</span>: {text}
+              </div>
+            )}
+            {keys && (
+              <div className="col-span-2 truncate" title={keys}>
+                <span className="uppercase">keys</span>: {keys}
+              </div>
+            )}
+            {clicks != null && (
+              <div>
+                <span className="uppercase">clicks</span>: {clicks > 0 ? `${clicks} down` : `${Math.abs(clicks)} up`}
+              </div>
+            )}
+          </div>
+          {block.output != null && block.output !== "" && (
+            <div>
+              <div className="text-(--color-fg-dim) mb-0.5">output</div>
+              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+                {pretty(block.output)}
+              </pre>
+            </div>
+          )}
+          {hasImages && <ToolImages images={block.images} />}
         </div>
       )}
     </div>
@@ -704,6 +931,40 @@ function Metric({ label, value, accent }: { label: string; value?: number; accen
       <div className="text-(--color-fg-dim)">{label}</div>
       <div className={clsx("font-mono", accent ? "text-(--color-accent)" : "text-(--color-fg-mute)")}>
         {value == null ? "—" : value.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function ToolImages({ images }: { images: UiBlockTool["images"] }) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  if (!images || images.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <div className="text-(--color-fg-dim) mb-0.5">
+        <ImageIcon size={11} className="inline mr-1" />
+        screenshot {images.length > 1 ? `(${images.length})` : ""}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {images.map((img, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+            className="group relative"
+          >
+            <img
+              src={`data:${img.mimeType};base64,${img.data}`}
+              alt=""
+              className={`
+                rounded-md border border-(--color-border) object-cover
+                ${expandedIdx === idx ? "max-h-96 w-auto" : "max-h-32 w-auto"}
+                transition-all duration-200
+              `}
+            />
+            <div className="absolute inset-0 rounded-md ring-1 ring-inset ring-(--color-accent)/0 group-hover:ring-(--color-accent)/30 transition-all" />
+          </button>
+        ))}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
-import { Folder, Cpu, Brain, Hash, DollarSign, Gauge, RefreshCw } from "lucide-react";
+import { Folder, Cpu, Brain, Hash, DollarSign, Gauge, Monitor, RefreshCw } from "lucide-react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
+import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { shortenPath } from "@/utils/path";
 import { ExtensionsPill } from "./ExtensionsPill";
 import { FastContextIndicator } from "./FastContextIndicator";
@@ -28,6 +29,8 @@ export function StatusBar() {
 
   const cwdShort = shortenPath(cwd, home);
   const totalTokens = stats?.tokens?.total ?? 0;
+  const vdRunning = useVirtualDisplay((s) => s.status?.running ?? false);
+  const vdVisible = useVirtualDisplay((s) => s.visible);
 
   return (
     <div className="pi-statusbar">
@@ -121,6 +124,19 @@ export function StatusBar() {
           </span>
         )}
         {extEntries.length > 0 && <ExtensionsPill items={extEntries} />}
+        <span className="pi-statusbar-sep">·</span>
+        <button
+          type="button"
+          className={
+            "pi-statusbar-item cursor-pointer " +
+            (vdVisible || vdRunning ? "text-(--color-accent)" : "")
+          }
+          onClick={() => useVirtualDisplay.getState().toggleVisible()}
+          title="Экран агента"
+        >
+          <Monitor size={11} />
+          <span>Экран</span>
+        </button>
       </div>
     </div>
   );
