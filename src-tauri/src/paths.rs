@@ -27,7 +27,11 @@ fn expand_home(raw: &str) -> PathBuf {
 }
 
 #[tauri::command]
-pub fn complete_directories(cwd: String, input: String, limit: Option<usize>) -> Result<Vec<DirectoryCompletion>, String> {
+pub fn complete_directories(
+    cwd: String,
+    input: String,
+    limit: Option<usize>,
+) -> Result<Vec<DirectoryCompletion>, String> {
     let max = limit.unwrap_or(80).min(200);
     let expanded = expand_home(&input);
     let candidate = if expanded.is_absolute() {
@@ -39,11 +43,18 @@ pub fn complete_directories(cwd: String, input: String, limit: Option<usize>) ->
         (candidate, String::new())
     } else {
         (
-            candidate.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(&cwd)),
-            candidate.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+            candidate
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from(&cwd)),
+            candidate
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
         )
     };
-    let entries = std::fs::read_dir(&base_dir).map_err(|e| format!("{}: {}", base_dir.display(), e))?;
+    let entries =
+        std::fs::read_dir(&base_dir).map_err(|e| format!("{}: {}", base_dir.display(), e))?;
     let mut out = Vec::new();
     for entry in entries.flatten() {
         if out.len() >= max {
@@ -173,8 +184,12 @@ pub fn detect_environment() -> EnvironmentInfo {
         home: home.as_ref().map(|h| h.to_string_lossy().into_owned()),
         agent_dir: agent_dir.as_ref().map(|p| p.to_string_lossy().into_owned()),
         auth_file: auth_file.as_ref().map(|p| p.to_string_lossy().into_owned()),
-        settings_file: settings_file.as_ref().map(|p| p.to_string_lossy().into_owned()),
-        sessions_dir: sessions_dir.as_ref().map(|p| p.to_string_lossy().into_owned()),
+        settings_file: settings_file
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned()),
+        sessions_dir: sessions_dir
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned()),
         pi_binary: find_pi_binary(),
         default_cwd,
     }
@@ -366,11 +381,10 @@ pub fn watch_auth(app: AppHandle) {
     }
     while let Ok(res) = rx.recv() {
         if let Ok(event) = res {
-            let touched = event.paths.iter().any(|p| {
-                p.file_name()
-                    .map(|n| n == "auth.json")
-                    .unwrap_or(false)
-            });
+            let touched = event
+                .paths
+                .iter()
+                .any(|p| p.file_name().map(|n| n == "auth.json").unwrap_or(false));
             if touched {
                 let _ = app.emit("pi://auth-changed", ());
             }

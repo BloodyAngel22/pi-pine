@@ -44,6 +44,15 @@ export interface ImageContent {
   mimeType: string;
 }
 
+export interface FileContent {
+  type: "file";
+  data: string;
+  mimeType: string;
+  name: string;
+}
+
+export type AttachmentContent = ImageContent | FileContent;
+
 export interface TextContent {
   type: "text";
   text: string;

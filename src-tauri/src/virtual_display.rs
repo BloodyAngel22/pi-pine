@@ -99,11 +99,24 @@ pub fn start_virtual_display(
 
     // 1) Xvfb
     let xvfb = Command::new("Xvfb")
-        .args([&display, "-screen", "0", &screen, "-ac", "+extension", "RANDR"])
+        .args([
+            &display,
+            "-screen",
+            "0",
+            &screen,
+            "-ac",
+            "+extension",
+            "RANDR",
+        ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("Failed to start Xvfb: {}. Is xvfb installed? (sudo pacman -S xorg-server-xvfb)", e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start Xvfb: {}. Is xvfb installed? (sudo pacman -S xorg-server-xvfb)",
+                e
+            )
+        })?;
 
     // Небольшая пауза, чтобы Xvfb инициализировался
     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -115,23 +128,27 @@ pub fn start_virtual_display(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("Failed to start openbox: {}. Is openbox installed? (sudo pacman -S openbox)", e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start openbox: {}. Is openbox installed? (sudo pacman -S openbox)",
+                e
+            )
+        })?;
 
     // 3) x11vnc
     let x11vnc = Command::new("x11vnc")
         .args([
-            "-display",
-            &display,
-            "-forever",
-            "-nopw",
-            "-rfbport",
-            "5900",
-            "-shared",
+            "-display", &display, "-forever", "-nopw", "-rfbport", "5900", "-shared",
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("Failed to start x11vnc: {}. Is x11vnc installed? (sudo pacman -S x11vnc)", e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to start x11vnc: {}. Is x11vnc installed? (sudo pacman -S x11vnc)",
+                e
+            )
+        })?;
 
     guard.xvfb = Some(xvfb);
     guard.openbox = Some(openbox);
@@ -150,9 +167,7 @@ pub fn start_virtual_display(
 }
 
 #[tauri::command]
-pub fn stop_virtual_display(
-    state: tauri::State<'_, VirtualDisplayManager>,
-) -> Result<(), String> {
+pub fn stop_virtual_display(state: tauri::State<'_, VirtualDisplayManager>) -> Result<(), String> {
     let mut guard = state.inner.lock().map_err(|e| e.to_string())?;
 
     if let Some(mut child) = guard.x11vnc.take() {
@@ -179,7 +194,10 @@ pub fn virtual_display_status(
 
     // Проверяем жив ли Xvfb
     let alive = guard.xvfb.as_mut().map_or(false, |child| {
-        child.try_wait().map(|status| status.is_none()).unwrap_or(false)
+        child
+            .try_wait()
+            .map(|status| status.is_none())
+            .unwrap_or(false)
     });
 
     if !alive {
@@ -212,10 +230,13 @@ pub fn screenshot_virtual_display(
     }
 
     let display = &guard.display;
-    let output_path = format!("/tmp/vs-rust-{}.png", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis());
+    let output_path = format!(
+        "/tmp/vs-rust-{}.png",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+    );
 
     // Запускаем import
     let output = Command::new("import")
@@ -229,8 +250,8 @@ pub fn screenshot_virtual_display(
     }
 
     // Читаем файл
-    let bytes = std::fs::read(&output_path)
-        .map_err(|e| format!("Failed to read screenshot: {}", e))?;
+    let bytes =
+        std::fs::read(&output_path).map_err(|e| format!("Failed to read screenshot: {}", e))?;
 
     let data = base64_encode(&bytes);
 

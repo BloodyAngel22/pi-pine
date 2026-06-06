@@ -116,10 +116,11 @@ body {
   border-radius: 3px;
 }
 .md pre {
+  position: relative;
   background: var(--color-bg-mute);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 8px 28px 8px 10px;
   overflow-x: auto;
   font-size: 12px;
   margin: 0.4rem 0;

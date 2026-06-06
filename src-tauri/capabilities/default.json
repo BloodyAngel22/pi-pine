@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Pi Pine default capability set",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -15,6 +17,9 @@
     "fs:allow-home-read",
     "fs:allow-home-read-recursive",
     "dialog:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-read-image"
   ]
 }

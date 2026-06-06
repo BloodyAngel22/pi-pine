@@ -8,7 +8,7 @@ import { t } from "@/i18n/ru";
 import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
 import { ContextIndicator } from "./ContextIndicator";
 import { SkillsPalette } from "./SkillsPalette";
-import type { ImageContent, ThinkingLevel } from "@/rpc/types";
+import type { AttachmentContent, FileContent, ImageContent, ThinkingLevel } from "@/rpc/types";
 
 interface DirectoryCompletion {
   value: string;
@@ -75,6 +75,13 @@ function blocksText(blocks: UiBlock[]): string {
     .join("\n");
 }
 
+const FileIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+    <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+  </svg>
+);
+
 export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
   const isCompacting = useChat((s) => s.agentState?.isCompacting ?? false);
@@ -107,7 +114,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [cdCompletions, setCdCompletions] = useState<DirectoryCompletion[]>([]);
   const [cdHighlight, setCdHighlight] = useState(0);
-  const [attachments, setAttachments] = useState<ImageContent[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentContent[]>([]);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [planReady, setPlanReady] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -226,14 +233,17 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    const next: ImageContent[] = [];
+    const next: AttachmentContent[] = [];
     for (const f of Array.from(files)) {
-      if (!f.type.startsWith("image/")) continue;
       const buf = await f.arrayBuffer();
       const b64 = btoa(
         new Uint8Array(buf).reduce((a, b) => a + String.fromCharCode(b), ""),
       );
-      next.push({ type: "image", data: b64, mimeType: f.type });
+      if (f.type.startsWith("image/")) {
+        next.push({ type: "image", data: b64, mimeType: f.type });
+      } else {
+        next.push({ type: "file", data: b64, mimeType: f.type || "application/octet-stream", name: f.name });
+      }
     }
     if (next.length) setAttachments((a) => [...a, ...next]);
     if (fileRef.current) fileRef.current.value = "";
@@ -288,11 +298,12 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
     if (trimmed) {
       setHistory((h) => [...h, trimmed].slice(-50));
     }
-    const imgs = attachments;
+    const imgs = attachments.filter((a): a is ImageContent => a.type === "image");
+    const files = attachments.filter((a): a is FileContent => a.type === "file");
     setAttachments([]);
     setHIndex(-1);
     resetComposerUndo("");
-    await send(trimmed, imgs);
+    await send(trimmed, imgs, { files });
   };
 
   const completeCd = async () => {
@@ -381,6 +392,233 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
       window.clearInterval(timer);
     };
   }, [planMode, planFilePath, isStreaming]);
+
+  // Ctrl+Shift+D — отладка буфера обмена
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        (async () => {
+          try {
+            const info = await invoke("clipboard_debug");
+            console.log("[CLIPBOARD DEBUG]", JSON.stringify(info, null, 2));
+            alert(`Clipboard debug info:\n\n${JSON.stringify(info, null, 2)}`);
+          } catch (err) {
+            console.error("[CLIPBOARD DEBUG ERROR]", err);
+            alert(`clipboard_debug error: ${err}`);
+          }
+        })();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const toBase64 = (data: Uint8Array): string =>
+    btoa(data.reduce((a, b) => a + String.fromCharCode(b), ""));
+
+  const mimeFromExt = (name: string, fallback = "application/octet-stream"): string => {
+    const ext = name.split(".").pop()?.toLowerCase() || "";
+    const map: Record<string, string> = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+      gif: "image/gif", webp: "image/webp", bmp: "image/bmp", svg: "image/svg+xml",
+      ico: "image/x-icon", tiff: "image/tiff", tif: "image/tiff",
+      pdf: "application/pdf", zip: "application/zip",
+      txt: "text/plain", md: "text/markdown", json: "application/json",
+      csv: "text/csv", xml: "application/xml",
+      js: "text/javascript", ts: "text/typescript", py: "text/x-python",
+      rs: "text/x-rust", css: "text/css", html: "text/html", sh: "application/x-sh",
+    };
+    return map[ext] || fallback;
+  };
+
+  const readFileFromPath = async (path: string, cwd?: string): Promise<AttachmentContent | null> => {
+    // Обрезаем trailing whitespace/\r/\n — Hyprland/Wayland иногда
+    // добавляет \r к путям в clipboard.
+    const clean = path.trim();
+    // Пробуем сначала исходный путь
+    const attempts = [clean];
+    // Если путь относительный — пробуем от CWD
+    if (!clean.startsWith("/") && cwd) {
+      attempts.push(`${cwd}/${clean}`);
+    }
+    for (const tryPath of attempts) {
+      try {
+        const { readFile } = await import("@tauri-apps/plugin-fs");
+        const buf = await readFile(tryPath);
+        const b64 = toBase64(buf);
+        const name = tryPath.split("/").pop() || "file";
+        const mime = mimeFromExt(name);
+        if (mime.startsWith("image/")) {
+          return { type: "image", data: b64, mimeType: mime };
+        }
+        return { type: "file", data: b64, mimeType: mime, name };
+      } catch (err) {
+        console.warn("Paste: cannot read file at", tryPath, err);
+      }
+    }
+    return null;
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items);
+    let added = false;
+
+    // ---------------------------------------------------------------
+    // 1) clipboard-manager readImage() (только изображения)
+    //    Читает данные изображения напрямую из буфера обмена — работает
+    //    для скриншотов (Print Screen), копирования картинки из браузера.
+    // ---------------------------------------------------------------
+    if (!added) {
+      try {
+        const { readImage } = await import("@tauri-apps/plugin-clipboard-manager");
+        const img: import("@tauri-apps/api/image").Image | null =
+          await readImage().catch(() => null);
+        if (img) {
+          e.preventDefault();
+          added = true;
+          const rgba = await img.rgba();
+          const size = await img.size();
+          const canvas = document.createElement("canvas");
+          canvas.width = size.width;
+          canvas.height = size.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            const imageData = ctx.createImageData(size.width, size.height);
+            imageData.data.set(rgba);
+            ctx.putImageData(imageData, 0, 0);
+            const pngB64 = canvas.toDataURL("image/png").split(",")[1];
+            if (pngB64) {
+              setAttachments((a) => [
+                ...a,
+                { type: "image" as const, data: pngB64, mimeType: "image/png" },
+              ]);
+            }
+          }
+        }
+      } catch {
+        // plugin not available — fall through
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 2) Кастомная Rust-команда read_clipboard_uri_list
+    //    Читает text/uri-list через wl-paste / xclip / arboard.
+    //    Работает для файлов любого типа из файлового менеджера.
+    // ---------------------------------------------------------------
+    if (!added) {
+      try {
+        const paths: string[] = await invoke("read_clipboard_uri_list");
+        if (paths.length > 0) {
+          const results = await Promise.all(paths.map((p) => readFileFromPath(p, cwd)));
+          const valid = results.filter((r): r is AttachmentContent => r !== null);
+          if (valid.length) {
+            e.preventDefault();
+            added = true;
+            setAttachments((a) => [...a, ...valid]);
+          }
+        }
+      } catch (err) {
+        console.warn("Paste: read_clipboard_uri_list failed", err);
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 3) clipboardData.items[].kind === "file"
+    //    Для скриншотов и копирования из браузера (file items).
+    // ---------------------------------------------------------------
+    if (!added) {
+      const fileItems = items.filter((item) => item.kind === "file");
+      if (fileItems.length > 0) {
+        e.preventDefault();
+        added = true;
+        const next: AttachmentContent[] = [];
+        for (const item of fileItems) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          const buf = new Uint8Array(await file.arrayBuffer());
+          const b64 = toBase64(buf);
+          if (file.type.startsWith("image/")) {
+            next.push({ type: "image", data: b64, mimeType: file.type });
+          } else {
+            next.push({ type: "file", data: b64, mimeType: file.type || mimeFromExt(file.name), name: file.name });
+          }
+        }
+        if (next.length) setAttachments((a) => [...a, ...next]);
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 4) clipboardData text/uri-list (синхронный fallback, может не
+    //    работать в WebKitGTK — но пробуем)
+    // ---------------------------------------------------------------
+    if (!added) {
+      const uriListRaw = e.clipboardData.getData("text/uri-list");
+      if (uriListRaw) {
+        const uris = uriListRaw.split(/[\r\n]+/).map(u => u.trim()).filter(u => u.startsWith("file://"));
+        if (uris.length > 0) {
+          e.preventDefault();
+          added = true;
+          const results = await Promise.all(
+            uris.map(uri => readFileFromPath(decodeURIComponent(uri.replace(/^file:\/\//, "")), cwd))
+          );
+          const valid = results.filter((r): r is AttachmentContent => r !== null);
+          if (valid.length) setAttachments((a) => [...a, ...valid]);
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 5) clipboardData text/plain с абсолютным путём
+    // ---------------------------------------------------------------
+    if (!added) {
+      const plain = e.clipboardData.getData("text/plain");
+      if (plain) {
+        const lines = plain.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.startsWith("/"));
+        if (lines.length > 0) {
+          e.preventDefault();
+          added = true;
+          const results = await Promise.all(
+            lines.map(p => readFileFromPath(p, cwd))
+          );
+          const valid = results.filter((r): r is AttachmentContent => r !== null);
+          if (valid.length) setAttachments((a) => [...a, ...valid]);
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 6) clipboard-manager readText() — последний шанс прочитать путь
+    // ---------------------------------------------------------------
+    if (!added) {
+      try {
+        const { readText } = await import("@tauri-apps/plugin-clipboard-manager");
+        const text = (await readText()).trim();
+        if (text.startsWith("file://")) {
+          e.preventDefault();
+          added = true;
+          const result = await readFileFromPath(decodeURIComponent(text.replace(/^file:\/\//, "")), cwd);
+          if (result) setAttachments((a) => [...a, result]);
+        } else if (text.startsWith("/")) {
+          e.preventDefault();
+          added = true;
+          const result = await readFileFromPath(text, cwd);
+          if (result) setAttachments((a) => [...a, result]);
+        } else if (text) {
+          // Если текст не похож на путь — может быть просто имя файла
+          e.preventDefault();
+          added = true;
+          const result = await readFileFromPath(text, cwd);
+          if (!result) {
+            added = false;
+          }
+        }
+      } catch {
+        // plugin not available — ignore
+      }
+    }
+    // Если ничего не подошло — не preventDefault, текст вставляется как обычно
+  };
 
   return (
     <div className="bg-(--color-bg) px-3 pb-3 pt-1 relative">
@@ -541,21 +779,29 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
             />
           )}
 
-          {/* Прикреплённые изображения */}
+          {/* Прикреплённые изображения и файлы */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-2.5 pt-2">
-              {attachments.map((img, i) => (
+              {attachments.map((att, i) => (
                 <div
                   key={i}
-                  className="relative inline-flex items-center gap-1.5 bg-(--color-bg-mute) border border-(--color-border) rounded-md pl-1 pr-1.5 py-1 text-xs"
+                  className="relative inline-flex items-center gap-1.5 bg-(--color-bg-mute) border border-(--color-border) rounded-md pl-1 pr-1.5 py-1 text-xs group"
                 >
-                  <img
-                    src={`data:${img.mimeType};base64,${img.data}`}
-                    alt=""
-                    className="h-7 w-7 object-cover rounded"
-                  />
+                  {att.type === "image" ? (
+                    <img
+                      src={`data:${att.mimeType};base64,${att.data}`}
+                      alt=""
+                      className="h-7 w-7 object-cover rounded"
+                    />
+                  ) : (
+                    <span className="h-7 w-7 flex items-center justify-center text-(--color-fg-mute)">
+                      <FileIcon />
+                    </span>
+                  )}
                   <span className="font-mono text-(--color-fg-dim) truncate max-w-[100px]">
-                    {img.mimeType.replace("image/", "")}
+                    {att.type === "image"
+                      ? att.mimeType.replace("image/", "")
+                      : att.name}
                   </span>
                   <button
                     type="button"
@@ -573,7 +819,6 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
             multiple
             className="hidden"
             onChange={onFileChange}
@@ -583,6 +828,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
           <textarea
             ref={ref}
             value={value}
+            onPaste={handlePaste}
             onChange={(e) => {
               const el = e.target;
               const now = Date.now();

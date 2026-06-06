@@ -64,9 +64,8 @@ static ANSI_RE: Lazy<Regex> = Lazy::new(|| {
     // CSI / OSC последовательности
     Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*(?:\x07|\x1b\\)").unwrap()
 });
-static CTRL_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]").unwrap()
-});
+static CTRL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]").unwrap());
 
 fn sanitize_line(s: &str) -> String {
     let cleaned = ANSI_RE.replace_all(s, "");
@@ -203,9 +202,12 @@ pub fn rpc_start(
     }
 
     // Сообщим фронту, что инстанс готов
-    let _ = state
-        .app()
-        .map(|a| a.emit("rpc://started", serde_json::json!({ "generation": generation })));
+    let _ = state.app().map(|a| {
+        a.emit(
+            "rpc://started",
+            serde_json::json!({ "generation": generation }),
+        )
+    });
 
     Ok(RpcStartResult {
         generation,
@@ -216,9 +218,7 @@ pub fn rpc_start(
 #[tauri::command]
 pub fn rpc_send(line: String, state: tauri::State<'_, Arc<RpcManager>>) -> Result<(), String> {
     let mut guard = state.inner.lock().unwrap();
-    let inst = guard
-        .as_mut()
-        .ok_or_else(|| "RPC не запущен".to_string())?;
+    let inst = guard.as_mut().ok_or_else(|| "RPC не запущен".to_string())?;
     let mut buf = line;
     if !buf.ends_with('\n') {
         buf.push('\n');

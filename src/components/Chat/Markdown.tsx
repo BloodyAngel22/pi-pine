@@ -1,8 +1,9 @@
-import { memo, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { Copy, Check } from "lucide-react";
 import { open } from "@tauri-apps/plugin-shell";
 
 interface Props {
@@ -134,7 +135,48 @@ function isHttpUrl(href: string): boolean {
   }
 }
 
+function extractCodeText(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (!node || typeof node !== "object") return "";
+  if (Array.isArray(node)) return node.map(extractCodeText).join("");
+  if ("props" in node) {
+    const el = node as { props?: { children?: React.ReactNode } };
+    if (el.props?.children != null) return extractCodeText(el.props.children);
+  }
+  return "";
+}
+
+function CodeBlock({ children, className, ...props }: React.ComponentPropsWithoutRef<"pre">) {
+  const [copied, setCopied] = useState(false);
+  const codeText = extractCodeText(children);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(codeText);
+    } catch {
+      // ignore
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [codeText]);
+
+  return (
+    <pre className={className} {...props}>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="absolute top-1.5 right-1.5 z-10 inline-flex items-center justify-center w-6 h-6 rounded text-[10px] bg-(--color-bg)/60 text-(--color-fg-dim) opacity-50 hover:opacity-100 transition-opacity"
+        title="Копировать код"
+      >
+        {copied ? <Check size={11} /> : <Copy size={11} />}
+      </button>
+      {children}
+    </pre>
+  );
+}
+
 const components: Components = {
+  pre: CodeBlock,
   a({ href, children, ...props }) {
     const external = typeof href === "string" && isHttpUrl(href);
     return (

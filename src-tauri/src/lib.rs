@@ -1,3 +1,4 @@
+mod clipboard;
 mod favorites;
 mod mcp;
 mod paths;
@@ -10,16 +11,28 @@ mod virtual_display;
 
 use rpc::RpcManager;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use virtual_display::VirtualDisplayManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let _window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Pi Pine")
+                    .inner_size(1100.0, 720.0)
+                    .min_inner_size(720.0, 480.0)
+                    .decorations(true)
+                    .resizable(true)
+                    .theme(Some(tauri::Theme::Dark))
+                    .enable_clipboard_access()
+                    .build()?;
+
             let manager = Arc::new(RpcManager::new(app.handle().clone()));
             app.manage(manager);
             app.manage(Arc::new(terminal::TerminalManager::default()));
@@ -32,6 +45,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // clipboard
+            clipboard::read_clipboard_uri_list,
+            clipboard::clipboard_debug,
             // pi binary discovery + paths
             paths::find_pi_binary,
             paths::detect_environment,

@@ -118,7 +118,10 @@ interface ChatState {
   send(
     message: string,
     images?: import("@/rpc/types").ImageContent[],
-    opts?: { streamingBehavior?: StreamingBehavior },
+    opts?: {
+      streamingBehavior?: StreamingBehavior;
+      files?: import("@/rpc/types").FileContent[];
+    },
   ): Promise<void>;
   abortStreaming(): Promise<void>;
   clearMessages(): void;
@@ -829,7 +832,8 @@ export const useChat = create<ChatState>((set, get) => ({
   async send(message, images, sendOpts) {
     const { agentState, streamingBehavior, planMode, planFilePath, attachedSkills } = get();
     const trimmed = message.trim();
-    if (!trimmed && (!images || images.length === 0)) return;
+    const files = sendOpts?.files;
+    if (!trimmed && (!images || images.length === 0) && (!files || files.length === 0)) return;
 
     // 1) plan mode: префикс с инструкциями для модели.
     let body = trimmed;
@@ -849,6 +853,46 @@ export const useChat = create<ChatState>((set, get) => ({
     if (attachedSkills.length > 0) {
       const tail = attachedSkills.map((s) => `/skill:${s}`).join(" ");
       body = body ? `${body}\n\n${tail}` : tail;
+    }
+
+    // 3) file attachments: pi RPC не поддерживает файлы, поэтому
+    //    встраиваем содержимое текстовых файлов в тело сообщения как markdown.
+    //    Бинарные файлы (картинки, PDF, ZIP и т.п.) — просто помечаем.
+    const TEXT_MIME_PREFIXES = ["text/", "application/json", "application/xml",
+      "application/x-sh", "application/javascript", "application/x-python",
+      "application/x-rust", "application/x-yaml", "application/x-toml",
+      "application/x-httpd-php", "application/x-perl", "application/x-ruby",
+    ];
+    const TEXT_EXTS = [".md", ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+      ".env", ".gitignore", ".dockerfile", ".lock", ".rs", ".py", ".js", ".ts",
+      ".tsx", ".jsx", ".css", ".scss", ".html", ".sh", ".bash", ".zsh",
+      ".fish", ".c", ".cpp", ".h", ".hpp", ".go", ".java", ".rb", ".php",
+      ".pl", ".lua", ".sql", ".r", ".swift", ".kt", ".gradle", ".svelte",
+      ".vue", ".txt", ".log", ".conf",
+    ];
+    const isTextFile = (f: import("@/rpc/types").FileContent): boolean => {
+      if (f.mimeType.startsWith("text/")) return true;
+      if (TEXT_MIME_PREFIXES.some(p => f.mimeType.startsWith(p))) return true;
+      const ext = "." + f.name.split(".").pop()?.toLowerCase();
+      if (TEXT_EXTS.some(e => ext.endsWith(e))) return true;
+      return false;
+    };
+    if (files && files.length > 0) {
+      for (const f of files) {
+        if (isTextFile(f)) {
+          try {
+            const binary = atob(f.data);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const text = new TextDecoder().decode(bytes);
+            body += `\n\n### Файл: ${f.name}\n\`\`\`\n${text}\n\`\`\``;
+          } catch {
+            body += `\n\n[Файл ${f.name} — не удалось прочитать как текст]`;
+          }
+        } else {
+          body += `\n\n[Файл: ${f.name} (${f.mimeType}) — бинарный файл. Отправьте его содержимое отдельно или укажите путь до файла]`;
+        }
+      }
     }
 
     try {

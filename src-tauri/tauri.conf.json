@@ -10,20 +10,6 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "Pi Pine",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 720,
-        "minHeight": 480,
-        "decorations": true,
-        "transparent": false,
-        "fullscreen": false,
-        "resizable": true,
-        "theme": "Dark"
-      }
-    ],
     "security": {
       "csp": null
     }
