@@ -146,6 +146,10 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   const [open, setOpen] = useState(false);
   const isError = block.status === "error";
   const isRunning = block.status === "running";
+  // Pending ask_user — inline card with question, options, and submit
+  if (block.status === "pending" && (block.name === "ask_user" || block.name === "askUser")) {
+    return <PendingAskUserToolCallBlock block={block} />;
+  }
   if (block.name === "ask_user" || block.name === "askUser") {
     return <AskUserToolCall block={block} open={open} setOpen={setOpen} />;
   }
@@ -896,6 +900,108 @@ function PendingToolCallBlock({ block }: { block: UiBlockTool }) {
         >
           Allow once
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Pending Ask User — inline card with question, options, and submit/cancel
+// ============================================================================
+
+function PendingAskUserToolCallBlock({ block }: { block: UiBlockTool }) {
+  const resolvePendingAskUser = useExt((s) => s.resolvePendingAskUser);
+  const input = asRecord(block.input);
+  const question = String(input.question ?? "What would you like to do?");
+  const options = Array.isArray(input.options)
+    ? (input.options as unknown[]).filter((o): o is string => typeof o === "string")
+    : [];
+  const allowMultiple = input.allowMultiple === true;
+
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [custom, setCustom] = useState("");
+
+  const toggle = (idx: number) => {
+    setSelected((cur) => {
+      const next = new Set(allowMultiple ? cur : []);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const submit = () => {
+    const parts = [...selected]
+      .sort((a, b) => a - b)
+      .map((idx) => options[idx])
+      .filter((v): v is string => typeof v === "string" && v.length > 0);
+    const customText = custom.trim();
+    if (customText) parts.push(customText);
+    resolvePendingAskUser(block.toolUseId, { value: parts.join(", ") || "(no selection)" });
+  };
+
+  const cancel = () => {
+    resolvePendingAskUser(block.toolUseId, { cancelled: true });
+  };
+
+  return (
+    <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+      <div className="px-3 py-2 flex items-start gap-2">
+        <MessageCircleQuestion size={14} className="text-(--color-accent) shrink-0 mt-0.5" />
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-(--color-accent) shrink-0 mt-0.5">
+          Вопрос
+        </span>
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="text-xs text-(--color-fg) whitespace-pre-wrap">{question}</div>
+          {options.length > 0 && (
+            <div className="space-y-1">
+              {options.map((option, idx) => {
+                const isSelected = selected.has(idx);
+                return (
+                  <button
+                    key={`${idx}:${option}`}
+                    type="button"
+                    onClick={() => toggle(idx)}
+                    className={
+                      "w-full text-left px-2 py-1 rounded border text-xs transition-colors " +
+                      (isSelected
+                        ? "border-(--color-accent)/50 bg-(--color-accent-soft) text-(--color-accent)"
+                        : "border-(--color-border) hover:bg-(--color-bg-mute)")
+                    }
+                  >
+                    <span className="font-mono mr-1.5">
+                      {allowMultiple ? (isSelected ? "[x]" : "[ ]") : isSelected ? "(•)" : "( )"}
+                    </span>
+                    {option}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <textarea
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            placeholder="Свой ответ…"
+            className="w-full text-xs bg-(--color-bg) border border-(--color-border) rounded px-2 py-1 min-h-[28px] resize-none"
+            rows={1}
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={cancel}
+              className="text-[11px] px-2 py-1 rounded border border-(--color-border) text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg) transition-colors shrink-0"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              className="text-[11px] px-2 py-1 rounded bg-(--color-accent) text-white hover:brightness-110 transition-all shrink-0"
+            >
+              Ответить
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

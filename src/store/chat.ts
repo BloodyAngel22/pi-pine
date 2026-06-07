@@ -169,6 +169,10 @@ interface ChatState {
   addPendingPermissionBlock(permId: string, name: string, input: unknown): void;
   /** Remove a pending permission block by permission id */
   removePendingPermissionBlock(permId: string): void;
+  /** Add a pending ask_user block to the current assistant message */
+  addPendingAskUserBlock(askUserId: string, input: { question: string; options: string[]; allowMultiple: boolean }): void;
+  /** Remove a pending ask_user block by askUser id */
+  removePendingAskUserBlock(askUserId: string): void;
 }
 
 const STORAGE_KEY_CLI = "pi-pine.cliPathOverride";
@@ -1477,6 +1481,20 @@ export const useChat = create<ChatState>((set, get) => ({
     }));
   },
 
+  addPendingAskUserBlock(askUserId, input) {
+    addPendingToolBlock(set, askUserId, "ask_user", input);
+  },
+  removePendingAskUserBlock(askUserId) {
+    set((s) => ({
+      messages: s.messages.map((m) => ({
+        ...m,
+        blocks: m.blocks.filter(
+          (b) => !(b.kind === "tool" && b.toolUseId === askUserId),
+        ),
+      })),
+    }));
+  },
+
   async runFastContext(query) {
     const q = query.trim();
     if (!q) {
@@ -1668,6 +1686,10 @@ function handleAgentEvent(
       );
       if (staleIdx !== -1) {
         extState.removePendingPermission(extState.pendingPermissions[staleIdx].id);
+      }
+      // Clean up any stale pending askUser requests that match this tool
+      if (name === "ask_user" || name === "askUser") {
+        extState.pendingAskUsers.forEach((p) => extState.removePendingAskUser(p.id));
       }
       // Привязываем к последнему ассистент-сообщению
       attachToolBlock(set, get, toolUseId, {

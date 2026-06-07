@@ -47,6 +47,13 @@ export interface DialogAskUser {
   allowMultiple: boolean;
   timeout?: number;
 }
+export interface PendingAskUser {
+  id: string;
+  question: string;
+  options: string[];
+  allowMultiple: boolean;
+}
+
 export interface DialogPermission {
   type: "permission";
   id: string;
@@ -74,6 +81,8 @@ interface ExtState {
   dialogQueue: DialogRequest[];
   /** не-блокирующие permission-запросы (рендерятся inline в чате) */
   pendingPermissions: DialogPermission[];
+  /** не-блокирующие askUser-запросы (рендерятся inline в чате) */
+  pendingAskUsers: PendingAskUser[];
   /** триггер для подстановки текста в композер (set_editor_text) */
   composerInjection: { text: string; nonce: number } | null;
   /** заголовок окна (setTitle) */
@@ -98,6 +107,10 @@ interface ExtState {
   }): void;
   /** Remove a pending permission without sending a response (e.g. when tool_execution_start arrives) */
   removePendingPermission(id: string): void;
+  /** Resolve a pending askUser and send response to pi */
+  resolvePendingAskUser(id: string, payload: { value?: string; cancelled?: boolean }): void;
+  /** Remove a pending askUser without sending a response */
+  removePendingAskUser(id: string): void;
   dismissToast(id: string): void;
   clearComposerInjection(): void;
 }
@@ -121,6 +134,7 @@ export const useExt = create<ExtState>((set, get) => ({
   widgets: {},
   dialogQueue: [],
   pendingPermissions: [],
+  pendingAskUsers: [],
   composerInjection: null,
   windowTitle: "Pi Pine",
   yoloMode: localStorage.getItem(STORAGE_KEY_YOLO) === "1",
@@ -162,6 +176,27 @@ export const useExt = create<ExtState>((set, get) => ({
     // We remove ALL pending blocks as a safety measure — only one
     // should exist per message at a time.
     useChat.getState().removePendingPermissionBlock(id);
+  },
+
+  resolvePendingAskUser(id, payload) {
+    const { pendingAskUsers } = get();
+    const idx = pendingAskUsers.findIndex((p) => p.id === id);
+    if (idx === -1) return;
+    const askUser = pendingAskUsers[idx];
+    void sendExtUiResponse(askUser.id, payload).catch((e) => console.error(e));
+    set({
+      pendingAskUsers: [
+        ...pendingAskUsers.slice(0, idx),
+        ...pendingAskUsers.slice(idx + 1),
+      ],
+    });
+    useChat.getState().removePendingAskUserBlock(id);
+  },
+
+  removePendingAskUser(id) {
+    set((s) => ({
+      pendingAskUsers: s.pendingAskUsers.filter((p) => p.id !== id),
+    }));
   },
 
   removePendingPermission(id) {
@@ -270,17 +305,15 @@ function handleEvent(
             return String(option);
           })
         : [];
+      const question = String(event.question ?? event.title ?? "What would you like to do?");
+      const allowMultiple = event.allowMultiple === true;
+      // Inject a pending ask_user block into the current assistant message
+      const chatState = useChat.getState();
+      chatState.addPendingAskUserBlock(id, { question, options, allowMultiple });
       set((s) => ({
-        dialogQueue: [
-          ...s.dialogQueue,
-          {
-            type: "askUser",
-            id,
-            question: String(event.question ?? event.title ?? "What would you like to do?"),
-            options,
-            allowMultiple: event.allowMultiple === true,
-            timeout: typeof event.timeout === "number" ? (event.timeout as number) : undefined,
-          },
+        pendingAskUsers: [
+          ...s.pendingAskUsers,
+          { id, question, options, allowMultiple },
         ],
       }));
       break;

@@ -16,8 +16,8 @@ type DialogPayload = {
 export function DialogQueue() {
   const queue = useExt((s) => s.dialogQueue);
   const resolve = useExt((s) => s.resolveDialog);
-  // Permission dialogs are rendered inline in chat (PendingPermissionFooter), not as modals
-  const top = queue.find((d) => d.type !== "permission");
+  // Permission and askUser dialogs are rendered inline in the chat, not as modals
+  const top = queue.find((d) => d.type !== "permission" && d.type !== "askUser");
   if (!top) return null;
   return <DialogRenderer key={top.id} req={top} onResolve={resolve} />;
 }
@@ -39,8 +39,8 @@ function DialogRenderer({
   if (req.type === "select") return <SelectDialog req={req} onResolve={onResolve} />;
   if (req.type === "confirm") return <ConfirmDialog req={req} onResolve={onResolve} />;
   if (req.type === "input") return <InputDialog req={req} onResolve={onResolve} />;
-  if (req.type === "askUser") return <AskUserDialog req={req} onResolve={onResolve} />;
-  // Permission dialogs are rendered inline in the chat (via PendingToolCallBlock)
+  // Permission and askUser dialogs are rendered inline in the chat
+  // (via PendingToolCallBlock and PendingAskUserToolCallBlock respectively)
   return <EditorDialog req={req as Extract<DialogRequest, { type: "editor" }>} onResolve={onResolve} />;
 }
 
