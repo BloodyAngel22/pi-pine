@@ -393,27 +393,6 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
     };
   }, [planMode, planFilePath, isStreaming]);
 
-  // Ctrl+Shift+D — отладка буфера обмена
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === "D") {
-        e.preventDefault();
-        (async () => {
-          try {
-            const info = await invoke("clipboard_debug");
-            console.log("[CLIPBOARD DEBUG]", JSON.stringify(info, null, 2));
-            alert(`Clipboard debug info:\n\n${JSON.stringify(info, null, 2)}`);
-          } catch (err) {
-            console.error("[CLIPBOARD DEBUG ERROR]", err);
-            alert(`clipboard_debug error: ${err}`);
-          }
-        })();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
   const toBase64 = (data: Uint8Array): string =>
     btoa(data.reduce((a, b) => a + String.fromCharCode(b), ""));
 
