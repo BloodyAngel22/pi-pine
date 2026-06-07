@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import * as rpc from "@/rpc/bridge";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
+import { useExt } from "@/store/ext";
 import type {
   AnyContent,
   Model,
@@ -28,7 +29,7 @@ export interface UiBlockTool {
   details?: unknown;
   /** Изображения, встроенные в результат инструмента (screenshot/interact) */
   images?: UiBlockImage[];
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "pending";
 }
 export interface UiBlockImage {
   kind: "image";
@@ -163,6 +164,11 @@ interface ChatState {
   injectComposer(text: string): void;
   clearComposerInjection(): void;
   setError(msg: string | null): void;
+
+  /** Add a pending permission block to the current assistant message */
+  addPendingPermissionBlock(permId: string, name: string, input: unknown): void;
+  /** Remove a pending permission block by permission id */
+  removePendingPermissionBlock(permId: string): void;
 }
 
 const STORAGE_KEY_CLI = "pi-pine.cliPathOverride";
@@ -1457,6 +1463,20 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ forkBanner: null });
   },
 
+  addPendingPermissionBlock(permId, name, input) {
+    addPendingToolBlock(set, permId, name, input);
+  },
+  removePendingPermissionBlock(permId) {
+    set((s) => ({
+      messages: s.messages.map((m) => ({
+        ...m,
+        blocks: m.blocks.filter(
+          (b) => !(b.kind === "tool" && b.toolUseId === permId),
+        ),
+      })),
+    }));
+  },
+
   async runFastContext(query) {
     const q = query.trim();
     if (!q) {
@@ -1631,6 +1651,24 @@ function handleAgentEvent(
       );
       const name = String(event.toolName ?? event.name ?? "tool");
       const input = event.args ?? event.input;
+      // Remove any matching pending block from the messages
+      // (it was created by addPendingPermissionBlock before approval)
+      set((s) => ({
+        messages: s.messages.map((m) => ({
+          ...m,
+          blocks: m.blocks.filter((b) => !(
+            b.kind === "tool" && b.status === "pending" && b.name === name
+          )),
+        })),
+      }));
+      // Clean up any stale pending permissions that match this tool
+      const extState = useExt.getState();
+      const staleIdx = extState.pendingPermissions.findIndex(
+        (p) => p.permissionToolName === name || (p.permissionType === "bash" && name === "bash"),
+      );
+      if (staleIdx !== -1) {
+        extState.removePendingPermission(extState.pendingPermissions[staleIdx].id);
+      }
       // Привязываем к последнему ассистент-сообщению
       attachToolBlock(set, get, toolUseId, {
         kind: "tool",
@@ -1943,6 +1981,49 @@ function attachToolBlock(
     if (target.blocks.some((b) => b.kind === "tool" && b.toolUseId === toolUseId)) {
       return {};
     }
+    const updated: UiMessage = {
+      ...target,
+      blocks: [...target.blocks, block],
+    };
+    const messages = [...s.messages];
+    messages[targetIdx] = updated;
+    return { messages };
+  });
+}
+
+/** Add a pending permission block to the last assistant message */
+function addPendingToolBlock(
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  permId: string,
+  name: string,
+  input: unknown,
+) {
+  set((s) => {
+    if (s.messages.length === 0) return {};
+    let targetIdx = -1;
+    for (let i = s.messages.length - 1; i >= 0; i--) {
+      if (s.messages[i].role === "assistant") {
+        targetIdx = i;
+        break;
+      }
+    }
+    if (targetIdx === -1) return {};
+    const target = s.messages[targetIdx];
+    // если pending block с таким id уже есть — ничего не делаем
+    if (target.blocks.some((b) => b.kind === "tool" && b.toolUseId === permId)) {
+      return {};
+    }
+    const block: UiBlockTool = {
+      kind: "tool",
+      toolUseId: permId,
+      name,
+      input,
+      status: "pending",
+    };
     const updated: UiMessage = {
       ...target,
       blocks: [...target.blocks, block],

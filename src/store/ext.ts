@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { onEvent, sendExtUiResponse } from "@/rpc/bridge";
+import { useChat } from "@/store/chat";
 
 export type NotifyKind = "info" | "warning" | "error" | "success";
 
@@ -51,6 +52,8 @@ export interface DialogPermission {
   id: string;
   permissionType: "bash" | "file" | "mcp";
   permissionValue: string;
+  permissionToolName?: string;
+  permissionToolArgs?: Record<string, unknown>;
   timeout?: number;
 }
 export type DialogRequest =
@@ -67,8 +70,10 @@ interface ExtState {
   statuses: Record<string, string>;
   /** ключ → массив строк (от setWidget) */
   widgets: Record<string, string[]>;
-  /** очередь dialog-запросов */
+  /** очередь dialog-запросов (кроме permission) */
   dialogQueue: DialogRequest[];
+  /** не-блокирующие permission-запросы (рендерятся inline в чате) */
+  pendingPermissions: DialogPermission[];
   /** триггер для подстановки текста в композер (set_editor_text) */
   composerInjection: { text: string; nonce: number } | null;
   /** заголовок окна (setTitle) */
@@ -85,6 +90,14 @@ interface ExtState {
     scope?: "local" | "global" | "session";
     match?: string;
   }): void;
+  /** Resolve a pending permission and send response to pi */
+  resolvePendingPermission(id: string, payload: {
+    decision?: "allow-once" | "allow-always" | "deny-once" | "deny-always";
+    scope?: "local" | "global" | "session";
+    match?: string;
+  }): void;
+  /** Remove a pending permission without sending a response (e.g. when tool_execution_start arrives) */
+  removePendingPermission(id: string): void;
   dismissToast(id: string): void;
   clearComposerInjection(): void;
 }
@@ -107,6 +120,7 @@ export const useExt = create<ExtState>((set, get) => ({
   statuses: {},
   widgets: {},
   dialogQueue: [],
+  pendingPermissions: [],
   composerInjection: null,
   windowTitle: "Pi Pine",
   yoloMode: localStorage.getItem(STORAGE_KEY_YOLO) === "1",
@@ -130,6 +144,30 @@ export const useExt = create<ExtState>((set, get) => ({
     const top = queue[0];
     void sendExtUiResponse(top.id, payload).catch((e) => console.error(e));
     set({ dialogQueue: queue.slice(1) });
+  },
+
+  resolvePendingPermission(id, payload) {
+    const { pendingPermissions } = get();
+    const idx = pendingPermissions.findIndex((p) => p.id === id);
+    if (idx === -1) return;
+    const perm = pendingPermissions[idx];
+    void sendExtUiResponse(perm.id, payload).catch((e) => console.error(e));
+    set({
+      pendingPermissions: [
+        ...pendingPermissions.slice(0, idx),
+        ...pendingPermissions.slice(idx + 1),
+      ],
+    });
+    // Remove the pending block from chat messages.
+    // We remove ALL pending blocks as a safety measure — only one
+    // should exist per message at a time.
+    useChat.getState().removePendingPermissionBlock(id);
+  },
+
+  removePendingPermission(id) {
+    set((s) => ({
+      pendingPermissions: s.pendingPermissions.filter((p) => p.id !== id),
+    }));
   },
 
   dismissToast(id) {
@@ -260,14 +298,32 @@ function handleEvent(
         void sendExtUiResponse(id, { decision: "allow-once" }).catch((e) => console.error(e));
         break;
       }
+      // Determine the tool name for display
+      const permToolName = (event.permissionToolName as string | undefined)
+        ?? (permissionType === "bash" ? "bash"
+          : permissionType === "file" ? "edit"
+          : "mcp");
+
+      // Inject a pending tool block into the current assistant message
+      // so it appears inline in the chat stream
+      const chatState = useChat.getState();
+      chatState.addPendingPermissionBlock(id, permToolName, {
+        permissionType,
+        permissionValue,
+        permissionToolName: event.permissionToolName,
+        permissionToolArgs: event.permissionToolArgs,
+      });
+
       set((s) => ({
-        dialogQueue: [
-          ...s.dialogQueue,
+        pendingPermissions: [
+          ...s.pendingPermissions,
           {
             type: "permission",
             id,
             permissionType,
             permissionValue,
+            permissionToolName: event.permissionToolName as string | undefined,
+            permissionToolArgs: event.permissionToolArgs as Record<string, unknown> | undefined,
           },
         ],
       }));

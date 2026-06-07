@@ -1,127 +1,30 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock } from "lucide-react";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
-
-function shortInput(input: unknown): string {
-  if (input == null) return "";
-  if (typeof input === "string") return input;
-  try {
-    const str = JSON.stringify(input);
-    if (str.length < 80) return str;
-    if (input && typeof input === "object") {
-      const o = input as Record<string, unknown>;
-      // самые частые поля для file/bash тулзов
-      for (const k of ["file_path", "filePath", "path", "command", "url", "query"]) {
-        if (typeof o[k] === "string") return String(o[k]);
-      }
-    }
-    return str.slice(0, 80) + "…";
-  } catch {
-    return String(input);
-  }
-}
-
-function pretty(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v;
-  try {
-    return JSON.stringify(v, null, 2);
-  } catch {
-    return String(v);
-  }
-}
+import { useExt } from "@/store/ext";
+import {
+  shortInput,
+  pretty,
+  isFileMutationTool,
+  filePathFromInput,
+  editItems,
+  buildEditInputDiff,
+  buildWriteDiff,
+  diffStats,
+  diffLineClass,
+  textLineCount,
+  buildFileMutationPreviewFromInput,
+  type EditItem,
+} from "@/components/ExtUI/permissionUtils";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function isFileMutationTool(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower === "write" || lower === "edit";
-}
-
-function stringField(record: Record<string, unknown>, names: string[]): string | undefined {
-  for (const name of names) {
-    if (typeof record[name] === "string") return record[name] as string;
-  }
-  return undefined;
-}
-
-function filePathFromInput(input: unknown): string {
-  const record = asRecord(input);
-  return stringField(record, ["path", "file_path", "filePath", "filename"]) ?? "unknown file";
-}
-
-function textLineCount(text: string): number {
-  if (text.length === 0) return 0;
-  return text.split(/\r?\n/).length;
-}
-
-interface EditItem {
-  oldText: string;
-  newText: string;
-}
-
-function editItems(input: unknown): EditItem[] {
-  const record = asRecord(input);
-  const rawEdits = record.edits;
-  const parsedEdits = typeof rawEdits === "string" ? parseJson(rawEdits) : rawEdits;
-  const edits = Array.isArray(parsedEdits)
-    ? parsedEdits
-        .map((item) => {
-          const edit = asRecord(item);
-          const oldText = typeof edit.oldText === "string" ? edit.oldText : undefined;
-          const newText = typeof edit.newText === "string" ? edit.newText : undefined;
-          return oldText != null && newText != null ? { oldText, newText } : null;
-        })
-        .filter((item): item is EditItem => item != null)
-    : [];
-  const oldText = typeof record.oldText === "string" ? record.oldText : undefined;
-  const newText = typeof record.newText === "string" ? record.newText : undefined;
-  if (oldText != null && newText != null) return [...edits, { oldText, newText }];
-  return edits;
-}
-
-function parseJson(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return undefined;
-  }
-}
-
 function detailsDiff(details: unknown): string | undefined {
   const record = asRecord(details);
   return typeof record.diff === "string" ? record.diff : undefined;
-}
-
-function buildEditInputDiff(edits: EditItem[]): string {
-  const lines: string[] = [];
-  edits.forEach((edit, index) => {
-    if (edits.length > 1) lines.push(` ${index + 1} ...`);
-    for (const line of edit.oldText.split(/\r?\n/)) lines.push(`- ${line}`);
-    for (const line of edit.newText.split(/\r?\n/)) lines.push(`+ ${line}`);
-  });
-  return lines.join("\n");
-}
-
-function buildWriteDiff(content: string): string {
-  return content
-    .split(/\r?\n/)
-    .map((line, index) => `+${String(index + 1).padStart(4, " ")} ${line}`)
-    .join("\n");
-}
-
-function diffStats(diff: string): { added: number; removed: number } {
-  let added = 0;
-  let removed = 0;
-  for (const line of diff.split(/\r?\n/)) {
-    if (line.startsWith("+++") || line.startsWith("---")) continue;
-    if (line.startsWith("+")) added += 1;
-    else if (line.startsWith("-")) removed += 1;
-  }
-  return { added, removed };
 }
 
 function fileMutationPreview(block: UiBlockTool): {
@@ -151,13 +54,6 @@ function fileMutationPreview(block: UiBlockTool): {
     added: edits.reduce((total, edit) => total + textLineCount(edit.newText), 0),
     removed: edits.reduce((total, edit) => total + textLineCount(edit.oldText), 0),
   };
-}
-
-function diffLineClass(line: string): string {
-  if (line.startsWith("+") && !line.startsWith("+++")) return "bg-(--color-success)/10 text-(--color-success)";
-  if (line.startsWith("-") && !line.startsWith("---")) return "bg-(--color-danger)/10 text-(--color-danger)";
-  if (line.trim() === "..." || /^\s+\d*\s*\.\.\./.test(line)) return "text-(--color-fg-dim)";
-  return "text-(--color-fg-mute)";
 }
 
 function askUserQuestion(input: unknown): string {
@@ -267,6 +163,10 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   }
   if (block.name === "interact") {
     return <InteractToolCall block={block} open={open} setOpen={setOpen} />;
+  }
+  // Pending permission — show compact inline card with approve/deny
+  if (block.status === "pending") {
+    return <PendingToolCallBlock block={block} />;
   }
   if (isFileMutationTool(block.name)) {
     return <FileMutationToolCall block={block} />;
@@ -931,6 +831,71 @@ function Metric({ label, value, accent }: { label: string; value?: number; accen
       <div className="text-(--color-fg-dim)">{label}</div>
       <div className={clsx("font-mono", accent ? "text-(--color-accent)" : "text-(--color-fg-mute)")}>
         {value == null ? "—" : value.toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Pending Permission — compact inline card with approve/deny buttons
+// ============================================================================
+
+function PendingToolCallBlock({ block }: { block: UiBlockTool }) {
+  const resolvePendingPermission = useExt((s) => s.resolvePendingPermission);
+  const input = asRecord(block.input);
+  const permissionValue = String(input.permissionValue ?? "");
+  const permissionType = String(input.permissionType ?? "file");
+  const toolName = String(input.permissionToolName ?? block.name);
+  const toolArgs = input.permissionToolArgs as Record<string, unknown> | undefined;
+
+  let typeLabel = "Действие";
+  if (permissionType === "bash") typeLabel = "Команда";
+  else if (permissionType === "file" && isFileMutationTool(toolName)) typeLabel = toolName;
+  else if (permissionType === "mcp") typeLabel = toolName;
+
+  const stats = (() => {
+    if (permissionType === "file" && toolArgs) {
+      return buildFileMutationPreviewFromInput(toolArgs, permissionValue);
+    }
+    return null;
+  })();
+
+  const handleAllowOnce = () => resolvePendingPermission(block.toolUseId, { decision: "allow-once" });
+  const handleDenyOnce = () => resolvePendingPermission(block.toolUseId, { decision: "deny-once" });
+
+  return (
+    <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <Clock size={14} className="text-(--color-accent) animate-pulse shrink-0" />
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-(--color-accent) shrink-0">
+          Разрешение
+        </span>
+        <span className="font-mono text-xs text-(--color-fg-mute)">{typeLabel}</span>
+        <span className="font-mono text-xs text-(--color-fg) truncate min-w-0" title={permissionValue}>
+          {permissionValue}
+        </span>
+        {stats && (stats.added > 0 || stats.removed > 0) && (
+          <span className="font-mono text-[10px] shrink-0">
+            {stats.added > 0 && <span className="text-(--color-success)">+{stats.added}</span>}
+            {stats.added > 0 && stats.removed > 0 && <span className="text-(--color-fg-dim)"> </span>}
+            {stats.removed > 0 && <span className="text-(--color-danger)">-{stats.removed}</span>}
+          </span>
+        )}
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={handleDenyOnce}
+          className="text-[11px] px-2 py-1 rounded border border-(--color-border) text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg) transition-colors shrink-0"
+        >
+          Deny once
+        </button>
+        <button
+          type="button"
+          onClick={handleAllowOnce}
+          className="text-[11px] px-2 py-1 rounded bg-(--color-accent) text-white hover:brightness-110 transition-all shrink-0"
+        >
+          Allow once
+        </button>
       </div>
     </div>
   );
