@@ -49,6 +49,14 @@ export interface UiMessage {
   /** В процессе стриминга? */
   streaming: boolean;
   timestamp: number;
+  /** Локально добавленное сообщение до подтверждения/echo от pi RPC. */
+  optimistic?: boolean;
+  /** Локальный echo пользовательского prompt-а; нужен для склейки с реальным pi message. */
+  localEcho?: boolean;
+  /** Ошибка отправки локального optimistic-сообщения. */
+  error?: string;
+  /** Локальный placeholder ассистента до первого реального message/tool event. */
+  pendingAssistant?: boolean;
 }
 
 interface ChatState {
@@ -220,6 +228,9 @@ function newId(): string {
 /** Защита от двойной подписки (StrictMode/HMR). */
 let initOnce = false;
 let mcpLoadingTimer: number | null = null;
+/** Когда стартовала текущая MCP-загрузка (чтобы не дать флагу застрять). */
+const MCP_LOADING_TIMEOUT_MS = 30_000; // 30 секунд макс
+let mcpLoadingStartedAt = 0;
 let activeStartPromise: Promise<void> | null = null;
 let activeSwitch: { file: string; promise: Promise<void> } | null = null;
 const LIVE_STATS_REFRESH_INTERVAL_MS = 750;
@@ -262,12 +273,28 @@ function setMcpLoading(
     window.clearTimeout(mcpLoadingTimer);
     mcpLoadingTimer = null;
   }
-  set({ mcpLoading: loading });
   if (loading) {
+    // Запоминаем время старта первой загрузки
+    if (mcpLoadingStartedAt === 0) {
+      mcpLoadingStartedAt = Date.now();
+    } else if (Date.now() - mcpLoadingStartedAt >= MCP_LOADING_TIMEOUT_MS) {
+      // MCP загружается дольше 30 секунд — принудительно снимаем флаг.
+      // Пользователь сможет работать без MCP-инструментов, а MCP догрузится
+      // в фоне.
+      console.warn("[mcp] Загрузка MCP превысила 30 с, снимаю блокировку");
+      mcpLoadingStartedAt = 0;
+      set({ mcpLoading: false });
+      return;
+    }
+    set({ mcpLoading: true });
+    // Fallback-таймер на случай, если pi перестал слать статусы
     mcpLoadingTimer = window.setTimeout(() => {
       set({ mcpLoading: false });
       mcpLoadingTimer = null;
-    }, 2_000);
+    }, 3_000);
+  } else {
+    mcpLoadingStartedAt = 0;
+    set({ mcpLoading: false });
   }
 }
 
@@ -316,6 +343,25 @@ function joinText(blocks: UiBlock[]): string {
     .filter((b): b is UiBlockText => b.kind === "text")
     .map((b) => b.text)
     .join("");
+}
+
+function createOptimisticUserBlocks(
+  text: string,
+  images?: import("@/rpc/types").ImageContent[],
+  files?: import("@/rpc/types").FileContent[],
+): UiBlock[] {
+  const blocks: UiBlock[] = [];
+  if (text.trim()) blocks.push({ kind: "text", text: text.trim() });
+  for (const img of images ?? []) {
+    blocks.push({ kind: "image", mimeType: img.mimeType, data: img.data });
+  }
+  if (files && files.length > 0) {
+    blocks.push({
+      kind: "text",
+      text: files.map((f) => `📎 ${f.name} (${f.mimeType})`).join("\n"),
+    });
+  }
+  return blocks;
 }
 
 function normalizeForMatch(text: string): string {
@@ -633,6 +679,52 @@ function createSystemMessage(text: string): UiMessage {
   };
 }
 
+function ensurePendingAssistantAfterUser(
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  userMessageId?: string,
+) {
+  set((s) => {
+    const userIdx = userMessageId
+      ? s.messages.findIndex((m) => m.id === userMessageId)
+      : (() => {
+          for (let i = s.messages.length - 1; i >= 0; i--) {
+            if (s.messages[i].role === "user") return i;
+          }
+          return -1;
+        })();
+    if (userIdx === -1) return {};
+
+    const existingAssistantAfterUser = s.messages.findIndex(
+      (m, i) => i > userIdx && m.role === "assistant",
+    );
+    if (existingAssistantAfterUser !== -1) return {};
+
+    const uiId = newId();
+    return {
+      messages: [
+        ...s.messages,
+        {
+          id: uiId,
+          role: "assistant",
+          blocks: [],
+          streaming: true,
+          timestamp: Date.now(),
+          pendingAssistant: true,
+        },
+      ],
+      // Если это новый turn и ещё нет текущего assistant-сообщения, первый
+      // реальный assistant-event без piId переиспользует placeholder. Если же
+      // пользователь отправил steer во время уже активного стрима, не крадём
+      // currentAssistantId у предыдущего streaming assistant-message.
+      currentAssistantId: s.currentAssistantId ?? uiId,
+    };
+  });
+}
+
 function formatTokenCount(value: number): string {
   return Math.round(value).toLocaleString("ru-RU");
 }
@@ -887,6 +979,24 @@ export const useChat = create<ChatState>((set, get) => ({
       if (TEXT_EXTS.some(e => ext.endsWith(e))) return true;
       return false;
     };
+
+    const optimisticId = newId();
+    const optimisticBlocks = createOptimisticUserBlocks(trimmed, images, files);
+    set((s) => ({
+      messages: [
+        ...s.messages,
+        {
+          id: optimisticId,
+          role: "user",
+          blocks: optimisticBlocks,
+          streaming: false,
+          timestamp: Date.now(),
+          optimistic: true,
+          localEcho: true,
+        },
+      ],
+    }));
+
     if (files && files.length > 0) {
       for (const f of files) {
         if (isTextFile(f)) {
@@ -914,8 +1024,17 @@ export const useChat = create<ChatState>((set, get) => ({
       }
       if (images && images.length > 0) opts.images = images;
       await rpc.sendPrompt(body, Object.keys(opts).length > 0 ? opts : undefined);
+      ensurePendingAssistantAfterUser(set, optimisticId);
     } catch (e) {
-      get().setError((e as Error).message);
+      const messageText = (e as Error).message;
+      set((s) => ({
+        messages: s.messages.map((m) =>
+          m.id === optimisticId
+            ? { ...m, optimistic: false, localEcho: false, error: messageText }
+            : m,
+        ),
+      }));
+      get().setError(messageText);
     }
   },
 
@@ -1079,7 +1198,48 @@ export const useChat = create<ChatState>((set, get) => ({
               : Date.now(),
         });
       }
-      set({ messages: ui, messageIdMap: idMap, uiToPiId: uiToPi });
+      set((s) => {
+        // reloadHistory() отражает только persisted историю pi. Steering/follow-up
+        // prompt, отправленный во время streaming, может быть принят/queued, но ещё
+        // не попасть в get_messages(). Не удаляем локальные optimistic echo — иначе
+        // второй prompt визуально "пропадает" сразу после фонового refresh-а.
+        const preservedLocalEchoes = s.messages.filter((m) => {
+          if (m.role !== "user" || !(m.localEcho || m.optimistic)) return false;
+          const localText = normalizeForMatch(joinText(m.blocks));
+          return !ui.some((hist) => {
+            if (hist.role !== "user") return false;
+            const histText = normalizeForMatch(joinText(hist.blocks));
+            return (
+              histText.includes(localText) ||
+              localText.includes(histText) ||
+              sameBlocks(hist.blocks, m.blocks)
+            );
+          });
+        });
+        const baseMessages = [...ui, ...preservedLocalEchoes];
+        const hasVisibleAssistantAfterLastUser = (() => {
+          const lastUserIdx = baseMessages.reduce((idx, m, i) => (m.role === "user" ? i : idx), -1);
+          return (
+            lastUserIdx !== -1 &&
+            baseMessages.some((m, i) => i > lastUserIdx && m.role === "assistant")
+          );
+        })();
+        const preservedPendingAssistants = hasVisibleAssistantAfterLastUser
+          ? []
+          : s.messages.filter((m) => m.role === "assistant" && m.pendingAssistant);
+        const nextMessages = [...baseMessages, ...preservedPendingAssistants];
+        const currentStillExists = s.currentAssistantId
+          ? nextMessages.some((m) => m.id === s.currentAssistantId)
+          : false;
+        return {
+          messages: nextMessages,
+          messageIdMap: idMap,
+          uiToPiId: uiToPi,
+          currentAssistantId: currentStillExists
+            ? s.currentAssistantId
+            : preservedPendingAssistants[preservedPendingAssistants.length - 1]?.id ?? null,
+        };
+      });
     } catch {
       // ignore
     }
@@ -1605,12 +1765,23 @@ function handleAgentEvent(
           ? { ...s.agentState, isStreaming: true }
           : s.agentState,
       }));
+      ensurePendingAssistantAfterUser(set);
       break;
     }
     case "agent_end": {
       clearScheduledSessionStatsRefresh();
       set((s) => ({
-        messages: s.messages.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+        messages: s.messages.map((m) => {
+          if (m.pendingAssistant && m.blocks.length === 0) {
+            return {
+              ...m,
+              blocks: [{ kind: "text", text: "Агент завершил работу без видимого ответа." }],
+              streaming: false,
+              pendingAssistant: false,
+            };
+          }
+          return m.streaming ? { ...m, streaming: false, pendingAssistant: false } : m;
+        }),
         currentAssistantId: null,
         agentState: s.agentState
           ? { ...s.agentState, isStreaming: false }
@@ -1882,21 +2053,69 @@ function upsertMessage(
       }
     }
 
-    // 3) Дедупликация повторных user-сообщений: если новое user-сообщение
-    //    повторяет последнее по тексту в течение секунды — игнорируем.
-    if (!targetUiId && opts.role === "user" && opts.blocks.length > 0) {
-      const last = s.messages[s.messages.length - 1];
-      if (
-        last &&
-        last.role === "user" &&
-        Math.abs(opts.timestamp - last.timestamp) < 2000 &&
-        sameBlocks(last.blocks, opts.blocks)
-      ) {
-        // ассоциируем piId с уже существующим, ничего не добавляем
-        if (opts.piId) idMap.set(opts.piId, last.id);
+    // 3) Склейка реального pi user-message с локальным optimistic echo.
+    //    Pi Pine очищает composer сразу после Enter, но настоящий user-message
+    //    приходит только асинхронным RPC event. Если pi зависнет между response
+    //    и message_start — без optimistic echo пользователь видит "ничего".
+    //    Когда echo всё-таки приходит, подтверждаем локальное сообщение вместо
+    //    создания дубля. Блоки локального сообщения сохраняем, чтобы не показывать
+    //    технические префиксы plan-mode / expanded files / skills.
+    if (!targetUiId && opts.role === "user") {
+      const incomingText = normalizeForMatch(joinText(opts.blocks));
+      for (let i = s.messages.length - 1; i >= 0; i--) {
+        const candidate = s.messages[i];
+        if (candidate.role !== "user" || !candidate.localEcho) continue;
+        const localText = normalizeForMatch(joinText(candidate.blocks));
+        const closeEnough = Math.abs(opts.timestamp - candidate.timestamp) < 120_000;
+        const textMatches =
+          !localText ||
+          !incomingText ||
+          incomingText.includes(localText) ||
+          localText.includes(incomingText) ||
+          sameBlocks(candidate.blocks, opts.blocks);
+        if (!closeEnough || !textMatches) continue;
+
+        if (opts.piId) idMap.set(opts.piId, candidate.id);
         const nextUiToPi = { ...s.uiToPiId };
-        if (opts.piId) nextUiToPi[last.id] = opts.piId;
-        return { messageIdMap: idMap, uiToPiId: nextUiToPi };
+        if (opts.piId) nextUiToPi[candidate.id] = opts.piId;
+        const messages = s.messages.map((m) =>
+          m.id === candidate.id
+            ? { ...m, optimistic: false, localEcho: false, error: undefined }
+            : m,
+        );
+        return { messages, messageIdMap: idMap, uiToPiId: nextUiToPi };
+      }
+    }
+
+    // 4) Дедупликация user echo от pi. RPC может прислать user message_start/end
+    //    уже после того, как локальный optimistic echo был подтверждён или после
+    //    assistant event. Поэтому нельзя проверять только последний message или
+    //    только localEcho: ищем ближайший уже видимый user-message с тем же текстом.
+    if (!targetUiId && opts.role === "user" && opts.blocks.length > 0) {
+      const incomingText = normalizeForMatch(joinText(opts.blocks));
+      for (let i = s.messages.length - 1; i >= 0; i--) {
+        const candidate = s.messages[i];
+        if (candidate.role !== "user") continue;
+        const candidateText = normalizeForMatch(joinText(candidate.blocks));
+        const closeEnough = Math.abs(opts.timestamp - candidate.timestamp) < 15_000;
+        const textMatches =
+          incomingText.length > 0 &&
+          candidateText.length > 0 &&
+          (incomingText === candidateText ||
+            incomingText.includes(candidateText) ||
+            candidateText.includes(incomingText) ||
+            sameBlocks(candidate.blocks, opts.blocks));
+        if (!closeEnough || !textMatches) continue;
+
+        if (opts.piId) idMap.set(opts.piId, candidate.id);
+        const nextUiToPi = { ...s.uiToPiId };
+        if (opts.piId) nextUiToPi[candidate.id] = opts.piId;
+        const messages = s.messages.map((m) =>
+          m.id === candidate.id
+            ? { ...m, optimistic: false, localEcho: false, error: undefined }
+            : m,
+        );
+        return { messages, messageIdMap: idMap, uiToPiId: nextUiToPi };
       }
     }
 
@@ -1907,8 +2126,17 @@ function upsertMessage(
           ? {
               ...m,
               role: opts.role,
-              blocks: opts.replace ? opts.blocks : mergeBlocks(m.blocks, opts.blocks),
+              blocks:
+                opts.replace && m.pendingAssistant && opts.blocks.length === 0 && opts.streaming
+                  ? m.blocks
+                  : opts.replace
+                    ? opts.blocks
+                    : mergeBlocks(m.blocks, opts.blocks),
               streaming: opts.streaming,
+              optimistic: false,
+              localEcho: false,
+              error: undefined,
+              pendingAssistant: Boolean(m.pendingAssistant && opts.blocks.length === 0 && opts.streaming),
             }
           : m,
       );
@@ -2006,6 +2234,7 @@ function attachToolBlock(
     const updated: UiMessage = {
       ...target,
       blocks: [...target.blocks, block],
+      pendingAssistant: false,
     };
     const messages = [...s.messages];
     messages[targetIdx] = updated;
@@ -2049,6 +2278,7 @@ function addPendingToolBlock(
     const updated: UiMessage = {
       ...target,
       blocks: [...target.blocks, block],
+      pendingAssistant: false,
     };
     const messages = [...s.messages];
     messages[targetIdx] = updated;
@@ -2074,6 +2304,7 @@ function updateToolBlock(
         blocks: m.blocks.map((b) =>
           b.kind === "tool" && b.toolUseId === toolUseId ? { ...b, ...patch } : b,
         ),
+        pendingAssistant: false,
       };
     }),
   }));

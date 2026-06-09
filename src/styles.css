@@ -62,9 +62,14 @@ body {
 }
 
 /* markdown в сообщениях */
+.md {
+  min-width: 0;
+}
 .md p {
   margin: 0.12rem 0;
   line-height: 1.48;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .md p + p {
   margin-top: 0.45rem;
@@ -73,6 +78,8 @@ body {
   margin: 0;
   padding: 0;
   line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 .md li + li {
   margin-top: 0.08rem;
@@ -271,9 +278,22 @@ body {
   border-radius: 12px;
   padding: 0.6rem 0.85rem;
 }
+.pi-bubble-user ::selection {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
 .pi-assistant-divider {
-  border-left: 2px solid var(--color-accent);
+  position: relative;
   padding-left: 0.85rem;
+}
+.pi-assistant-divider::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.15rem;
+  bottom: 0.15rem;
+  width: 2px;
+  background: var(--color-accent);
+  border-radius: 1px;
 }
 
 /* bottom status-bar */

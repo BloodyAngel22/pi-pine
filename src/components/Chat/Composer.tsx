@@ -266,7 +266,6 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
 
   const submit = async () => {
     if (!trimmed && attachments.length === 0) return;
-    if (mcpLoading) return;
     if (isSlash && slashItems.length > 0) {
       const picked = slashItems[Math.min(slashHighlight, slashItems.length - 1)];
       if (picked.command === "/btw") {
@@ -697,10 +696,10 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
             <button
               type="button"
               onClick={() => void commitPlan()}
-              disabled={isStreaming || mcpLoading}
+              disabled={isStreaming}
               className={clsx(
                 "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors shrink-0",
-                isStreaming || mcpLoading
+                isStreaming
                   ? "bg-(--color-bg-mute) text-(--color-fg-dim) cursor-not-allowed"
                   : "bg-(--color-warn) text-(--color-bg) hover:opacity-90",
               )}
@@ -1045,14 +1044,14 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               <button
                 type="button"
                 onClick={() => void submit()}
-                disabled={(!trimmed && attachments.length === 0) || mcpLoading}
+                disabled={!trimmed && attachments.length === 0}
                 className={clsx(
                   "inline-flex items-center justify-center h-7 w-7 rounded-md transition-colors",
-                  (!trimmed && attachments.length === 0) || mcpLoading
+                  !trimmed && attachments.length === 0
                     ? "bg-(--color-bg-mute) text-(--color-fg-dim) cursor-not-allowed"
                     : "bg-(--color-accent) text-(--color-bg) hover:opacity-90",
                 )}
-                title={mcpLoading ? "MCP загружаются…" : `${t.composer.send} (Enter)`}
+                title={`${t.composer.send} (Enter)`}
               >
                 <Send size={13} />
               </button>

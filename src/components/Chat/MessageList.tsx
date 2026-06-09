@@ -78,6 +78,30 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     return "auto" as const;
   }, [messages.length]);
 
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+
+    // Optimistic/localEcho user-message and the following pending assistant
+    // placeholder appear only after an explicit user submit. During long assistant
+    // streaming Virtuoso can lose its at-bottom state while the last markdown block
+    // keeps growing, so followOutput may refuse to scroll. In that case the submit
+    // result is in the store but below the viewport, which looks like it disappeared.
+    const shouldForceBottom = Boolean(
+      last &&
+        ((last.role === "user" && (last.localEcho || last.optimistic)) ||
+          (last.role === "assistant" && last.pendingAssistant)),
+    );
+    if (shouldForceBottom) {
+      atBottom.current = true;
+      setShowScrollBtn(false);
+      setLastSeenIndex(messages.length);
+      requestAnimationFrame(() => {
+        scrollToBottom("auto");
+        requestAnimationFrame(() => scrollToBottom("auto"));
+      });
+    }
+  }, [messages, scrollToBottom]);
+
   const unreadCount = showScrollBtn ? Math.max(0, messages.length - lastSeenIndex) : 0;
 
   if (messages.length === 0) {
