@@ -18,6 +18,7 @@
   --color-user-bg: #131313;
   --color-user-fg: #ededed;
   --color-thinking: #a3a3a3;
+  --chat-font-mult: 1;
 }
 
 @theme {
@@ -64,6 +65,7 @@ body {
 /* markdown в сообщениях */
 .md {
   min-width: 0;
+  font-size: calc(var(--app-font-size, 13px) * var(--chat-font-mult, 1));
 }
 .md p {
   margin: 0.12rem 0;
@@ -117,7 +119,7 @@ body {
 }
 .md code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--chat-font-mult, 1));
   background: var(--color-bg-mute);
   padding: 1px 4px;
   border-radius: 3px;
@@ -129,7 +131,7 @@ body {
   border-radius: 6px;
   padding: 8px 28px 8px 10px;
   overflow-x: auto;
-  font-size: 12px;
+  font-size: calc(12px * var(--chat-font-mult, 1));
   margin: 0.4rem 0;
 }
 .md pre code {
@@ -149,14 +151,15 @@ body {
   margin: 0.55rem 0 0.25rem;
 }
 .md h1 {
-  font-size: 1.05rem;
+  font-size: calc(1.05rem * var(--chat-font-mult, 1));
 }
 .md h2 {
-  font-size: 1rem;
+  font-size: calc(1rem * var(--chat-font-mult, 1));
 }
 .md h3 {
-  font-size: 0.95rem;
+  font-size: calc(0.95rem * var(--chat-font-mult, 1));
 }
+
 .md table {
   border-collapse: collapse;
   margin: 0.4rem 0;
@@ -226,6 +229,9 @@ body {
 .pi-composer-card:focus-within {
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.pi-composer-card textarea {
+  font-size: calc(0.875rem * var(--chat-font-mult, 1));
 }
 .pi-kbd {
   display: inline-block;

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useChat } from "@/store/chat";
 import { useTheme } from "@/store/theme";
-import { useUiPrefs, FONT_MIN, FONT_MAX, FONT_STEP } from "@/store/uiPrefs";
+import { useUiPrefs, FONT_MIN, FONT_MAX, FONT_STEP, CHAT_FONT_MIN, CHAT_FONT_MAX, CHAT_FONT_STEP } from "@/store/uiPrefs";
 import type { ThinkingLevel } from "@/rpc/types";
 import { t } from "@/i18n/ru";
 
@@ -52,6 +52,9 @@ export function SettingsModal({
   const fontScale = useUiPrefs((s) => s.fontScale);
   const setFontScale = useUiPrefs((s) => s.setFontScale);
   const resetFont = useUiPrefs((s) => s.resetFont);
+  const chatFontSize = useUiPrefs((s) => s.chatFontSize);
+  const setChatFontSize = useUiPrefs((s) => s.setChatFontSize);
+  const resetChatFont = useUiPrefs((s) => s.resetChatFont);
 
   const [pathDraft, setPathDraft] = useState(cliPathOverride ?? "");
   const [cwdDraft, setCwdDraft] = useState(cwd);
@@ -203,7 +206,7 @@ export function SettingsModal({
           </div>
         </Section>
 
-        <Section title="Размер шрифта">
+        <Section title={t.settings.fontScale}>
           <div className="flex items-center gap-2">
             <input
               type="range"
@@ -224,11 +227,40 @@ export function SettingsModal({
               +
             </Button>
             <Button variant="ghost" size="sm" onClick={resetFont}>
-              Сброс
+              {t.settings.reset}
             </Button>
           </div>
           <div className="text-[11px] text-(--color-fg-dim) mt-1">
-            Масштабирует весь интерфейс.
+            {t.settings.fontScaleHint}
+          </div>
+        </Section>
+
+        <Section title={t.settings.chatFontSize}>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={CHAT_FONT_MIN}
+              max={CHAT_FONT_MAX}
+              step={CHAT_FONT_STEP}
+              value={chatFontSize}
+              onChange={(e) => setChatFontSize(parseFloat(e.target.value))}
+              className="flex-1 accent-(--color-accent)"
+            />
+            <span className="text-xs font-mono w-10 text-right text-(--color-fg-mute)">
+              {Math.round(chatFontSize * 100)}%
+            </span>
+            <Button variant="subtle" size="sm" onClick={() => setChatFontSize(chatFontSize - CHAT_FONT_STEP)}>
+              −
+            </Button>
+            <Button variant="subtle" size="sm" onClick={() => setChatFontSize(chatFontSize + CHAT_FONT_STEP)}>
+              +
+            </Button>
+            <Button variant="ghost" size="sm" onClick={resetChatFont}>
+              {t.settings.reset}
+            </Button>
+          </div>
+          <div className="text-[11px] text-(--color-fg-dim) mt-1">
+            {t.settings.chatFontSizeHint}
           </div>
         </Section>
 

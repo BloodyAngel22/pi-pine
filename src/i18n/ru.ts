@@ -65,6 +65,11 @@ export const t = {
     save: "Сохранить",
     cancel: "Отмена",
     none: "—",
+    fontScale: "Масштаб интерфейса",
+    fontScaleHint: "Масштабирует весь интерфейс",
+    chatFontSize: "Размер текста в чате",
+    chatFontSizeHint: "Влияет на текст сообщений и поле ввода",
+    reset: "Сброс",
   },
   errors: {
     rpcFail: "Не удалось запустить pi",

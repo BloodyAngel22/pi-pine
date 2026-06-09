@@ -2058,8 +2058,11 @@ function upsertMessage(
     //    приходит только асинхронным RPC event. Если pi зависнет между response
     //    и message_start — без optimistic echo пользователь видит "ничего".
     //    Когда echo всё-таки приходит, подтверждаем локальное сообщение вместо
-    //    создания дубля. Блоки локального сообщения сохраняем, чтобы не показывать
-    //    технические префиксы plan-mode / expanded files / skills.
+    //    создания дубля.
+    //    - Если текст совпадает: оставляем локальные блоки (чтобы не показывать
+    //      технические префиксы plan-mode / expanded files / skills).
+    //    - Если текст не совпадает: pi расширил команду/скилл (commit-msg →
+    //      полный текст), заменяем блоки на real-блоки из pi.
     if (!targetUiId && opts.role === "user") {
       const incomingText = normalizeForMatch(joinText(opts.blocks));
       for (let i = s.messages.length - 1; i >= 0; i--) {
@@ -2067,20 +2070,30 @@ function upsertMessage(
         if (candidate.role !== "user" || !candidate.localEcho) continue;
         const localText = normalizeForMatch(joinText(candidate.blocks));
         const closeEnough = Math.abs(opts.timestamp - candidate.timestamp) < 120_000;
+        if (!closeEnough) continue;
+
+        if (opts.piId) idMap.set(opts.piId, candidate.id);
+        const nextUiToPi = { ...s.uiToPiId };
+        if (opts.piId) nextUiToPi[candidate.id] = opts.piId;
+
         const textMatches =
           !localText ||
           !incomingText ||
           incomingText.includes(localText) ||
           localText.includes(incomingText) ||
           sameBlocks(candidate.blocks, opts.blocks);
-        if (!closeEnough || !textMatches) continue;
 
-        if (opts.piId) idMap.set(opts.piId, candidate.id);
-        const nextUiToPi = { ...s.uiToPiId };
-        if (opts.piId) nextUiToPi[candidate.id] = opts.piId;
         const messages = s.messages.map((m) =>
           m.id === candidate.id
-            ? { ...m, optimistic: false, localEcho: false, error: undefined }
+            ? {
+                ...m,
+                // Если текст не совпал — pi расширил команду/скилл,
+                // показываем расширенную версию.
+                blocks: textMatches ? m.blocks : opts.blocks,
+                optimistic: false,
+                localEcho: false,
+                error: undefined,
+              }
             : m,
         );
         return { messages, messageIdMap: idMap, uiToPiId: nextUiToPi };

@@ -4,6 +4,7 @@ import { Send, Square, Paperclip, X, Terminal, Slash, Brain, Sparkles, ListTodo,
 import clsx from "clsx";
 import { useChat, type UiBlock } from "@/store/chat";
 import { useExt } from "@/store/ext";
+import { useUiPrefs } from "@/store/uiPrefs";
 import { t } from "@/i18n/ru";
 import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
 import { ContextIndicator } from "./ContextIndicator";
@@ -207,13 +208,15 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
     setValue(next);
   }, [setValue]);
 
-  // авторесайз
+  const chatFontSize = useUiPrefs((s) => s.chatFontSize);
+
+  // авторесайз — пересчитываем при изменении текста ИЛИ размера шрифта в чате
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 240) + "px";
-  }, [value]);
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, [value, chatFontSize]);
 
   // фокус по первому рендеру
   useEffect(() => {
