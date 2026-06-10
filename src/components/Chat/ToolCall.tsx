@@ -211,7 +211,7 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
           {block.input != null && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">input</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2">
                 {pretty(block.input)}
               </pre>
             </div>
@@ -219,7 +219,7 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
           {block.output != null && block.output !== "" && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">output</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
                 {pretty(block.output)}
               </pre>
             </div>
@@ -288,7 +288,7 @@ function FastFetchToolCall({
             <div className="text-[11px] text-(--color-fg-dim)">query: {query}</div>
           )}
           {block.output != null && block.output !== "" && (
-            <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-80 overflow-y-auto">
+            <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-80 overflow-y-auto">
               {pretty(block.output)}
             </pre>
           )}
@@ -369,7 +369,7 @@ function ScreenshotToolCall({
           {block.output != null && block.output !== "" && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">output</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
                 {pretty(block.output)}
               </pre>
             </div>
@@ -501,7 +501,7 @@ function InteractToolCall({
           {block.output != null && block.output !== "" && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">output</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
                 {pretty(block.output)}
               </pre>
             </div>
@@ -555,9 +555,9 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
       {open && (
         <div className="border-t border-(--color-border)">
           {lines.length > 0 ? (
-            <pre className="max-h-[420px] overflow-auto bg-(--color-bg) py-1 font-mono text-[11px] leading-5">
+            <pre className="max-h-[420px] overflow-auto bg-(--color-bg) py-1 font-mono text-[11px] leading-5" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'normal' }}>
               {lines.map((line, index) => (
-                <div key={index} className={clsx("px-2 whitespace-pre", diffLineClass(line))}>
+                <div key={index} className={clsx("px-2 whitespace-pre-wrap", diffLineClass(line))}>
                   {line || " "}
                 </div>
               ))}
@@ -639,7 +639,7 @@ function AskUserToolCall({
           {block.output != null && block.output !== "" && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">ответ</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
                 {pretty(block.output)}
               </pre>
             </div>
@@ -720,7 +720,7 @@ function TodoToolCall({
             <div className="text-(--color-fg-dim)">No todos</div>
           )}
           {block.output != null && block.output !== "" && (
-            <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+            <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
               {pretty(block.output)}
             </pre>
           )}
@@ -786,7 +786,7 @@ function TaskToolCall({
           {instructions && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">инструкции</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-40 overflow-y-auto">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-40 overflow-y-auto">
                 {instructions}
               </pre>
             </div>
@@ -818,7 +818,7 @@ function TaskToolCall({
           {block.output != null && block.output !== "" && (
             <div>
               <div className="text-(--color-fg-dim) mb-0.5">результат</div>
-              <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
                 {pretty(block.output)}
               </pre>
             </div>

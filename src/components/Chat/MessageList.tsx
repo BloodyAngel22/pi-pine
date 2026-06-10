@@ -1,7 +1,7 @@
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
-import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sparkles, ArrowDown } from "lucide-react";
 import { useChat, type UiMessage } from "@/store/chat";
+import { useShallow } from "zustand/react/shallow";
 import { useThrottledValue } from "@/lib/useThrottledValue";
 import { Message } from "./Message";
 import { PlanTodoInline } from "./PlanTodoInline";
@@ -14,95 +14,162 @@ interface Props {
   onEdit(message: UiMessage, text: string): void;
 }
 
-const STREAM_RENDER_THROTTLE_MS = 50;
-const VIRTUOSO_OVERSCAN_PX = 900;
-
-const VirtualizedMessageList = forwardRef<HTMLDivElement, React.ComponentPropsWithoutRef<"div">>(
-  (props, ref) => <div {...props} ref={ref} className="pi-stream" />,
-);
-VirtualizedMessageList.displayName = "VirtualizedMessageList";
-
-const MessageListFooter = () => <div className="h-12" aria-hidden="true" />;
-
-const virtuosoComponents: Components<UiMessage> = {
-  Header: PlanTodoInline,
-  List: VirtualizedMessageList,
-  Footer: MessageListFooter,
-};
+/** How close to the bottom (px) counts as "at bottom". */
+const AT_BOTTOM_THRESHOLD = 80;
 
 export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
-  const rawMessages = useChat((s) => s.messages);
-  const messages = useThrottledValue(rawMessages, STREAM_RENDER_THROTTLE_MS);
-  const agentState = useChat((s) => s.agentState);
+  const rawMessages = useChat(useShallow((s) => s.messages));
+  const messages = useThrottledValue(rawMessages, 100);
+  const agentState = useChat(useShallow((s) => s.agentState));
   const switching = useChat((s) => s.switching);
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
-  /** true пока пользователь находится вблизи низа списка */
-  const atBottom = useRef(true);
-  /** управляет видимостью кнопки «прокрутить вниз» */
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
-  /** индекс последнего сообщения, которое видел пользователь (когда был внизу) */
-  const [lastSeenIndex, setLastSeenIndex] = useState(0);
+  const parentRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef(messages);
+  const [atBottomUI, setAtBottomUI] = useState(true);
+  const atBottomRef = useRef(true);
+  const [lastSeenIdx, setLastSeenIdx] = useState(0);
 
-  const scrollToBottom = useCallback((behavior: "auto" | "smooth" = "smooth") => {
-    virtuosoRef.current?.scrollToIndex({ index: "LAST", align: "end", behavior });
+  messagesRef.current = messages;
+
+  // ─── Scroll tracking ──────────────────────────────────────────────
+  //
+  // `atBottomRef.current` is updated synchronously in onScroll, so it is
+  // always correct regardless of React batching. `setAtBottomUI` is only
+  // for the scroll-to-bottom button visibility.
+
+  const updateAtBottom = useCallback(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const isEnd =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD;
+
+    if (atBottomRef.current !== isEnd) {
+      atBottomRef.current = isEnd;
+      setAtBottomUI(isEnd);
+    }
+
+    if (isEnd) {
+      setLastSeenIdx(messagesRef.current.length);
+    }
   }, []);
 
-  // При очистке сообщений (смена сессии/форк) сбрасываем позицию прокрутки вниз.
+  // ─── Native scroll-to-end helpers ─────────────────────────────────
+
+  const scrollContainerToEnd = useCallback(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // ─── Auto-follow on append ────────────────────────────────────────
+  //
+  // When new messages arrive and user is at the bottom, scroll to end
+  // to keep the latest content visible.
+
+  useLayoutEffect(() => {
+    if (messages.length > 0 && atBottomRef.current) {
+      scrollContainerToEnd();
+    }
+  }, [messages.length, scrollContainerToEnd]);
+
+  // ─── Force scroll on new-turn ─────────────────────────────────────
+  //
+  // Optimistic/localEcho user messages and pending assistant placeholders
+  // appear before the real pi data arrives. We force-scroll to make them
+  // visible immediately.
+
+  const [followKey, setFollowKey] = useState(0);
+
+  useLayoutEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last) return;
+    const isNewTurn =
+      (last.role === "user" && (last.localEcho || last.optimistic)) ||
+      (last.role === "assistant" && last.pendingAssistant);
+    if (!isNewTurn) return;
+
+    atBottomRef.current = true;
+    setAtBottomUI(true);
+    setLastSeenIdx(messages.length);
+    setFollowKey((k) => k + 1);
+  }, [messages]);
+
+  useLayoutEffect(() => {
+    if (followKey > 0) {
+      scrollContainerToEnd();
+    }
+  }, [followKey, scrollContainerToEnd]);
+
+  // ─── Initial mount scroll ─────────────────────────────────────────
+
+  const initialScrollDone = useRef(false);
+  useLayoutEffect(() => {
+    if (!initialScrollDone.current && parentRef.current) {
+      initialScrollDone.current = true;
+      scrollContainerToEnd();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Wheel handler: prevent `<pre>` from stealing vertical scroll ─
+  //
+  // Code blocks with `overflow-x: auto` and a visible scrollbar cause
+  // the browser to capture vertical wheel events and shift the code
+  // horizontally — jitter during chat scroll. We intercept at the
+  // container level (capture phase), prevent default, and always
+  // redirect vertical movement to the chat container.
+  //
+  // Users can still scroll code horizontally via Shift+wheel (standard
+  // convention, same as VS Code / many editors) or by dragging the
+  // horizontal scrollbar.
+
+  useLayoutEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+
+    const handler = (e: WheelEvent) => {
+      if (e.shiftKey) return;
+      const pre = (e.target as HTMLElement).closest<HTMLPreElement>("pre");
+      if (!pre || pre.scrollWidth <= pre.clientWidth) return;
+
+      // If the <pre> has intentional vertical scroll (like file diff
+      // previews in ToolCall: max-h + overflow:auto), let it be.
+      if (pre.scrollHeight > pre.clientHeight) return;
+
+      // <pre> only has horizontal scroll (inline code in markdown).
+      // The browser would convert vertical wheel → horizontal scroll,
+      // causing jitter. Prevent that and redirect to chat.
+      e.preventDefault();
+      el.scrollTop += e.deltaY;
+    };
+
+    el.addEventListener("wheel", handler, { passive: false, capture: true });
+    return () => el.removeEventListener("wheel", handler, { capture: true } as EventListenerOptions);
+  }, []);
+
+  // Reset on messages clear.
   useEffect(() => {
     if (messages.length === 0) {
-      atBottom.current = true;
-      setShowScrollBtn(false);
-      setLastSeenIndex(0);
+      atBottomRef.current = true;
+      setAtBottomUI(true);
+      setLastSeenIdx(0);
+      initialScrollDone.current = false;
     }
   }, [messages.length]);
 
-  const handleAtBottomChange = useCallback(
-    (bottom: boolean) => {
-      atBottom.current = bottom;
-      setShowScrollBtn(!bottom);
-      if (bottom) {
-        setLastSeenIndex(messages.length);
-      }
-    },
-    [messages.length],
-  );
+  // ─── Actions ──────────────────────────────────────────────────────
 
-  const followOutput = useCallback((isAtBottom: boolean) => {
-    if (!isAtBottom && !atBottom.current) {
-      setShowScrollBtn(true);
-      return false;
-    }
-    atBottom.current = true;
-    setShowScrollBtn(false);
-    setLastSeenIndex(messages.length);
-    return "auto" as const;
-  }, [messages.length]);
+  const scrollToEnd = useCallback(() => {
+    atBottomRef.current = true;
+    setAtBottomUI(true);
+    setLastSeenIdx(messages.length);
+    scrollContainerToEnd();
+  }, [scrollContainerToEnd, messages.length]);
 
-  useEffect(() => {
-    const last = messages[messages.length - 1];
+  const unreadCount = !atBottomUI
+    ? Math.max(0, messages.length - lastSeenIdx)
+    : 0;
 
-    // Optimistic/localEcho user-message and the following pending assistant
-    // placeholder appear only after an explicit user submit. During long assistant
-    // streaming Virtuoso can lose its at-bottom state while the last markdown block
-    // keeps growing, so followOutput may refuse to scroll. In that case the submit
-    // result is in the store but below the viewport, which looks like it disappeared.
-    const shouldForceBottom = Boolean(
-      last &&
-        ((last.role === "user" && (last.localEcho || last.optimistic)) ||
-          (last.role === "assistant" && last.pendingAssistant)),
-    );
-    if (shouldForceBottom) {
-      atBottom.current = true;
-      setShowScrollBtn(false);
-      setLastSeenIndex(messages.length);
-      requestAnimationFrame(() => {
-        scrollToBottom("auto");
-        requestAnimationFrame(() => scrollToBottom("auto"));
-      });
-    }
-  }, [messages, scrollToBottom]);
-
-  const unreadCount = showScrollBtn ? Math.max(0, messages.length - lastSeenIndex) : 0;
+  // ─── Empty / loading states ───────────────────────────────────────
 
   if (messages.length === 0) {
     if (switching) {
@@ -132,46 +199,64 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
                 </span>
               </div>
             )}
-            <div className="text-xs text-(--color-fg-dim)">{t.chat.empty.tipSlash}</div>
+            <div className="text-xs text-(--color-fg-dim)">
+              {t.chat.empty.tipSlash}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  // ─── Main render (plain flow, no virtualizer) ─────────────────────
+  //
+  // All messages are rendered in normal DOM flow. No absolute
+  // positioning, no transform, no ResizeObserver, no measurement
+  // corrections. The browser handles layout and scrolling natively.
+  //
+  // This is the same approach used by Telegram Web, Element Web,
+  // Zulip, and other production chat UIs. Virtual list libraries
+  // cause inherent scroll jitter with dynamic-height messages
+  // because item positions shift when above-viewport items get
+  // measured for the first time.
+  //
+  // Message component is wrapped in React.memo to prevent re-renders
+  // when unrelated messages update.
+
   return (
     <div className="flex-1 min-h-0 relative">
-      <Virtuoso
-        ref={virtuosoRef}
-        className="h-full"
-        data={messages}
-        computeItemKey={(_, message) => message.id}
-        followOutput={followOutput}
-        atBottomStateChange={handleAtBottomChange}
-        increaseViewportBy={{ top: VIRTUOSO_OVERSCAN_PX, bottom: VIRTUOSO_OVERSCAN_PX }}
-        atBottomThreshold={120}
-        components={virtuosoComponents}
-        itemContent={(_, message) => (
-          <Message
-            message={message}
-            onCopy={onCopy}
-            onFork={onFork}
-            onRegenerate={onRegenerate}
-            onEdit={onEdit}
-          />
-        )}
-      />
-      {showScrollBtn && (
+      <div
+        ref={parentRef}
+        className="pi-stream"
+        onScroll={updateAtBottom}
+        style={{ overflowAnchor: "none", overflowY: "auto", height: "100%" }}
+      >
+        <div className="pi-stream-content">
+          <PlanTodoInline />
+
+          {messages.map((message) => (
+            <div key={message.id} style={{ marginBottom: "1.25rem" }}>
+              <Message
+                message={message}
+                onCopy={onCopy}
+                onFork={onFork}
+                onRegenerate={onRegenerate}
+                onEdit={onEdit}
+              />
+            </div>
+          ))}
+
+          {/* Extra space for visual comfort at the bottom. */}
+          <div style={{ height: 40 }} aria-hidden="true" />
+        </div>
+      </div>
+
+      {!atBottomUI && (
         <div className="absolute bottom-6 right-6 z-30 pointer-events-none">
           <button
             type="button"
-            onClick={() => {
-              atBottom.current = true;
-              setShowScrollBtn(false);
-              setLastSeenIndex(messages.length);
-              scrollToBottom();
-            }}
-            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-(--color-accent) text-white shadow-lg hover:bg-(--color-accent) hover:brightness-110 transition-all duration-200 animate-in fade-in slide-in-from-bottom-2"
+            onClick={scrollToEnd}
+            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-(--color-accent) text-white shadow-lg hover:brightness-110 transition-all duration-200"
             title="Прокрутить вниз"
           >
             <ArrowDown size={12} />

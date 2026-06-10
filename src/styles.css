@@ -133,11 +133,17 @@ body {
   overflow-x: auto;
   font-size: calc(12px * var(--chat-font-mult, 1));
   margin: 0.4rem 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 .md pre code {
   background: transparent;
   padding: 0;
 }
+
+/* Wrapping for tool output / diff preview <pre> blocks.
+   Long unbreakable strings (URLs, paths) still get a scrollbar via overflow. */
 .md a {
   color: var(--color-accent);
   text-decoration: underline;
@@ -246,13 +252,28 @@ body {
   vertical-align: middle;
 }
 
-/* центрированная лента */
+/* Full-width scrollable wrapper — scrollbar sits on the right edge of the window. */
 .pi-stream {
+  overscroll-behavior: contain;
+  /* Prevents Chromium's scroll anchoring from ignoring overflow-anchor: none
+     when content-visibility or large layout shifts are present (bug #40445560).
+     contain: layout creates a proper scroll container boundary. */
+  contain: layout style paint;
+}
+
+/* Centered content inside the scroller. Bottom spacing belongs to
+   the virtualizer padding, so measured item offsets stay exact. */
+.pi-stream-content {
   max-width: 850px;
   margin: 0 auto;
   width: 100%;
-  padding: 1.25rem 1rem 6rem;
+  padding: 1.25rem 1rem 0;
 }
+
+.pi-stream-msg {
+  margin-bottom: 0;
+}
+
 
 /* drag-handle для ресайза боковых панелей */
 .pi-resizer {
@@ -275,9 +296,7 @@ body {
 .pi-resizer-left {
   left: -2px;
 }
-.pi-stream-msg {
-  margin-bottom: 1.25rem;
-}
+
 .pi-bubble-user {
   background: var(--color-user-bg);
   color: var(--color-user-fg);
