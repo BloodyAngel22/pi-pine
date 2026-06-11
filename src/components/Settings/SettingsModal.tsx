@@ -62,6 +62,22 @@ export function SettingsModal({
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [agentDir, setAgentDir] = useState<string | null>(null);
 
+  // Image Analysis config state
+  const [imgOcrEnabled, setImgOcrEnabled] = useState(true);
+  const [imgOcrLang, setImgOcrLang] = useState("eng+rus");
+  const [imgCaptioningEnabled, setImgCaptioningEnabled] = useState(false);
+  const [imgCaptionBackend, setImgCaptionBackend] = useState("tiny");
+
+  // Image Analysis status (dependencies, cache)
+  const [imgStatus, setImgStatus] = useState<{
+    tesseract_installed: boolean;
+    transformers_installed: boolean;
+    cache_size_bytes: number;
+    cache_path: string;
+    ocr_languages_available: string;
+    ollama_available: boolean;
+  } | null>(null);
+
   useEffect(() => {
     if (!open) return;
     setPathDraft(cliPathOverride ?? "");
@@ -70,6 +86,30 @@ export function SettingsModal({
     void invoke<{ agent_dir?: string }>("detect_environment").then((env) =>
       setAgentDir(env.agent_dir ?? null),
     );
+    // Load image analysis config
+    void invoke<{
+      ocr_enabled: boolean;
+      ocr_lang: string;
+      captioning_enabled: boolean;
+      captioning_backend: string;
+    }>("get_analyze_image_config").then((cfg) => {
+      if (cfg) {
+        setImgOcrEnabled(cfg.ocr_enabled);
+        setImgOcrLang(cfg.ocr_lang);
+        setImgCaptioningEnabled(cfg.captioning_enabled);
+        setImgCaptionBackend(cfg.captioning_backend);
+      }
+    }).catch(() => {});
+    // Load image analysis status — pass pi binary path so Rust can find node_modules
+    const piPathForStatus = cliPathOverride || piPath;
+    void invoke<{
+      tesseract_installed: boolean;
+      transformers_installed: boolean;
+      cache_size_bytes: number;
+      cache_path: string;
+      ocr_languages_available: string;
+      ollama_available: boolean;
+    }>("get_analyze_image_status", { pi_binary_path: piPathForStatus || null }).then(setImgStatus).catch(() => {});
   }, [open, cliPathOverride, cwd]);
 
   const detectPi = async () => {
@@ -96,6 +136,19 @@ export function SettingsModal({
       await stopRpc();
       await startRpc();
     }
+    // Save image analysis config
+    void invoke("set_analyze_image_config", {
+      config: {
+        ocr_enabled: imgOcrEnabled,
+        ocr_lang: imgOcrLang,
+        captioning_enabled: imgCaptioningEnabled,
+        captioning_backend: imgCaptionBackend,
+        rule_based_classification: true,
+        max_image_size_mb: 10,
+        ollama_host: "http://localhost:11434",
+        ollama_model: "llava",
+      },
+    }).catch(() => {});
     onClose();
   };
 
@@ -279,6 +332,175 @@ export function SettingsModal({
                 )}
               </Button>
             ))}
+          </div>
+        </Section>
+
+        <Section title="Image Analysis">
+          <div className="space-y-3 text-xs">
+            {/* ============================================ */}
+            {/* 1. OCR — чтение текста из изображений */}
+            {/* ============================================ */}
+            <div className="border border-(--color-border) rounded-md p-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold flex items-center gap-1">
+                  📝 OCR — распознавание текста
+                </span>
+                <span className={"inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border " + (imgStatus?.tesseract_installed
+                  ? "bg-(--color-success)/10 text-(--color-success) border-(--color-success)/20"
+                  : "bg-(--color-warning)/10 text-(--color-warning) border-(--color-warning)/20")}>
+                  {imgStatus?.tesseract_installed ? "✅ OK" : "⚠️ not installed"}
+                </span>
+              </div>
+              <div className="text-[10px] text-(--color-fg-dim) leading-relaxed">
+                Извлекает текст из картинок. Работает локально, без API.
+                Лучше всего читает крупный печатный текст на скриншотах.
+                {!imgStatus?.tesseract_installed && (
+                  <span className="block mt-1 text-(--color-warning)">
+                    Установка npm: <code className="font-mono">npm install tesseract.js</code> в pi-mono-x
+                  </span>
+                )}
+                <span className="block mt-1">
+                  Для лучшей производительности установи <span className="font-semibold">нативный Tesseract CLI</span> (2-5× быстрее):
+                </span>
+                <span className="block mt-1">
+                  • Debian/Ubuntu:
+                  <code className="font-mono block ml-4">sudo apt install tesseract-ocr tesseract-ocr-rus tesseract-ocr-eng</code>
+                  <span className="text-(--color-fg-dim) block ml-4">(eng уже входит в tesseract-ocr, но можно явно)</span>
+                </span>
+                <span className="block">
+                  • Arch:
+                  <code className="font-mono block ml-4">sudo pacman -S tesseract tesseract-data-rus tesseract-data-eng</code>
+                </span>
+                <span className="block">
+                  • macOS:
+                  <code className="font-mono block ml-4">brew install tesseract</code>
+                  <span className="text-(--color-fg-dim) block ml-4">Все языки устанавливаются сразу</span>
+                </span>
+                <span className="block">
+                  • Fedora:
+                  <code className="font-mono block ml-4">sudo dnf install tesseract tesseract-langpack-rus</code>
+                </span>
+                <span className="block mt-1 text-(--color-fg-dim)">
+                  После установки проверь: <code className="font-mono">tesseract --list-langs</code> — покажет доступные языки.
+                  Язык выбирается в настройках выше (eng+rus по умолчанию).
+                </span>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={imgOcrEnabled}
+                    onChange={(e) => setImgOcrEnabled(e.target.checked)}
+                    className="accent-(--color-accent) rounded" />
+                  <span>включено</span>
+                </label>
+                <div className="relative">
+                  <select value={imgOcrLang}
+                    onChange={(e) => setImgOcrLang(e.target.value)}
+                    className="appearance-none text-[11px] bg-(--color-bg-soft) border border-(--color-border) rounded px-2 py-0.5 pr-5 text-(--color-fg) cursor-pointer hover:border-(--color-accent)/40 focus:outline-none focus:border-(--color-accent)">
+                    <option value="eng">eng</option>
+                    <option value="eng+rus">eng+rus</option>
+                    <option value="rus">rus</option>
+                    <option value="deu">deu</option>
+                    <option value="fra">fra</option>
+                    <option value="spa">spa</option>
+                  </select>
+                  <span className="absolute right-1 top-1/2 -translate-y-1/2 text-(--color-fg-dim) pointer-events-none text-[9px]">▼</span>
+                </div>
+                <span className="text-[10px] text-(--color-fg-dim)">язык</span>
+              </div>
+              {imgStatus?.ocr_languages_available && imgStatus.ocr_languages_available !== "eng (download on first use)" && (
+                <div className="text-[10px] text-(--color-fg-dim)">
+                  Кэш языков: {imgStatus.ocr_languages_available}
+                </div>
+              )}
+            </div>
+
+            {/* ============================================ */}
+            {/* 2. Captioning — описание содержимого */}
+            {/* ============================================ */}
+            <div className="border border-(--color-border) rounded-md p-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold flex items-center gap-1">
+                  🎯 Captioning — описание изображения
+                </span>
+                <span className={"inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border " + (imgStatus?.transformers_installed
+                  ? "bg-(--color-success)/10 text-(--color-success) border-(--color-success)/20"
+                  : "bg-(--color-warning)/10 text-(--color-warning) border-(--color-warning)/20")}>
+                  {imgStatus?.transformers_installed ? "✅ OK" : "⚠️ not installed"}
+                </span>
+              </div>
+              <div className="text-[10px] text-(--color-fg-dim) leading-relaxed">
+                Описывает содержимое картинки естественным языком ("розовая табличка с белым котом").
+                Работает через ML-модель <code className="font-mono">vit-gpt2</code> (~245MB) локально на CPU.
+                {!imgStatus?.transformers_installed && (
+                  <span className="block mt-1 text-(--color-warning)">
+                    Установка: <code className="font-mono">cd pi-mono-x && npm install @huggingface/transformers</code>
+                    Модель скачается автоматически при первом вызове (~245MB).
+                  </span>
+                )}
+                {imgStatus?.transformers_installed && imgStatus.cache_size_bytes === 0 && (
+                  <span className="block mt-1 text-(--color-warning)">
+                    Модель ещё не скачана. Первый вызов скачает ~245MB с HuggingFace Hub.
+                  </span>
+                )}
+                {imgStatus && imgStatus.cache_size_bytes > 0 && (
+                  <span className="block mt-1 text-(--color-success)">
+                    Модель закеширована: {(imgStatus.cache_size_bytes / 1024 / 1024).toFixed(1)}MB
+                  </span>
+                )}
+              </div>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none pt-1">
+                <input type="checkbox" checked={imgCaptioningEnabled}
+                  onChange={(e) => {
+                    setImgCaptioningEnabled(e.target.checked);
+                    if (!e.target.checked) setImgCaptionBackend("tiny");
+                  }}
+                  className="accent-(--color-accent) rounded" />
+                <span>включено</span>
+              </label>
+              {imgCaptioningEnabled && (
+                <>
+                  <div className="text-[10px] text-(--color-fg-dim)">Бэкенд:</div>
+                  <div className="flex flex-wrap gap-1">
+                    <Button variant={imgCaptionBackend === "vit-gpt2" ? "primary" : "subtle"} size="sm"
+                      disabled={!imgStatus?.transformers_installed}
+                      onClick={() => setImgCaptionBackend("vit-gpt2")}>
+                      vit-gpt2 🟠 ~3-10s
+                    </Button>
+                    <Button variant={imgCaptionBackend === "disabled" ? "primary" : "subtle"} size="sm"
+                      onClick={() => { setImgCaptioningEnabled(false); setImgCaptionBackend("disabled"); }}>
+                      отключить
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ============================================ */}
+            {/* 3. Colors — определение цветов */}
+            {/* ============================================ */}
+            <div className="border border-(--color-border) rounded-md p-2 space-y-1.5">
+              <div className="flex items-center gap-1 font-semibold">
+                🎨 Цветовая палитра
+              </div>
+              <div className="text-[10px] text-(--color-fg-dim) leading-relaxed">
+                Определяет доминантные цвета изображения (red, blue, green, pink, purple, teal и т.д.).
+                Работает всегда, без дополнительных зависимостей.
+              </div>
+            </div>
+
+            {/* ============================================ */}
+            {/* 4. Как использовать */}
+            {/* ============================================ */}
+            <div className="border border-(--color-border) rounded-md p-2 space-y-1">
+              <div className="font-semibold flex items-center gap-1">
+                💡 Как использовать
+              </div>
+              <ul className="text-[10px] text-(--color-fg-dim) space-y-1 list-disc list-inside leading-relaxed">
+                <li>Вставьте изображение через <kbd className="font-mono px-1 py-0.5 bg-(--color-bg) rounded text-(--color-fg-mute)">Ctrl+V</kbd> — агент автоматически проанализирует его</li>
+                <li>Или напишите: <code className="font-mono">analyze_image({'{'}image_path: "/путь/к/файлу.jpg"{'}'})</code></li>
+                <li>Для отладки буфера обмена: <code className="font-mono">/clipboard</code></li>
+              </ul>
+            </div>
           </div>
         </Section>
 

@@ -5,7 +5,7 @@ import { AlertCircle, X, GitFork } from "lucide-react";
 import { useChat, type UiMessage } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useTheme } from "@/store/theme";
-import { compact as rpcCompact } from "@/rpc/bridge";
+import { compact as rpcCompact, sendPrompt } from "@/rpc/bridge";
 import { Header } from "@/components/Chat/Header";
 import { MessageList } from "@/components/Chat/MessageList";
 import { Composer } from "@/components/Chat/Composer";
@@ -205,6 +205,10 @@ export default function App() {
         break;
       case "/abort":
         void useChat.getState().abortStreaming();
+        break;
+      default:
+        // Send unknown slash commands to pi (extensions, skills, templates)
+        void sendPrompt(`${cmd} ${arg}`.trim());
         break;
     }
   };

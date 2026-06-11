@@ -1,3 +1,4 @@
+mod analyze_image;
 mod clipboard;
 mod favorites;
 mod mcp;
@@ -89,6 +90,10 @@ pub fn run() {
             rpc::rpc_send,
             rpc::rpc_stop,
             rpc::rpc_status,
+            // analyze-image config
+            analyze_image::get_analyze_image_config,
+            analyze_image::set_analyze_image_config,
+            analyze_image::get_analyze_image_status,
             // Virtual display
             virtual_display::start_virtual_display,
             virtual_display::stop_virtual_display,

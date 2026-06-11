@@ -20,6 +20,7 @@ export const BUILTIN_SLASH: SlashCommand[] = [
   { command: "/execute", description: "Выполнить текущий план" },
   { command: "/btw", description: "Попутный вопрос в текущем контексте" },
   { command: "/abort", description: "Прервать стриминг" },
+  { command: "/clipboard", description: "Показать содержимое буфера обмена" },
 ];
 
 interface Props {

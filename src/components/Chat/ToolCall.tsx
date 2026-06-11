@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search } from "lucide-react";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
 import { useExt } from "@/store/ext";
@@ -167,6 +167,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   }
   if (block.name === "interact") {
     return <InteractToolCall block={block} open={open} setOpen={setOpen} />;
+  }
+  if (block.name === "analyze_image") {
+    return <AnalyzeImageToolCall block={block} open={open} setOpen={setOpen} />;
   }
   // Pending permission — show compact inline card with approve/deny
   if (block.status === "pending") {
@@ -1003,6 +1006,286 @@ function PendingAskUserToolCallBlock({ block }: { block: UiBlockTool }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── AnalyzeImageToolCall ────────────────────────────────────────────────────
+
+interface AnalyzeResult {
+  text: string;
+  confidence: number;
+  blocks: { text: string; bbox: [number,number,number,number]; confidence: number; line_num: number }[];
+  caption: string;
+  image_type: string;
+  colors: { r: number; g: number; b: number; name: string; pct: number }[];
+  metadata: { width: number; height: number; format: string; size_bytes: number; has_transparency: boolean };
+  latency_hint: string;
+  error?: string;
+}
+
+function parseAnalyzeResult(block: UiBlockTool): { ok: false } | { ok: true; data: AnalyzeResult } {
+  const details = asRecord(block.details);
+  if (details && typeof details.text === "string") {
+    return { ok: true, data: details as unknown as AnalyzeResult };
+  }
+  const output = block.output;
+  if (typeof output === "string") {
+    try { return { ok: true, data: JSON.parse(output) }; } catch {}
+  }
+  return { ok: false };
+}
+
+function AnalyzeImageToolCall({
+  block,
+  open,
+  setOpen,
+}: {
+  block: UiBlockTool;
+  open: boolean;
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
+}) {
+  const isError = block.status === "error";
+  const isRunning = block.status === "running";
+  const input = asRecord(block.input);
+  const imagePath = String(input.image_path ?? "");
+  const parsed = parseAnalyzeResult(block);
+  const hasImages = block.images && block.images.length > 0;
+
+  const data: AnalyzeResult | null = parsed.ok ? parsed.data : null;
+  const textLines = data?.text ? data.text.split("\n") : [];
+  const confPct = data ? Math.round(data.confidence * 100) : null;
+  const confColor =
+    confPct != null
+      ? confPct > 90 ? "text-(--color-success)"
+        : confPct > 60 ? "text-(--color-warning)"
+        : "text-(--color-danger)"
+      : "";
+  const m = data?.metadata;
+
+  // Build summary line
+  const summaryParts: string[] = [];
+  if (data?.image_type && data.image_type !== "unknown") summaryParts.push(data.image_type);
+  if (m?.width && m?.height) summaryParts.push(`${m.width}×${m.height}`);
+  if (confPct != null) summaryParts.push(`${confPct}%`);
+  if (data?.caption) summaryParts.push(`“${data.caption.length > 40 ? data.caption.slice(0, 40) + "…" : data.caption}”`);
+  if (textLines.length > 0) summaryParts.push(`${textLines.length} lines`);
+  const summary = summaryParts.join(" · ");
+
+  return (
+    <div
+      className={clsx(
+        "my-1 rounded-md border text-xs",
+        isError
+          ? "border-(--color-danger)/30 bg-(--color-danger)/5"
+          : "border-(--color-accent)/20 bg-(--color-accent)/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-(--color-bg-mute) rounded-md text-left"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {isError ? (
+          <AlertCircle size={12} className="text-(--color-danger)" />
+        ) : (
+          <Search size={12} className="text-(--color-accent)" />
+        )}
+        <span className="font-mono text-(--color-accent)">analyze_image</span>
+        <span className="font-mono text-(--color-fg) truncate min-w-0" title={imagePath}>
+          {imagePath.split("/").pop()}
+        </span>
+        <span className={clsx("ml-auto shrink-0 truncate max-w-[200px]", {
+          "text-(--color-warning)": isRunning,
+          "text-(--color-danger)": isError,
+          "text-(--color-fg-dim)": !isRunning && !isError,
+        })}>
+          {isRunning ? "⏳ analyzing…" : isError ? (data?.error || "error") : summary || "done"}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-2">
+          {/* Image preview */}
+          {hasImages && <ToolImages images={block.images} />}
+
+          {/* Running / progress (show onUpdate messages) */}
+          {isRunning && !data && (
+            <div>
+              <div className="flex items-center gap-2 text-(--color-warning) text-[11px]">
+                <span className="inline-block w-3 h-3 rounded-full border-2 border-(--color-warning) border-t-transparent animate-spin" />
+                <span>Processing…</span>
+              </div>
+              {/* Show intermediate onUpdate content blocks */}
+              {block.output != null && typeof block.output === "object" && Array.isArray(block.output) && block.output.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {block.output.map((msg: any, i: number) => (
+                    <div key={i} className="text-[11px] text-(--color-fg-mute)">
+                      {msg.text ?? JSON.stringify(msg)}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {block.output != null && typeof block.output === "string" && block.output.length > 0 && (
+                <div className="text-[11px] text-(--color-fg-mute) mt-1">
+                  {block.output}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Error / Cancelled */}
+          {data?.error && (
+            <div className="rounded border border-(--color-danger)/20 bg-(--color-danger)/5 p-2 text-(--color-danger) text-[11px]">
+              ⚠ {data.error}
+            </div>
+          )}
+
+          {/* Image type + metadata */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-(--color-fg-dim)">
+            {data?.image_type && data.image_type !== "unknown" && (
+              <span>📂 type: <span className="text-(--color-fg-mute)">{data.image_type}</span></span>
+            )}
+            {m?.width && m?.height && (
+              <span>{m.width}×{m.height} {m.format.toUpperCase()}</span>
+            )}
+            {m?.size_bytes != null && (
+              <span>{(m.size_bytes / 1024).toFixed(1)}KB</span>
+            )}
+            {m?.has_transparency && <span>α</span>}
+            {data?.latency_hint && <span>({data.latency_hint})</span>}
+          </div>
+
+          {/* Dominant colors */}
+          {data?.colors && data.colors.length > 0 && (
+            <div>
+              <div className="text-(--color-fg-dim) mb-0.5">🎨 colors</div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.colors.map((c, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-(--color-bg) border border-(--color-border)">
+                    {c.name} {c.pct}%
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Caption */}
+          {data?.caption && (
+            <div>
+              <div className="text-(--color-fg-dim) mb-0.5">🎯 caption</div>
+              <div className="bg-(--color-bg) border border-(--color-border) rounded p-2 whitespace-pre-wrap text-(--color-accent) text-[11px]">
+                {data.caption}
+              </div>
+            </div>
+          )}
+
+          {/* OCR text */}
+          {data?.text && (
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-(--color-fg-dim)">📝 extracted text</span>
+                {confPct != null && (
+                  <span className={clsx("font-mono", confColor)}>
+                    {confPct}%
+                  </span>
+                )}
+                {data.blocks && data.blocks.length > 0 && (
+                  <span className="text-(--color-fg-dim)">{data.blocks.length} words</span>
+                )}
+              </div>
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+                {textLines.slice(0, 50).join("\n")}
+                {textLines.length > 50 && "\n… (truncated)"}
+              </pre>
+            </div>
+          )}
+
+          {/* Raw output (fallback when no parsed data) */}
+          {block.output != null && block.output !== "" && !data && !isRunning && (
+            <div>
+              <div className="text-(--color-fg-dim) mb-0.5">output</div>
+              <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-64 overflow-y-auto">
+                {pretty(block.output)}
+              </pre>
+            </div>
+          )}
+
+          {/* ─── Debug section ────────────────────────────────────────── */}
+          <DebugSection block={block} data={data} imagePath={imagePath} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Debug-only: show raw details, params, timing for troubleshooting */
+function DebugSection({ block, data, imagePath }: { block: UiBlockTool; data: AnalyzeResult | null; imagePath: string }) {
+  const [showDebug, setShowDebug] = useState(false);
+
+  const details = asRecord(block.details);
+  const input = asRecord(block.input);
+
+  // Collect debug info
+  const debugLines: { label: string; value: string }[] = [];
+
+  if (block.status) debugLines.push({ label: "status", value: block.status });
+
+  if (input) {
+    Object.entries(input).forEach(([k, v]) => {
+      const val = Array.isArray(v) ? v.join(", ") : String(v ?? "");
+      if (val) debugLines.push({ label: `param.${k}`, value: val });
+    });
+  }
+
+  if (data?.latency_hint) debugLines.push({ label: "latency", value: data.latency_hint });
+
+  if (data?.error) debugLines.push({ label: "error", value: data.error });
+
+  if (data?.metadata && !data.metadata.width && !data.metadata.height && !data.metadata.format) {
+    debugLines.push({ label: "⚠ metadata", value: "empty/unreadable" });
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setShowDebug((v) => !v)}
+        className="flex items-center gap-1.5 text-[10px] text-(--color-fg-dim) hover:text-(--color-accent) hover:bg-(--color-bg-mute) rounded px-1 py-0.5 w-full"
+      >
+        {showDebug ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        🔧 debug
+        {debugLines.length > 0 && !showDebug && (
+          <span className="truncate text-(--color-fg-dim) ml-1 opacity-60">
+            {debugLines.map((d) => `${d.label}=${d.value}`).join(" · ")}
+          </span>
+        )}
+      </button>
+      {showDebug && (
+        <div className="space-y-1 mt-1">
+          {/* Quick info table */}
+          {debugLines.length > 0 && (
+            <div className="text-[10px] font-mono">
+              {debugLines.map((d) => (
+                <div key={d.label} className="flex gap-2">
+                  <span className="text-(--color-fg-dim) shrink-0">{d.label}:</span>
+                  <span className="text-(--color-fg-mute) break-all">{d.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Raw block.details JSON */}
+          {details && Object.keys(details).length > 0 && (
+            <>
+              <div className="text-[10px] text-(--color-fg-dim) mt-1">details:</div>
+              <pre className="font-mono text-[10px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-1.5 max-h-48 overflow-y-auto text-(--color-fg-mute)">
+                {JSON.stringify(details, null, 2)}
+              </pre>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
