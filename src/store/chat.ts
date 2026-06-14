@@ -376,6 +376,7 @@ const STORAGE_KEY_PLAN_MODE = "pi-pine.planMode";
 const STORAGE_KEY_SKILLS = "pi-pine.attachedSkills";
 const STORAGE_KEY_OPEN_TABS_PREFIX = "pi-pine.openTabs.";
 const SESSIONS_CHANGED_EVENT = "pi-pine:sessions-changed";
+const closedTabIds = new Set<string>();
 
 function openTabsStorageKey(cwd: string): string {
   return `${STORAGE_KEY_OPEN_TABS_PREFIX}${cwd}`;
@@ -1145,6 +1146,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
   activeTabId: null,
 
   ensureTab(tabId, initial) {
+    closedTabIds.delete(tabId);
     set((s) => {
       if (s.tabs.has(tabId)) {
         if (!initial) return {};
@@ -1210,6 +1212,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
         sourceSessionId: options?.sourceSessionId ?? get().activeTabId,
         sessionPath: options?.sessionPath ?? undefined,
       });
+      closedTabIds.delete(sessionId);
       const tab = createDefaultSessionTab(sessionId, { sessionName: name ?? null });
       set((s) => ({
         tabs: new Map(s.tabs).set(sessionId, tab),
@@ -1258,16 +1261,24 @@ export const useChat = create<ChatState>((rawSet, get) => {
     }
     const idx = st.tabOrder.indexOf(tabId);
     if (idx === -1) return;
-    try {
-      if (st.rpcRunning) await rpc.closeSession(tabId);
-    } catch (e) {
-      get().setError((e as Error).message);
-      return;
-    }
+
     const nextOrder = st.tabOrder.filter((id) => id !== tabId);
     const nextTabs = new Map(st.tabs);
     nextTabs.delete(tabId);
     const nextActive = st.activeTabId === tabId ? nextOrder[Math.max(0, idx - 1)] ?? nextOrder[0] ?? null : st.activeTabId;
+
+    try {
+      if (st.rpcRunning) await rpc.closeSession(tabId);
+    } catch (e) {
+      const message = (e as Error).message;
+      // Если tab уже был удалён на backend, всё равно убираем локальный zombie-tab.
+      if (!message.includes("Session not found")) {
+        get().setError(message);
+        return;
+      }
+    }
+
+    closedTabIds.add(tabId);
     set({ tabs: nextTabs, tabOrder: nextOrder, activeTabId: nextActive });
     if (nextActive) await get().activateTab(nextActive);
     rememberOpenTabsSnapshot(get());
@@ -1300,9 +1311,13 @@ export const useChat = create<ChatState>((rawSet, get) => {
     if (initOnce) return;
     initOnce = true;
     rpc.onEvent((event) => {
-      const sid = typeof event.sessionId === "string" ? event.sessionId : get().activeTabId;
+      const explicitSid = typeof event.sessionId === "string" ? event.sessionId : null;
+      const sid = explicitSid ?? get().activeTabId;
       if (!sid) {
         handleAgentEvent(event, set, get);
+        return;
+      }
+      if (explicitSid && closedTabIds.has(explicitSid) && !get().tabs.has(explicitSid)) {
         return;
       }
       get().ensureTab(sid);
@@ -1338,9 +1353,13 @@ export const useChat = create<ChatState>((rawSet, get) => {
     const run = (async () => {
       const { cliPathOverride, cwd } = get();
       try {
+        const startupRemembered = opts?.sessionFile ? { files: [] as string[] } : readRememberedOpenTabs(cwd);
+        const legacyRememberedSessionFile = await invoke<string | null>("read_last_session_file", { cwd }).catch(() => null);
         const rememberedSessionFile =
           opts?.sessionFile ??
-          (await invoke<string | null>("read_last_session_file", { cwd }).catch(() => null));
+          startupRemembered.activeFile ??
+          startupRemembered.files[0] ??
+          legacyRememberedSessionFile;
         // ВАЖНО: НЕ передаём provider/model как CLI-флаги.
         // У pi есть extension-провайдеры (devin, omniroute и т.п.),
         // которые инициализируются лениво и НЕ известны на этапе argv-парсинга
@@ -1373,6 +1392,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
           },
         });
         setMcpLoading(set, true);
+        closedTabIds.clear();
         set({
           rpcRunning: true,
           generation: res.generation,
@@ -1392,7 +1412,6 @@ export const useChat = create<ChatState>((rawSet, get) => {
         await get().refreshState();
         await get().reloadHistory().catch(() => undefined);
         await get().refreshSessionStats().catch(() => undefined);
-        const startupRemembered = readRememberedOpenTabs(cwd);
         const activeFile = get().agentState?.sessionFile;
         const rememberedOpenTabs = startupRemembered.files
           .filter((file) => file && file !== activeFile);
@@ -1459,6 +1478,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
     clearScheduledSessionStatsRefresh();
     await rpc.rpcStop().catch(() => undefined);
     setMcpLoading(set, false);
+    closedTabIds.clear();
     set({ rpcRunning: false, agentState: null, tabs: new Map(), tabOrder: [], activeTabId: null });
   },
 
@@ -1477,6 +1497,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
     } catch {
       // ignore
     }
+    closedTabIds.clear();
     set({ rpcRunning: false, agentState: null, tabs: new Map(), tabOrder: [], activeTabId: null });
     // Небольшая пауза, чтобы pi-процесс успел корректно завершиться
     await new Promise((r) => setTimeout(r, 200));
@@ -2216,6 +2237,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   addPendingPermissionBlock(permId, name, input, tabId) {
     const target = tabId ?? get().activeTabId;
+    if (target && closedTabIds.has(target) && !get().tabs.has(target)) return;
     if (target) get().markTabWaiting("permission", target);
     addPendingToolBlock(target ? makeScopedSet(target, set, get) : set, permId, name, input);
   },
@@ -2235,6 +2257,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   addPendingAskUserBlock(askUserId, input, tabId) {
     const target = tabId ?? get().activeTabId;
+    if (target && closedTabIds.has(target) && !get().tabs.has(target)) return;
     if (target) get().markTabWaiting("askUser", target);
     addPendingToolBlock(target ? makeScopedSet(target, set, get) : set, askUserId, "ask_user", input);
   },
