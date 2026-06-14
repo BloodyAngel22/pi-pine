@@ -32,7 +32,8 @@ export function CommandsTab() {
     setLoading(true);
     try {
       const res = await rpc.getCommands();
-      setCommands(Array.isArray(res.commands) ? res.commands : []);
+      const allCommands = Array.isArray(res.commands) ? res.commands : [];
+      setCommands(allCommands.filter((c) => c.source !== "extension"));
     } catch (error) {
       setError(String(error));
       setCommands([]);

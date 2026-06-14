@@ -2226,7 +2226,9 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   injectComposer(text) {
-    set({ composerInjection: { text, nonce: Date.now() } });
+    const currentValue = get().composerValue;
+    const merged = currentValue ? `${currentValue}\n\n${text}` : text;
+    set({ composerInjection: { text: merged, nonce: Date.now() } });
   },
   clearComposerInjection() {
     set({ composerInjection: null });
