@@ -101,6 +101,8 @@ export interface SessionTabState {
   composerHistory: string[];
   composerHistoryIndex: number;
   composerAttachments: AttachmentContent[];
+  /** Skills pinned to this specific session/tab. */
+  attachedSkills: string[];
   pendingUserAction: { kind: "permission" | "askUser"; count: number } | null;
 }
 
@@ -137,6 +139,7 @@ export function createDefaultSessionTab(tabId: string, initial?: Partial<Session
     composerHistory: [],
     composerHistoryIndex: -1,
     composerAttachments: [],
+    attachedSkills: readAttachedSkillsFromId(tabId),
     pendingUserAction: null,
     ...initial,
   };
@@ -175,6 +178,7 @@ const TAB_FIELD_KEYS = new Set<keyof SessionTabState>([
   "composerHistory",
   "composerHistoryIndex",
   "composerAttachments",
+  "attachedSkills",
   "pendingUserAction",
 ]);
 
@@ -206,6 +210,7 @@ function tabProjection(tab: SessionTabState): Partial<ChatState> {
     composerHistory: tab.composerHistory,
     composerHistoryIndex: tab.composerHistoryIndex,
     composerAttachments: tab.composerAttachments,
+    attachedSkills: tab.attachedSkills,
     pendingUserAction: tab.pendingUserAction,
     forkBanner: tab.forkBanner,
     fastContextStatus: tab.fastContextStatus,
@@ -236,7 +241,7 @@ interface ChatState {
   planMode: boolean;
   planFilePath: string | null;
   planLoading: boolean;
-  // скиллы, прикреплённые ко всем сообщениям сессии
+  // скиллы, прикреплённые к текущей сессии/tab
   attachedSkills: string[];
   // сессия переключается? (для UI-спиннера)
   switching: boolean;
@@ -330,6 +335,8 @@ interface ChatState {
   /** Skills */
   setAttachedSkills(names: string[]): void;
   toggleAttachedSkill(name: string): void;
+  suggestSkills(query: string): Promise<import("@/rpc/types").SkillSuggestion[]>;
+  autoAttachSkills(query: string): Promise<void>;
   setCliPathOverride(p: string | null): void;
   setStreamingBehavior(b: StreamingBehavior): void;
   setAutoRetry(enabled: boolean): Promise<void>;
@@ -373,7 +380,8 @@ const STORAGE_KEY_CWD = "pi-pine.cwd";
 const STORAGE_KEY_PROVIDER = "pi-pine.provider";
 const STORAGE_KEY_MODEL = "pi-pine.model";
 const STORAGE_KEY_PLAN_MODE = "pi-pine.planMode";
-const STORAGE_KEY_SKILLS = "pi-pine.attachedSkills";
+const STORAGE_KEY_SKILLS_PREFIX_FILE = "pi-pine.attachedSkills.file.";
+const STORAGE_KEY_SKILLS_PREFIX_ID = "pi-pine.attachedSkills.id.";
 const STORAGE_KEY_OPEN_TABS_PREFIX = "pi-pine.openTabs.";
 const SESSIONS_CHANGED_EVENT = "pi-pine:sessions-changed";
 const closedTabIds = new Set<string>();
@@ -434,9 +442,24 @@ function normalizeSkillName(s: string): string {
   while (r.startsWith("skill:")) r = r.slice(6);
   return r;
 }
-function readAttachedSkills(): string[] {
+function attachedSkillsFileKey(sessionFile: string): string {
+  const base = sessionFile
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    ?.replace(/\.jsonl$/i, "")
+    ?.replace(/[^a-zA-Z0-9_.-]/g, "_")
+    ?? sessionFile;
+  return `${STORAGE_KEY_SKILLS_PREFIX_FILE}${base}`;
+}
+function attachedSkillsIdKey(sessionId: string): string {
+  return `${STORAGE_KEY_SKILLS_PREFIX_ID}${sessionId}`;
+}
+
+function readAttachedSkillsFromFile(sessionFile: string): string[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_SKILLS);
+    const raw = localStorage.getItem(attachedSkillsFileKey(sessionFile));
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
@@ -448,6 +471,61 @@ function readAttachedSkills(): string[] {
     return [];
   }
 }
+function readAttachedSkillsFromId(sessionId: string): string[] {
+  try {
+    const raw = localStorage.getItem(attachedSkillsIdKey(sessionId));
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((x) => typeof x === "string")
+      .map(normalizeSkillName)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function writeAttachedSkills(idOrFile: string | null | undefined, names: string[], isFile: boolean): void {
+  if (!idOrFile) return;
+  const key = isFile ? attachedSkillsFileKey(idOrFile) : attachedSkillsIdKey(idOrFile);
+  if (names.length > 0) localStorage.setItem(key, JSON.stringify(names));
+  else localStorage.removeItem(key);
+}
+
+function migrateAttachedSkillsKey(fromSessionId: string, toSessionFile: string): void {
+  const fromKey = attachedSkillsIdKey(fromSessionId);
+  const toKey = attachedSkillsFileKey(toSessionFile);
+  if (fromKey === toKey) return;
+  try {
+    const raw = localStorage.getItem(fromKey);
+    if (raw === null) return;
+    if (localStorage.getItem(toKey) === null) {
+      localStorage.setItem(toKey, raw);
+    }
+    localStorage.removeItem(fromKey);
+  } catch {
+    // ignore
+  }
+}
+
+function reconcileAttachedSkillsForSession(
+  sessionId: string,
+  sessionFile: string | null | undefined,
+  current: string[] | null | undefined,
+): string[] {
+  const currentSkills = Array.from(new Set((current ?? []).map(normalizeSkillName).filter(Boolean)));
+  if (!sessionFile) return currentSkills.length > 0 ? currentSkills : readAttachedSkillsFromId(sessionId);
+
+  migrateAttachedSkillsKey(sessionId, sessionFile);
+  const fileSkills = readAttachedSkillsFromFile(sessionFile);
+  if (fileSkills.length > 0) return fileSkills;
+
+  if (currentSkills.length > 0) {
+    writeAttachedSkills(sessionFile, currentSkills, true);
+  }
+  return currentSkills;
+}
+
 function slugify(s: string): string {
   return (s || "plan")
     .toLowerCase()
@@ -1108,7 +1186,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
   planMode: readPlanMode(),
   planFilePath: null,
   planLoading: false,
-  attachedSkills: readAttachedSkills(),
+  attachedSkills: [],
   switching: false,
   agentState: null,
   retryStatus: { active: false, attempt: 0 },
@@ -1213,13 +1291,38 @@ export const useChat = create<ChatState>((rawSet, get) => {
         sessionPath: options?.sessionPath ?? undefined,
       });
       closedTabIds.delete(sessionId);
-      const tab = createDefaultSessionTab(sessionId, { sessionName: name ?? null });
+      const sourceId = options?.sourceSessionId ?? get().activeTabId;
+      const sourceSkills = options?.mode === "copy" && sourceId ? (get().tabs.get(sourceId)?.attachedSkills ?? get().attachedSkills) : [];
+      const initial: Partial<SessionTabState> = { sessionName: name ?? null };
+      if (options?.mode === "copy") {
+        initial.attachedSkills = sourceSkills;
+        writeAttachedSkills(sessionId, sourceSkills, false);
+      } else if (!options?.sessionPath) {
+        // Brand-new empty sessions start with no pinned skills.
+        initial.attachedSkills = [];
+        writeAttachedSkills(sessionId, [], false);
+      } else {
+        // Opening an existing session file — restore skills from file-based key.
+        initial.attachedSkills = readAttachedSkillsFromFile(options.sessionPath);
+        writeAttachedSkills(sessionId, initial.attachedSkills, false);
+      }
+      const tab = createDefaultSessionTab(sessionId, initial);
       set((s) => ({
         tabs: new Map(s.tabs).set(sessionId, tab),
         tabOrder: s.tabOrder.includes(sessionId) ? s.tabOrder : [...s.tabOrder, sessionId],
       }));
       await get().activateTab(sessionId);
       await get().refreshState().catch(() => undefined);
+      // After refreshState provides sessionFile, migrate from sessionId key to file key.
+      try {
+        const st = get();
+        const sessionFile = st.agentState?.sessionFile;
+        if (sessionFile) {
+          migrateAttachedSkillsKey(sessionId, sessionFile);
+        }
+      } catch {
+        // non-critical
+      }
       await get().reloadHistory().catch(() => undefined);
       await get().refreshSessionStats().catch(() => undefined);
       rememberOpenTabsSnapshot(get());
@@ -1708,16 +1811,20 @@ export const useChat = create<ChatState>((rawSet, get) => {
     try {
       const s = await rpc.getState(get().activeTabId);
       const tabId = s.sessionId || get().activeTabId || DEFAULT_TAB_ID;
+      const currentSkills = get().tabs.get(tabId)?.attachedSkills;
+      const attachedSkills = reconcileAttachedSkillsForSession(tabId, s.sessionFile, currentSkills);
       get().ensureTab(tabId, {
         agentState: s,
         pendingMessageCount: s.pendingMessageCount ?? 0,
         sessionName: s.sessionName ?? null,
+        attachedSkills,
       });
       if (!get().activeTabId || get().activeTabId === tabId) {
         get().updateTab(tabId, {
           agentState: s,
           pendingMessageCount: s.pendingMessageCount ?? 0,
           sessionName: s.sessionName ?? null,
+          attachedSkills,
         });
         get().syncFromTab(tabId);
       }
@@ -2004,8 +2111,13 @@ export const useChat = create<ChatState>((rawSet, get) => {
     const arr = Array.from(
       new Set(names.map(normalizeSkillName).filter(Boolean)),
     );
-    if (arr.length > 0) localStorage.setItem(STORAGE_KEY_SKILLS, JSON.stringify(arr));
-    else localStorage.removeItem(STORAGE_KEY_SKILLS);
+    const st = get();
+    const sessionFile = st.agentState?.sessionFile;
+    if (sessionFile) {
+      writeAttachedSkills(sessionFile, arr, true);
+    } else {
+      writeAttachedSkills(st.activeTabId, arr, false);
+    }
     set({ attachedSkills: arr });
   },
 
@@ -2017,6 +2129,25 @@ export const useChat = create<ChatState>((rawSet, get) => {
     } else {
       get().setAttachedSkills([...cur, n]);
     }
+  },
+
+  async suggestSkills(query) {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    try {
+      const res = await rpc.suggestSkills(trimmed, { limit: 5, minScore: 0.1, sessionId: get().activeTabId });
+      return res.skills;
+    } catch {
+      return [];
+    }
+  },
+
+  async autoAttachSkills(query) {
+    const suggestions = await get().suggestSkills(query);
+    if (suggestions.length === 0) return;
+    const current = get().attachedSkills;
+    const names = suggestions.map((s) => normalizeSkillName(s.name));
+    get().setAttachedSkills([...current, ...names]);
   },
 
   async setSessionName(name) {

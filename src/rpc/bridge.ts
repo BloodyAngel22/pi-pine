@@ -12,6 +12,8 @@ import type {
   QueueMode,
   RpcResponse,
   RpcSessionState,
+  SkillDetail,
+  SkillSuggestion,
   StreamingBehavior,
   ThinkingLevel,
 } from "./types";
@@ -499,6 +501,7 @@ export async function exportHtml(outputPath?: string, sessionId?: string | null)
 export interface PiCommand {
   name: string;
   description?: string;
+  categories?: string[];
   source: "extension" | "markdown" | "prompt" | "skill";
   sourceInfo?: {
     source?: string;
@@ -512,6 +515,13 @@ export interface PiCommand {
 }
 export async function getCommands(sessionId?: string | null): Promise<{ commands: PiCommand[] }> {
   return request("get_commands", {}, { sessionId });
+}
+export async function getSkillDetail(name: string, sessionId?: string | null): Promise<SkillDetail> {
+  return request("get_skill_detail", { name }, { sessionId });
+}
+export async function suggestSkills(query: string, options?: { limit?: number; minScore?: number; sessionId?: string | null }): Promise<{ skills: SkillSuggestion[] }> {
+  const { sessionId, ...payload } = options ?? {};
+  return request("suggest_skills", { query, ...payload }, { sessionId });
 }
 export async function cycleThinkingLevel(sessionId?: string | null): Promise<RpcSessionState> {
   return request("cycle_thinking_level", {}, { sessionId });

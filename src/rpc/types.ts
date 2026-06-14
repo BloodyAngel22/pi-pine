@@ -111,6 +111,24 @@ export interface RpcEvent {
   [k: string]: unknown;
 }
 
+export interface SkillSuggestion {
+  name: string;
+  description: string;
+  categories: string[];
+  path: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface SkillDetail {
+  name: string;
+  description: string;
+  categories: string[];
+  path: string;
+  baseDir: string;
+  content: string;
+}
+
 // === события (выборка ключевых) ===
 
 export interface AgentStartEvent {

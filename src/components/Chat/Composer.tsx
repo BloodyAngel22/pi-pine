@@ -110,6 +110,8 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const commitPlan = useChat((s) => s.commitPlan);
   const attachedSkills = useChat((s) => s.attachedSkills);
   const toggleAttachedSkill = useChat((s) => s.toggleAttachedSkill);
+  const suggestSkills = useChat((s) => s.suggestSkills);
+  const autoAttachSkills = useChat((s) => s.autoAttachSkills);
   const yoloMode = useExt((s) => s.yoloMode);
   const toggleYoloMode = useExt((s) => s.toggleYoloMode);
   const activeTabId = useChat((s) => s.activeTabId);
@@ -148,6 +150,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const [cdCompletions, setCdCompletions] = useState<DirectoryCompletion[]>([]);
   const [cdHighlight, setCdHighlight] = useState(0);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillSuggestions, setSkillSuggestions] = useState<import("@/rpc/types").SkillSuggestion[]>([]);
   const [planReady, setPlanReady] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -253,6 +256,21 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   useEffect(() => {
     ref.current?.focus();
   }, []);
+
+  useEffect(() => {
+    const q = value.trim();
+    if (q.length < 12 || q.startsWith("/")) {
+      setSkillSuggestions([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void suggestSkills(q).then((items) => {
+        const pinned = new Set(useChat.getState().attachedSkills);
+        setSkillSuggestions(items.filter((item) => !pinned.has(item.name)).slice(0, 3));
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [value, suggestSkills]);
 
   // При переключении таба textarea получает draft именно активного таба.
   useEffect(() => {
@@ -734,6 +752,28 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
           </div>
         )}
 
+        {skillSuggestions.length > 0 && attachedSkills.length === 0 && (
+          <div className="mb-2 rounded-lg border border-(--color-accent)/30 bg-(--color-accent-soft)/15 px-3 py-2 flex items-center gap-2">
+            <Sparkles size={13} className="text-(--color-accent) shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-(--color-fg)">
+                Подходящие скиллы: {skillSuggestions.map((s) => s.name).join(", ")}
+              </div>
+              <div className="text-[10px] text-(--color-fg-dim)">
+                score: {skillSuggestions.map((s) => `${s.name} ${(s.score * 100).toFixed(0)}%`).join(" · ")}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void autoAttachSkills(value)}
+              className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs bg-(--color-accent) text-(--color-bg) hover:opacity-90"
+              title="Закрепить предложенные скиллы за сессией"
+            >
+              Закрепить
+            </button>
+          </div>
+        )}
+
         {planMode && planFilePath && (planReady || assistantPlanReady) && (
           <div className="mb-2 rounded-lg border border-(--color-warn)/35 bg-(--color-warn)/10 px-3 py-2 flex items-center gap-2">
             <ListTodo size={14} className="text-(--color-warn) shrink-0" />
@@ -758,6 +798,12 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               <Play size={12} />
               Реализовать
             </button>
+          </div>
+        )}
+
+        {attachedSkills.length > 0 && (
+          <div className="mb-1 px-1 text-[10px] text-(--color-fg-dim)">
+            Закреплено скиллов: {attachedSkills.length}
           </div>
         )}
 

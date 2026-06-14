@@ -1,4 +1,4 @@
-import { Folder, Cpu, Brain, Hash, DollarSign, Gauge, Monitor, RefreshCw } from "lucide-react";
+import { Folder, Cpu, Brain, Hash, DollarSign, Gauge, Monitor, RefreshCw, Pin } from "lucide-react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
@@ -19,6 +19,7 @@ export function StatusBar() {
   const agent = useChat((s) => s.agentState);
   const stats = useChat((s) => s.sessionStats);
   const retryStatus = useChat((s) => s.retryStatus);
+  const attachedSkills = useChat((s) => s.attachedSkills);
   const isStreaming = agent?.isStreaming;
   const statuses = useExt((s) => s.statuses);
 
@@ -101,6 +102,15 @@ export function StatusBar() {
         </>
       )}
       <FastFetchIndicator />
+      {attachedSkills.length > 0 && (
+        <>
+          <span className="pi-statusbar-sep">·</span>
+          <span className="pi-statusbar-item text-(--color-accent)" title={`Закреплённые скиллы: ${attachedSkills.join(", ")}`}>
+            <Pin size={11} />
+            <span>{attachedSkills.length}</span>
+          </span>
+        </>
+      )}
 
       </div>
 
