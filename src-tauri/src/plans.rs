@@ -1,4 +1,4 @@
-//! Plan-mode: файлы планов в `/tmp/.pi/plans/<sessionId>-<slug>.md`.
+//! Plan-mode: файлы планов в `/tmp/.pi/plans/<uuid>.md`.
 
 use std::path::PathBuf;
 
@@ -6,40 +6,19 @@ fn plans_dir() -> PathBuf {
     std::env::temp_dir().join(".pi").join("plans")
 }
 
-fn sanitize_component(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-            out.push(c);
-        } else if c == ' ' || c == '.' {
-            out.push('-');
-        }
-    }
-    if out.is_empty() {
-        "plan".to_string()
-    } else {
-        out
-    }
-}
-
 /// Создаёт каталог планов если нужно, возвращает абсолютный путь к файлу плана.
+/// Принимает UUID (генерируется на фронтенде) для имени файла.
 /// Если файла нет — создаёт его с заголовком-шаблоном.
+/// Если файл уже существует — возвращает путь к нему.
 #[tauri::command]
-pub fn ensure_plan_file(session_id: String, slug: String) -> Result<String, String> {
+pub fn ensure_plan_file(uuid: String) -> Result<String, String> {
     let dir = plans_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("Создание {:?}: {}", dir, e))?;
-    let sid = sanitize_component(&session_id);
-    let sl = sanitize_component(&slug);
-    let name = if sid == sl {
-        format!("{}.md", sid)
-    } else {
-        format!("{}-{}.md", sid, sl)
-    };
+    let name = format!("{}.md", uuid);
     let path = dir.join(&name);
     if !path.exists() {
-        let template = format!(
-            "# План\n\n_Файл создан pi-pine в режиме планирования._\n\nID сессии: `{}`\n\n## Контекст\n\n- \n\n## Шаги\n\n- [ ] \n\n## Открытые вопросы\n\n- \n",
-            session_id
+        let template = String::from(
+            "# План\n\n_Файл создан pi-pine в режиме планирования._\n\n## Контекст\n\n- \n\n## Шаги\n\n- [ ] \n\n## Открытые вопросы\n\n- \n",
         );
         std::fs::write(&path, template).map_err(|e| e.to_string())?;
     }

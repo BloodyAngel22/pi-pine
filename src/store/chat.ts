@@ -1961,14 +1961,12 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   async loadPlan() {
-    const { agentState } = get();
-    const sid = agentState?.sessionId || agentState?.sessionFile || "session";
-    const slug = slugify(agentState?.sessionName || sid);
     set({ planLoading: true });
     try {
+      // Генерируем UUID на фронтенде (доступен в Tauri 2 webview)
+      const uuid = crypto.randomUUID();
       const path = await invoke<string>("ensure_plan_file", {
-        sessionId: String(sid),
-        slug,
+        uuid,
       });
       set({ planFilePath: path });
     } catch (e) {

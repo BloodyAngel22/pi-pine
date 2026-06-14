@@ -3,6 +3,8 @@
  * Used by ToolCall.tsx (chat history) and PendingToolCallBlock (inline permission card).
  */
 
+import { diffLines } from "diff";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -91,15 +93,85 @@ export function editItems(input: unknown): EditItem[] {
 // Diff construction
 // ============================================================================
 
-/** Build a unified-diff-like string from an array of edits */
-export function buildEditInputDiff(edits: EditItem[]): string {
-  const lines: string[] = [];
-  edits.forEach((edit, index) => {
-    if (edits.length > 1) lines.push(` ${index + 1} ...`);
-    for (const line of edit.oldText.split(/\r?\n/)) lines.push(`- ${line}`);
-    for (const line of edit.newText.split(/\r?\n/)) lines.push(`+ ${line}`);
-  });
-  return lines.join("\n");
+/**
+ * Build a unified-diff-like string from an array of edits.
+ * Uses proper line-by-line diff: unchanged context lines get `  ` prefix,
+ * only truly changed lines are marked `-`/`+` with colour.
+ *
+ * When `fileContent` is provided, computes ABSOLUTE line numbers in the file
+ * by finding each oldText position. Otherwise uses relative numbering (1-based).
+ */
+export function buildEditInputDiff(edits: EditItem[], fileContent?: string): string {
+  // Pre-compute start line for each edit when file content is available
+  const startLines: number[] = [];
+  if (fileContent) {
+    for (const edit of edits) {
+      const idx = fileContent.indexOf(edit.oldText);
+      if (idx !== -1) {
+        // Line number = number of newlines before match + 1
+        const before = fileContent.slice(0, idx);
+        startLines.push((before.match(/\n/g) || []).length + 1);
+      } else {
+        startLines.push(1);
+      }
+    }
+  } else {
+    // Relative numbering: each edit starts at line 1 within oldText
+    for (const _ of edits) startLines.push(1);
+  }
+
+  const output: string[] = [];
+  for (const [i, edit] of edits.entries()) {
+    const editStartLine = startLines[i];
+
+    if (edits.length > 1) {
+      output.push(` ${i + 1} ...`);
+    }
+
+    const changes = diffLines(edit.oldText, edit.newText);
+    let oldLine = editStartLine;
+    let newLine = editStartLine;
+    // Determine width for padding
+    let maxLine = newLine;
+    for (const part of changes) {
+      const rawLines = part.value.split(/\r?\n/).filter(l => l.length > 0 || l === "");
+      if (rawLines.length > 0 && rawLines[rawLines.length - 1] === "") rawLines.pop();
+      const count = rawLines.length;
+      if (part.added) maxLine = Math.max(maxLine, newLine + count - 1);
+      else if (part.removed) maxLine = Math.max(maxLine, oldLine + count - 1);
+      else {
+        maxLine = Math.max(maxLine, oldLine + count - 1, newLine + count - 1);
+      }
+      if (!part.added) oldLine += count;
+      if (!part.removed) newLine += count;
+    }
+    // Reset counters for actual output
+    oldLine = editStartLine;
+    newLine = editStartLine;
+    const padWidth = Math.max(3, String(maxLine).length);
+
+    for (const part of changes) {
+      const rawLines = part.value.split(/\r?\n/);
+      // Remove trailing empty line
+      if (rawLines.length > 0 && rawLines[rawLines.length - 1] === "") {
+        rawLines.pop();
+      }
+      for (const line of rawLines) {
+        if (part.added) {
+          output.push(`+${String(newLine).padStart(padWidth, " ")} ${line}`);
+          newLine++;
+        } else if (part.removed) {
+          output.push(`-${String(oldLine).padStart(padWidth, " ")} ${line}`);
+          oldLine++;
+        } else {
+          output.push(` ${String(oldLine).padStart(padWidth, " ")} ${line}`);
+          oldLine++;
+          newLine++;
+        }
+      }
+    }
+  }
+  return output.join("\n");
 }
 
 /** Build a diff-like string for a write tool: all lines prefixed with + and line numbers */
@@ -139,8 +211,9 @@ export function diffLineClass(line: string): string {
 /**
  * Build a diff preview from tool input args.
  * Works with both write and edit tool inputs.
+ * Optional `fileContent` enables absolute line numbers in the diff.
  */
-export function buildFileMutationPreviewFromInput(input: unknown, path?: string): DiffPreview {
+export function buildFileMutationPreviewFromInput(input: unknown, path?: string, fileContent?: string): DiffPreview {
   const record = asRecord(input);
   const resolvedPath = path ?? filePathFromInput(input);
 
@@ -157,7 +230,7 @@ export function buildFileMutationPreviewFromInput(input: unknown, path?: string)
 
   // Edit tool: has `edits[]` or `oldText`/`newText`
   const edits = editItems(input);
-  const diff = buildEditInputDiff(edits);
+  const diff = buildEditInputDiff(edits, fileContent);
   const stats = diffStats(diff);
   if (stats.added > 0 || stats.removed > 0) {
     return { path: resolvedPath, diff, added: stats.added, removed: stats.removed };
@@ -169,6 +242,24 @@ export function buildFileMutationPreviewFromInput(input: unknown, path?: string)
     added: edits.reduce((total, edit) => total + textLineCount(edit.newText), 0),
     removed: edits.reduce((total, edit) => total + textLineCount(edit.oldText), 0),
   };
+}
+
+/**
+ * Async version: reads the file at `path` and then builds the diff preview
+ * with absolute line numbers. Falls back to sync version if file cannot be read.
+ */
+export async function buildFileMutationPreviewFromFile(
+  input: unknown,
+  path: string,
+): Promise<DiffPreview> {
+  try {
+    const { readTextFile } = await import("@tauri-apps/plugin-fs");
+    const content = await readTextFile(path);
+    return buildFileMutationPreviewFromInput(input, path, content);
+  } catch {
+    // Fallback: no file content, relative line numbers
+    return buildFileMutationPreviewFromInput(input, path);
+  }
 }
 
 // ============================================================================

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search } from "lucide-react";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
@@ -15,6 +15,8 @@ import {
   diffLineClass,
   textLineCount,
   buildFileMutationPreviewFromInput,
+  buildFileMutationPreviewFromFile,
+  type DiffPreview,
   type EditItem,
 } from "@/components/ExtUI/permissionUtils";
 
@@ -27,7 +29,10 @@ function detailsDiff(details: unknown): string | undefined {
   return typeof record.diff === "string" ? record.diff : undefined;
 }
 
-function fileMutationPreview(block: UiBlockTool): {
+function fileMutationPreview(
+  block: UiBlockTool,
+  fileContent?: string,
+): {
   path: string;
   diff: string;
   added: number;
@@ -45,7 +50,10 @@ function fileMutationPreview(block: UiBlockTool): {
     };
   }
   const edits = editItems(input);
-  const diff = detailsDiff(block.details) ?? buildEditInputDiff(edits);
+  // Приоритет: 1) details.diff от бэкенда (с номерами строк), 2) fileContent для абсолютных номеров, 3) fallback
+  const diff =
+    detailsDiff(block.details) ??
+    (fileContent ? buildEditInputDiff(edits, fileContent) : buildEditInputDiff(edits));
   const stats = diffStats(diff);
   if (stats.added > 0 || stats.removed > 0) return { path, diff, added: stats.added, removed: stats.removed };
   return {
@@ -161,6 +169,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   }
   if (block.name === "fast_fetch") {
     return <FastFetchToolCall block={block} open={open} setOpen={setOpen} />;
+  }
+  if (block.name === "fast_context") {
+    return <FastContextToolCall block={block} open={open} setOpen={setOpen} />;
   }
   if (block.name === "screenshot") {
     return <ScreenshotToolCall block={block} open={open} setOpen={setOpen} />;
@@ -289,6 +300,92 @@ function FastFetchToolCall({
         <div className="px-3 pb-2 space-y-2">
           {query && details.url && details.url !== query && (
             <div className="text-[11px] text-(--color-fg-dim)">query: {query}</div>
+          )}
+          {block.output != null && block.output !== "" && (
+            <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-80 overflow-y-auto">
+              {pretty(block.output)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FastContextToolCall({
+  block,
+  open,
+  setOpen,
+}: {
+  block: UiBlockTool;
+  open: boolean;
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
+}) {
+  const isError = block.status === "error";
+  const isRunning = block.status === "running";
+  const input = asRecord(block.input);
+  const query = String(input.query ?? "");
+  const details = asRecord(block.details);
+  const files = Array.isArray(details.files) ? details.files : [];
+  const fileCount = files.length;
+  const meta = isRunning ? "поиск…" : isError ? "ошибка" : fileCount > 0 ? `${fileCount} файлов` : "готово";
+
+  return (
+    <div
+      className={clsx(
+        "my-1 rounded-md border text-xs",
+        isError
+          ? "border-(--color-danger)/30 bg-(--color-danger)/5"
+          : "border-(--color-accent)/20 bg-(--color-accent)/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-(--color-bg-mute) rounded-md text-left"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {isError ? (
+          <AlertCircle size={12} className="text-(--color-danger)" />
+        ) : (
+          <Search size={12} className="text-(--color-accent)" />
+        )}
+        <span className="font-mono text-(--color-accent)">fast_context</span>
+        <span className="font-mono text-(--color-fg) truncate min-w-0" title={query}>
+          {query || "<query>"}
+        </span>
+        <span className="ml-auto shrink-0 text-(--color-fg-dim)">
+          {meta}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-2">
+          {files.length > 0 ? (
+            <div className="space-y-1">
+              {files.map((f: { path?: string; ranges?: string[]; score?: number }) => (
+                <div
+                  key={f.path ?? ""}
+                  className="flex items-start gap-1.5 text-xs text-(--color-fg-mute)"
+                >
+                  <FileText size={11} className="mt-0.5 shrink-0 text-(--color-accent)" />
+                  <div className="min-w-0">
+                    <div className="truncate font-mono">{f.path}</div>
+                    {f.ranges && f.ranges.length > 0 && (
+                      <div className="text-[10px] text-(--color-fg-dim)">
+                        {f.ranges.join(", ")}
+                      </div>
+                    )}
+                    {f.score != null && (
+                      <div className="text-[10px] text-(--color-fg-dim)">
+                        score: {f.score}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-(--color-fg-dim)">Нет результатов</div>
           )}
           {block.output != null && block.output !== "" && (
             <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-80 overflow-y-auto">
@@ -518,9 +615,32 @@ function InteractToolCall({
 
 function FileMutationToolCall({ block }: { block: UiBlockTool }) {
   const [open, setOpen] = useState(true);
+  const [fileContent, setFileContent] = useState<string | undefined>(undefined);
   const isError = block.status === "error";
   const isRunning = block.status === "running";
-  const preview = fileMutationPreview(block);
+
+  // Load file content for absolute line numbers (async)
+  useEffect(() => {
+    if (block.details && (block.details as Record<string, unknown>).diff) {
+      // Backend already sent a diff with line numbers, no need to read file
+      return;
+    }
+    const input = asRecord(block.input);
+    const path = filePathFromInput(input);
+    if (!path || path === "unknown file") return;
+    let cancelled = false;
+    import("@tauri-apps/plugin-fs")
+      .then((mod) => mod.readTextFile(path))
+      .then((content) => {
+        if (!cancelled) setFileContent(content);
+      })
+      .catch(() => {
+        // Ignore: fall back to buildEditInputDiff without file content
+      });
+    return () => { cancelled = true; };
+  }, [block.input, block.details]);
+
+  const preview = fileMutationPreview(block, fileContent);
   const lines = preview.diff ? preview.diff.split(/\r?\n/) : [];
   return (
     <div
@@ -558,9 +678,9 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
       {open && (
         <div className="border-t border-(--color-border)">
           {lines.length > 0 ? (
-            <pre className="max-h-[420px] overflow-auto bg-(--color-bg) py-1 font-mono text-[11px] leading-5" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'normal' }}>
+            <pre className="max-h-[300px] overflow-auto bg-(--color-bg) py-2 font-mono text-[11px] leading-5" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'normal' }}>
               {lines.map((line, index) => (
-                <div key={index} className={clsx("px-2 whitespace-pre-wrap", diffLineClass(line))}>
+                <div key={index} className={clsx("px-3 whitespace-pre-wrap", diffLineClass(line))}>
                   {line || " "}
                 </div>
               ))}
@@ -855,40 +975,60 @@ function PendingToolCallBlock({ block }: { block: UiBlockTool }) {
   const toolName = String(input.permissionToolName ?? block.name);
   const toolArgs = input.permissionToolArgs as Record<string, unknown> | undefined;
 
+  // Async load: read file to compute absolute line numbers
+  const [preview, setPreview] = useState<DiffPreview | null>(null);
+  const [loading, setLoading] = useState(false);
+
   let typeLabel = "Действие";
   if (permissionType === "bash") typeLabel = "Команда";
   else if (permissionType === "file" && isFileMutationTool(toolName)) typeLabel = toolName;
   else if (permissionType === "mcp") typeLabel = toolName;
 
-  const stats = (() => {
+  useEffect(() => {
     if (permissionType === "file" && toolArgs) {
-      return buildFileMutationPreviewFromInput(toolArgs, permissionValue);
+      setLoading(true);
+      buildFileMutationPreviewFromFile(toolArgs, permissionValue)
+        .then((result) => setPreview(result))
+        .catch(() => setPreview(buildFileMutationPreviewFromInput(toolArgs, permissionValue)))
+        .finally(() => setLoading(false));
     }
-    return null;
-  })();
+  }, [permissionType, permissionValue, toolArgs]);
+
+  const stats = preview;
+  const diffLines = preview?.diff ? preview.diff.split(/\r?\n/) : [];
+  const [diffOpen, setDiffOpen] = useState(true);
 
   const handleAllowOnce = () => resolvePendingPermission(block.toolUseId, { decision: "allow-once" });
   const handleDenyOnce = () => resolvePendingPermission(block.toolUseId, { decision: "deny-once" });
 
   return (
     <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+      {/* Header row */}
       <div className="px-3 py-2 flex items-center gap-2">
-        <Clock size={14} className="text-(--color-accent) animate-pulse shrink-0" />
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-(--color-accent) shrink-0">
-          Разрешение
-        </span>
-        <span className="font-mono text-xs text-(--color-fg-mute)">{typeLabel}</span>
-        <span className="font-mono text-xs text-(--color-fg) truncate min-w-0" title={permissionValue}>
-          {permissionValue}
-        </span>
-        {stats && (stats.added > 0 || stats.removed > 0) && (
-          <span className="font-mono text-[10px] shrink-0">
-            {stats.added > 0 && <span className="text-(--color-success)">+{stats.added}</span>}
-            {stats.added > 0 && stats.removed > 0 && <span className="text-(--color-fg-dim)"> </span>}
-            {stats.removed > 0 && <span className="text-(--color-danger)">-{stats.removed}</span>}
+        <button
+          type="button"
+          onClick={() => setDiffOpen((v) => !v)}
+          className="flex items-center gap-2 min-w-0 flex-1"
+        >
+          <Clock size={14} className="text-(--color-accent) animate-pulse shrink-0" />
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-(--color-accent) shrink-0">
+            Разрешение
           </span>
-        )}
-        <span className="flex-1" />
+          <span className="font-mono text-xs text-(--color-fg-mute)">{typeLabel}</span>
+          <span className="font-mono text-xs text-(--color-fg) truncate min-w-0" title={permissionValue}>
+            {permissionValue}
+          </span>
+          {stats && (stats.added > 0 || stats.removed > 0) && (
+            <span className="font-mono text-[10px] shrink-0">
+              {stats.added > 0 && <span className="text-(--color-success)">+{stats.added}</span>}
+              {stats.added > 0 && stats.removed > 0 && <span className="text-(--color-fg-dim)"> </span>}
+              {stats.removed > 0 && <span className="text-(--color-danger)">-{stats.removed}</span>}
+            </span>
+          )}
+          <span className="shrink-0 text-(--color-fg-dim)">
+            {diffOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          </span>
+        </button>
         <button
           type="button"
           onClick={handleDenyOnce}
@@ -904,6 +1044,27 @@ function PendingToolCallBlock({ block }: { block: UiBlockTool }) {
           Allow once
         </button>
       </div>
+
+      {/* Diff preview (expandable) */}
+      {diffOpen && diffLines.length > 0 && (
+        <div className="border-t border-(--color-accent)/20">
+          {loading && (
+            <div className="px-3 py-2 text-[11px] text-(--color-fg-dim)">Загрузка diff...</div>
+          )}
+          {!loading && (
+            <pre
+              className="max-h-[240px] overflow-auto bg-(--color-bg) py-2 font-mono text-[11px] leading-5"
+              style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "normal" }}
+            >
+              {diffLines.map((line, index) => (
+                <div key={index} className={clsx("px-3 whitespace-pre-wrap", diffLineClass(line))}>
+                  {line || " "}
+                </div>
+              ))}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }

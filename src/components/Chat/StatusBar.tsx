@@ -4,7 +4,6 @@ import { useExt } from "@/store/ext";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { shortenPath } from "@/utils/path";
 import { ExtensionsPill } from "./ExtensionsPill";
-import { FastContextIndicator } from "./FastContextIndicator";
 import { FastFetchIndicator } from "./FastFetchIndicator";
 
 /** Форматирует число токенов как 137k, 12.5k, 980 */
@@ -101,7 +100,6 @@ export function StatusBar() {
           </span>
         </>
       )}
-      <FastContextIndicator />
       <FastFetchIndicator />
 
       </div>

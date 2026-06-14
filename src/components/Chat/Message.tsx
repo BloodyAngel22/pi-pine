@@ -1,6 +1,6 @@
 import { memo } from "react";
 import clsx from "clsx";
-import type { UiMessage } from "@/store/chat";
+import type { UiBlock, UiBlockTool, UiMessage } from "@/store/chat";
 import { Markdown } from "./Markdown";
 import { ToolCall } from "./ToolCall";
 import { ThinkingBlock } from "./ThinkingBlock";
@@ -98,11 +98,52 @@ function renderTextWithSkills(text: string, key: number) {
   );
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function toolPath(input: unknown): string | undefined {
+  const record = asRecord(input);
+  for (const key of ["path", "file_path", "filePath", "filename"]) {
+    if (typeof record[key] === "string") return record[key] as string;
+  }
+  return undefined;
+}
+
+function pendingPermissionToolName(block: UiBlockTool): string | undefined {
+  const input = asRecord(block.input);
+  return typeof input.permissionToolName === "string" ? input.permissionToolName : block.name;
+}
+
+function pendingPermissionPath(block: UiBlockTool): string | undefined {
+  const input = asRecord(block.input);
+  const argsPath = toolPath(input.permissionToolArgs);
+  if (argsPath) return argsPath;
+  return typeof input.permissionValue === "string" ? input.permissionValue : undefined;
+}
+
+function shouldHideRunningToolBehindPermission(block: UiBlock, allBlocks: UiBlock[]): boolean {
+  if (block.kind !== "tool" || block.status !== "running") return false;
+  const blockPath = toolPath(block.input);
+  return allBlocks.some((other) => {
+    if (other.kind !== "tool" || other.status !== "pending") return false;
+    const input = asRecord(other.input);
+    if (input.permissionType !== "file") return false;
+    if (pendingPermissionToolName(other) !== block.name) return false;
+    const permPath = pendingPermissionPath(other);
+    // If both paths are known, only hide the exact duplicate. If paths are not
+    // available, fall back to tool name: this is render-only and does not affect
+    // permission ids/lifecycle.
+    return blockPath && permPath ? blockPath === permPath : true;
+  });
+}
+
 function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Props) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
-  const blocks = message.blocks.map((b, i) => {
+  const visibleBlocks = message.blocks.filter((b) => !shouldHideRunningToolBehindPermission(b, message.blocks));
+  const blocks = visibleBlocks.map((b, i) => {
     if (b.kind === "text") {
       return renderTextWithSkills(b.text, i);
     }
