@@ -49,6 +49,7 @@ export interface DialogAskUser {
 }
 export interface PendingAskUser {
   id: string;
+  sessionId?: string;
   question: string;
   options: string[];
   allowMultiple: boolean;
@@ -57,6 +58,7 @@ export interface PendingAskUser {
 export interface DialogPermission {
   type: "permission";
   id: string;
+  sessionId?: string;
   permissionType: "bash" | "file" | "mcp";
   permissionValue: string;
   permissionToolName?: string;
@@ -175,7 +177,7 @@ export const useExt = create<ExtState>((set, get) => ({
     // Remove the pending block from chat messages.
     // We remove ALL pending blocks as a safety measure — only one
     // should exist per message at a time.
-    useChat.getState().removePendingPermissionBlock(id);
+    useChat.getState().removePendingPermissionBlock(id, perm.sessionId);
   },
 
   resolvePendingAskUser(id, payload) {
@@ -190,19 +192,23 @@ export const useExt = create<ExtState>((set, get) => ({
         ...pendingAskUsers.slice(idx + 1),
       ],
     });
-    useChat.getState().removePendingAskUserBlock(id);
+    useChat.getState().removePendingAskUserBlock(id, askUser.sessionId);
   },
 
   removePendingAskUser(id) {
+    const pending = get().pendingAskUsers.find((p) => p.id === id);
     set((s) => ({
       pendingAskUsers: s.pendingAskUsers.filter((p) => p.id !== id),
     }));
+    useChat.getState().removePendingAskUserBlock(id, pending?.sessionId);
   },
 
   removePendingPermission(id) {
+    const pending = get().pendingPermissions.find((p) => p.id === id);
     set((s) => ({
       pendingPermissions: s.pendingPermissions.filter((p) => p.id !== id),
     }));
+    useChat.getState().removePendingPermissionBlock(id, pending?.sessionId);
   },
 
   dismissToast(id) {
@@ -226,6 +232,7 @@ function handleEvent(
   if (event.type !== "extension_ui_request") return;
   const method = String(event.method ?? "");
   const id = String(event.id ?? "");
+  const sessionId = typeof event.sessionId === "string" ? event.sessionId : undefined;
 
   switch (method) {
     case "notify": {
@@ -309,11 +316,11 @@ function handleEvent(
       const allowMultiple = event.allowMultiple === true;
       // Inject a pending ask_user block into the current assistant message
       const chatState = useChat.getState();
-      chatState.addPendingAskUserBlock(id, { question, options, allowMultiple });
+      chatState.addPendingAskUserBlock(id, { question, options, allowMultiple }, sessionId);
       set((s) => ({
         pendingAskUsers: [
           ...s.pendingAskUsers,
-          { id, question, options, allowMultiple },
+          { id, sessionId, question, options, allowMultiple },
         ],
       }));
       break;
@@ -345,7 +352,7 @@ function handleEvent(
         permissionValue,
         permissionToolName: event.permissionToolName,
         permissionToolArgs: event.permissionToolArgs,
-      });
+      }, sessionId);
 
       set((s) => ({
         pendingPermissions: [
@@ -353,6 +360,7 @@ function handleEvent(
           {
             type: "permission",
             id,
+            sessionId,
             permissionType,
             permissionValue,
             permissionToolName: event.permissionToolName as string | undefined,

@@ -62,6 +62,13 @@ body {
   display: none;
 }
 
+.pi-session-tabs {
+  scrollbar-width: none;
+}
+.pi-session-tabs::-webkit-scrollbar {
+  display: none;
+}
+
 /* markdown в сообщениях */
 .md {
   min-width: 0;

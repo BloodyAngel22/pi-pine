@@ -8,7 +8,8 @@ export interface SlashCommand {
 }
 
 export const BUILTIN_SLASH: SlashCommand[] = [
-  { command: "/new", description: "Новая сессия (очистить контекст)" },
+  { command: "/new", description: "Новая пустая сессия" },
+  { command: "/forktab", description: "Новая сессия с памятью текущей" },
   { command: "/sessions", description: "Открыть список сессий" },
   { command: "/model", description: "Сменить модель" },
   { command: "/compact", description: "Сжать контекст вручную" },

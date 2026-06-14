@@ -44,6 +44,11 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
   const cwd = useChat((s) => s.cwd);
   const switchSession = useChat((s) => s.switchSession);
   const newSession = useChat((s) => s.newSession);
+  const createSessionTab = useChat((s) => s.createSessionTab);
+  const createForkTab = useChat((s) => s.createForkTab);
+  const openSessionTab = useChat((s) => s.openSessionTab);
+  const closeSessionTab = useChat((s) => s.closeSessionTab);
+  const tabs = useChat((s) => s.tabs);
   const setSessionName = useChat((s) => s.setSessionName);
   const agentSessionFile = useChat((s) => s.agentState?.sessionFile);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -64,6 +69,13 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cwd, agentSessionFile]);
+
+  useEffect(() => {
+    const onChanged = () => void reload();
+    window.addEventListener("pi-pine:sessions-changed", onChanged);
+    return () => window.removeEventListener("pi-pine:sessions-changed", onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cwd]);
 
   // закрытие меню по клику вне
   useEffect(() => {
@@ -121,6 +133,15 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const openByFile = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [tabId, tab] of tabs) {
+      const file = tab.agentState?.sessionFile;
+      if (file) m.set(file, tabId);
+    }
+    return m;
+  }, [tabs]);
+
   const groups = useMemo(() => {
     const m: Record<Bucket, SessionInfo[]> = {
       Сегодня: [],
@@ -160,12 +181,23 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
           variant="ghost"
           size="sm"
           onClick={async () => {
-            await newSession();
+            await createSessionTab();
             onClose();
           }}
           icon={<Plus size={12} />}
         >
           {t.sessions.new}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            await createForkTab();
+            onClose();
+          }}
+          icon={<CopyIcon size={12} />}
+        >
+          Fork tab
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -185,6 +217,8 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
               </div>
               {items.map((s) => {
                 const active = agentSessionFile && s.file === agentSessionFile;
+                const openTabId = openByFile.get(s.file);
+                const opened = Boolean(openTabId);
                 const title =
                   s.name ||
                   (s.first_user_text ? s.first_user_text.split("\n")[0] : t.sessions.untitled);
@@ -206,11 +240,14 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
                       // 1) сразу закрываем сайдбар — пользователь видит мгновенный отклик
                       // 2) запускаем switch в фоне (не await), store сам поставит switching=true
                       onClose();
-                      void switchSession(s.file);
+                      void openSessionTab(s.file, title);
                     }}
                   >
                     <div className="flex items-start gap-2">
-                      <MessageSquare size={12} className="mt-0.5 shrink-0 text-(--color-fg-mute)" />
+                      <span className="relative mt-0.5 shrink-0">
+                        <MessageSquare size={12} className="text-(--color-fg-mute)" />
+                        {opened && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-(--color-accent)" />}
+                      </span>
                       <div className="flex-1 min-w-0">
                         <div className="truncate font-medium">{title}</div>
                         <div className="flex gap-2 text-(--color-fg-dim) mt-0.5">
@@ -269,9 +306,19 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
                           onClick={() => {
                             setMenuFor(null);
                             onClose();
-                            void switchSession(s.file);
+                            void openSessionTab(s.file, title);
                           }}
                         />
+                        {openTabId && (
+                          <MenuItem
+                            icon={<Trash2 size={11} />}
+                            label="Закрыть таб"
+                            onClick={() => {
+                              setMenuFor(null);
+                              void closeSessionTab(openTabId);
+                            }}
+                          />
+                        )}
                         <div className="my-1 border-t border-(--color-border)" />
                         <MenuItem
                           icon={<Trash2 size={11} />}

@@ -36,6 +36,20 @@ interface RpcClosedPayload {
 
 type EventListener = (event: Record<string, unknown>) => void;
 
+export interface RpcRequestOptions {
+  sessionId?: string | null;
+  timeoutMs?: number;
+}
+
+export interface SessionListItem {
+  sessionId: string;
+  name?: string;
+  messageCount: number;
+  isActive: boolean;
+  cwd?: string;
+  isStreaming: boolean;
+}
+
 let currentGeneration = 0;
 let pending = new Map<
   string,
@@ -154,8 +168,10 @@ async function sendRaw(payload: Record<string, unknown>): Promise<void> {
 function request<T = unknown>(
   command: string,
   payload: Record<string, unknown> = {},
-  timeoutMs = 30_000,
+  timeoutOrOptions: number | RpcRequestOptions = 30_000,
 ): Promise<T> {
+  const timeoutMs = typeof timeoutOrOptions === "number" ? timeoutOrOptions : timeoutOrOptions.timeoutMs ?? 30_000;
+  const sessionId = typeof timeoutOrOptions === "number" ? undefined : timeoutOrOptions.sessionId ?? undefined;
   return new Promise((resolve, reject) => {
     const id = nextId();
     const timer = window.setTimeout(() => {
@@ -173,7 +189,7 @@ function request<T = unknown>(
       reject,
       timer,
     });
-    const line = JSON.stringify({ id, type: command, ...payload });
+    const line = JSON.stringify({ id, type: command, ...payload, ...(sessionId ? { sessionId } : {}) });
     invoke("rpc_send", { line }).catch((err) => {
       const slot = pending.get(id);
       if (slot) {
@@ -192,6 +208,7 @@ export async function sendPrompt(
   opts?: {
     images?: ImageContent[];
     streamingBehavior?: StreamingBehavior;
+    sessionId?: string | null;
   },
 ): Promise<void> {
   await request("prompt", {
@@ -200,7 +217,7 @@ export async function sendPrompt(
     ...(opts?.streamingBehavior
       ? { streamingBehavior: opts.streamingBehavior }
       : {}),
-  });
+  }, { sessionId: opts?.sessionId });
 }
 
 export async function askBtw(question: string): Promise<{ answer: string }> {
@@ -219,8 +236,8 @@ export interface FastContextResult {
   fallback?: "lexical";
   elapsedMs?: number;
 }
-export async function fastContext(query: string): Promise<FastContextResult> {
-  return request<FastContextResult>("fast_context", { query }, 120_000);
+export async function fastContext(query: string, sessionId?: string | null): Promise<FastContextResult> {
+  return request<FastContextResult>("fast_context", { query }, { sessionId, timeoutMs: 120_000 });
 }
 
 export interface FastFetchToolDetails {
@@ -242,22 +259,40 @@ export interface FastFetchOptions {
 }
 export async function fastFetch(
   query: string,
-  options?: FastFetchOptions,
+  options?: FastFetchOptions & { sessionId?: string | null },
 ): Promise<FastFetchResult> {
-  return request<FastFetchResult>("fast_fetch", { query, ...options }, options?.timeoutMs ?? 120_000);
+  const { sessionId, ...payloadOptions } = options ?? {};
+  return request<FastFetchResult>("fast_fetch", { query, ...payloadOptions }, { sessionId, timeoutMs: options?.timeoutMs ?? 120_000 });
 }
 
-export async function abort(): Promise<void> {
-  await request("abort").catch(() => undefined);
+export async function abort(sessionId?: string | null): Promise<void> {
+  await request("abort", {}, { sessionId }).catch(() => undefined);
 }
 
-export async function newSession(parentSession?: string): Promise<{ cancelled: boolean }> {
-  return request("new_session", parentSession ? { parentSession } : {});
+export async function newSession(parentSession?: string, sessionId?: string | null): Promise<{ cancelled: boolean }> {
+  return request("new_session", parentSession ? { parentSession } : {}, { sessionId });
 }
 
-export async function switchSession(sessionPath: string): Promise<void> {
+export async function createSession(options?: string | { cwd?: string; mode?: "empty" | "copy"; sourceSessionId?: string | null; sessionPath?: string | null }): Promise<{ sessionId: string }> {
+  const payload = typeof options === "string" ? { cwd: options } : { ...(options ?? {}) };
+  return request("create_session", payload);
+}
+
+export async function switchActiveSession(sessionId: string): Promise<void> {
+  await request("switch_active_session", {}, { sessionId });
+}
+
+export async function closeSession(sessionId: string): Promise<void> {
+  await request("close_session", {}, { sessionId });
+}
+
+export async function listSessions(): Promise<{ sessions: SessionListItem[] }> {
+  return request("list_sessions");
+}
+
+export async function switchSession(sessionPath: string, sessionId?: string | null): Promise<void> {
   // pi RPC ожидает поле `sessionPath`, не `sessionFile`.
-  await request("switch_session", { sessionPath });
+  await request("switch_session", { sessionPath }, { sessionId });
 }
 
 export interface NavigateTreeResult {
@@ -268,9 +303,10 @@ export interface NavigateTreeResult {
 
 export async function navigateTree(
   targetId: string,
-  opts?: { summarize?: boolean; customInstructions?: string; label?: string; exact?: boolean },
+  opts?: { summarize?: boolean; customInstructions?: string; label?: string; exact?: boolean; sessionId?: string | null },
 ): Promise<NavigateTreeResult> {
-  return request<NavigateTreeResult>("navigate_tree", { targetId, ...opts });
+  const { sessionId, ...payloadOpts } = opts ?? {};
+  return request<NavigateTreeResult>("navigate_tree", { targetId, ...payloadOpts }, { sessionId });
 }
 
 export interface SessionTreeEntry {
@@ -293,16 +329,16 @@ export interface SessionTreeNode {
   labelTimestamp?: string;
 }
 
-export async function getSessionTree(): Promise<{ tree: SessionTreeNode[]; leafId: string | null }> {
-  return request("get_session_tree");
+export async function getSessionTree(sessionId?: string | null): Promise<{ tree: SessionTreeNode[]; leafId: string | null }> {
+  return request("get_session_tree", {}, { sessionId });
 }
 
-export async function setSessionName(name: string): Promise<void> {
-  await request("set_session_name", { name });
+export async function setSessionName(name: string, sessionId?: string | null): Promise<void> {
+  await request("set_session_name", { name }, { sessionId });
 }
 
-export async function getState(): Promise<RpcSessionState> {
-  return request<RpcSessionState>("get_state");
+export async function getState(sessionId?: string | null): Promise<RpcSessionState> {
+  return request<RpcSessionState>("get_state", {}, { sessionId });
 }
 
 export interface CwdCommandResult {
@@ -325,52 +361,52 @@ export interface LsCommandResult {
   entries: string;
 }
 
-export async function cd(path: string): Promise<CwdCommandResult> {
-  return request<CwdCommandResult>("cd", { path });
+export async function cd(path: string, sessionId?: string | null): Promise<CwdCommandResult> {
+  return request<CwdCommandResult>("cd", { path }, { sessionId });
 }
 
-export async function pwd(): Promise<{ cwd: string }> {
-  return request<{ cwd: string }>("pwd");
+export async function pwd(sessionId?: string | null): Promise<{ cwd: string }> {
+  return request<{ cwd: string }>("pwd", {}, { sessionId });
 }
 
-export async function ls(path?: string): Promise<LsCommandResult> {
-  return request<LsCommandResult>("ls", path ? { path } : {});
+export async function ls(path?: string, sessionId?: string | null): Promise<LsCommandResult> {
+  return request<LsCommandResult>("ls", path ? { path } : {}, { sessionId });
 }
 
-export async function getMessages(): Promise<{ messages: unknown[] }> {
-  return request("get_messages");
+export async function getMessages(sessionId?: string | null): Promise<{ messages: unknown[] }> {
+  return request("get_messages", {}, { sessionId });
 }
 
-export async function setModel(provider: string, modelId: string): Promise<Model> {
-  return request<Model>("set_model", { provider, modelId });
+export async function setModel(provider: string, modelId: string, sessionId?: string | null): Promise<Model> {
+  return request<Model>("set_model", { provider, modelId }, { sessionId });
 }
 
-export async function cycleModel(): Promise<{ model: Model | null; thinkingLevel: ThinkingLevel } | null> {
-  return request("cycle_model");
+export async function cycleModel(sessionId?: string | null): Promise<{ model: Model | null; thinkingLevel: ThinkingLevel } | null> {
+  return request("cycle_model", {}, { sessionId });
 }
 
 export async function getAvailableModels(): Promise<Model[] | { models: Model[] }> {
   return request("get_available_models");
 }
 
-export async function setThinkingLevel(level: ThinkingLevel): Promise<void> {
-  await request("set_thinking_level", { level });
+export async function setThinkingLevel(level: ThinkingLevel, sessionId?: string | null): Promise<void> {
+  await request("set_thinking_level", { level }, { sessionId });
 }
 
-export async function setSteeringMode(mode: QueueMode): Promise<void> {
-  await request("set_steering_mode", { mode });
+export async function setSteeringMode(mode: QueueMode, sessionId?: string | null): Promise<void> {
+  await request("set_steering_mode", { mode }, { sessionId });
 }
 
-export async function setFollowUpMode(mode: QueueMode): Promise<void> {
-  await request("set_follow_up_mode", { mode });
+export async function setFollowUpMode(mode: QueueMode, sessionId?: string | null): Promise<void> {
+  await request("set_follow_up_mode", { mode }, { sessionId });
 }
 
-export async function compact(): Promise<CompactResult> {
-  return request<CompactResult>("compact", {}, 120_000);
+export async function compact(sessionId?: string | null): Promise<CompactResult> {
+  return request<CompactResult>("compact", {}, { sessionId, timeoutMs: 120_000 });
 }
 
-export async function setAutoCompaction(enabled: boolean): Promise<void> {
-  await request("set_auto_compaction", { enabled });
+export async function setAutoCompaction(enabled: boolean, sessionId?: string | null): Promise<void> {
+  await request("set_auto_compaction", { enabled }, { sessionId });
 }
 
 // === v0.2 ===
@@ -382,25 +418,26 @@ export interface BashResult {
   truncated: boolean;
   fullOutputPath?: string;
 }
-export async function bash(command: string, timeoutMs = 120_000): Promise<BashResult> {
-  return request<BashResult>("bash", { command }, timeoutMs);
+export async function bash(command: string, timeoutMs = 120_000, sessionId?: string | null): Promise<BashResult> {
+  return request<BashResult>("bash", { command }, { sessionId, timeoutMs });
 }
-export async function abortBash(): Promise<void> {
-  await request("abort_bash").catch(() => undefined);
+export async function abortBash(sessionId?: string | null): Promise<void> {
+  await request("abort_bash", {}, { sessionId }).catch(() => undefined);
 }
 export async function fork(
   entryId: string,
-  opts?: { position?: "at" | "before" },
+  opts?: { position?: "at" | "before"; sessionId?: string | null },
 ): Promise<{ text: string; cancelled: boolean }> {
-  return request("fork", { entryId, ...opts });
+  const { sessionId, ...payloadOpts } = opts ?? {};
+  return request("fork", { entryId, ...payloadOpts }, { sessionId });
 }
 
 /** Обрезать JSONL-файл сессии до строки с entryId (включительно). */
 export async function truncateSession(file: string, entryId: string): Promise<void> {
   await invoke("truncate_session_at", { file, entryId });
 }
-export async function clone(): Promise<{ cancelled: boolean }> {
-  return request("clone");
+export async function clone(sessionId?: string | null): Promise<{ cancelled: boolean }> {
+  return request("clone", {}, { sessionId });
 }
 export interface ForkPoint {
   id?: string;
@@ -408,8 +445,8 @@ export interface ForkPoint {
   text: string;
   timestamp?: number | string;
 }
-export async function getForkMessages(): Promise<{ messages: ForkPoint[] }> {
-  return request("get_fork_messages");
+export async function getForkMessages(sessionId?: string | null): Promise<{ messages: ForkPoint[] }> {
+  return request("get_fork_messages", {}, { sessionId });
 }
 export interface FileCheckpointStatus {
   modified: string[];
@@ -420,14 +457,14 @@ export interface FileCheckpointRestoreResult {
   deleted: string[];
   errors: string[];
 }
-export async function getFileCheckpointStatus(): Promise<FileCheckpointStatus | null> {
-  return request("get_file_checkpoint_status");
+export async function getFileCheckpointStatus(sessionId?: string | null): Promise<FileCheckpointStatus | null> {
+  return request("get_file_checkpoint_status", {}, { sessionId });
 }
-export async function getFileCheckpointTurnStatus(turnIndex: number): Promise<FileCheckpointStatus | null> {
-  return request("get_file_checkpoint_turn_status", { turnIndex });
+export async function getFileCheckpointTurnStatus(turnIndex: number, sessionId?: string | null): Promise<FileCheckpointStatus | null> {
+  return request("get_file_checkpoint_turn_status", { turnIndex }, { sessionId });
 }
-export async function restoreFileChangesToTurn(turnIndex: number): Promise<FileCheckpointRestoreResult | null> {
-  return request("restore_file_changes_to_turn", { turnIndex }, 120_000);
+export async function restoreFileChangesToTurn(turnIndex: number, sessionId?: string | null): Promise<FileCheckpointRestoreResult | null> {
+  return request("restore_file_changes_to_turn", { turnIndex }, { sessionId, timeoutMs: 120_000 });
 }
 export interface SessionStats {
   sessionFile?: string;
@@ -453,11 +490,11 @@ export interface SessionStats {
   };
   [k: string]: unknown;
 }
-export async function getSessionStats(): Promise<SessionStats> {
-  return request("get_session_stats");
+export async function getSessionStats(sessionId?: string | null): Promise<SessionStats> {
+  return request("get_session_stats", {}, { sessionId });
 }
-export async function exportHtml(outputPath?: string): Promise<{ path: string }> {
-  return request("export_html", outputPath ? { outputPath } : {});
+export async function exportHtml(outputPath?: string, sessionId?: string | null): Promise<{ path: string }> {
+  return request("export_html", outputPath ? { outputPath } : {}, { sessionId });
 }
 export interface PiCommand {
   name: string;
@@ -473,17 +510,17 @@ export interface PiCommand {
   location?: "user" | "project" | "path";
   path?: string;
 }
-export async function getCommands(): Promise<{ commands: PiCommand[] }> {
-  return request("get_commands");
+export async function getCommands(sessionId?: string | null): Promise<{ commands: PiCommand[] }> {
+  return request("get_commands", {}, { sessionId });
 }
-export async function cycleThinkingLevel(): Promise<RpcSessionState> {
-  return request("cycle_thinking_level");
+export async function cycleThinkingLevel(sessionId?: string | null): Promise<RpcSessionState> {
+  return request("cycle_thinking_level", {}, { sessionId });
 }
-export async function setAutoRetry(enabled: boolean): Promise<void> {
-  await request("set_auto_retry", { enabled });
+export async function setAutoRetry(enabled: boolean, sessionId?: string | null): Promise<void> {
+  await request("set_auto_retry", { enabled }, { sessionId });
 }
-export async function abortRetry(): Promise<void> {
-  await request("abort_retry").catch(() => undefined);
+export async function abortRetry(sessionId?: string | null): Promise<void> {
+  await request("abort_retry", {}, { sessionId }).catch(() => undefined);
 }
 
 /** Ответ на extension UI dialog request (select/confirm/input/editor). */

@@ -9,6 +9,7 @@ import type {
   RpcSessionState,
   StreamingBehavior,
   ThinkingLevel,
+  AttachmentContent,
 } from "@/rpc/types";
 
 /** Мини-модель сообщения для рендера */
@@ -59,6 +60,168 @@ export interface UiMessage {
   pendingAssistant?: boolean;
 }
 
+export const DEFAULT_TAB_ID = "session-1";
+
+export interface SessionTabState {
+  tabId: string;
+  messages: UiMessage[];
+  agentState: RpcSessionState | null;
+  currentAssistantId: string | null;
+  messageIdMap: Map<string, string>;
+  uiToPiId: Record<string, string>;
+  sessionName: string | null;
+  sessionStats: import("@/rpc/bridge").SessionStats | null;
+  pendingMessageCount: number;
+  unseenAssistantCount: number;
+  fastContextStatus: "idle" | "searching" | "done" | "error" | null;
+  fastContextResults: import("@/rpc/bridge").FastContextResult | null;
+  fastContextQuery: string | null;
+  fastContextError: string | null;
+  fastContextRunId: number;
+  fastFetchStatus: "idle" | "fetching" | "done" | "error" | null;
+  fastFetchResult: import("@/rpc/bridge").FastFetchResult | null;
+  fastFetchQuery: string | null;
+  fastFetchError: string | null;
+  fastFetchRunId: number;
+  lastCompactionMessageKey: string | null;
+  retryStatus: {
+    active: boolean;
+    attempt: number;
+    maxAttempts?: number;
+    delayMs?: number;
+    errorMessage?: string;
+    finalError?: string;
+  };
+  planMode: boolean;
+  planFilePath: string | null;
+  planLoading: boolean;
+  forkBanner: string | null;
+  composerInjection: { text: string; nonce: number } | null;
+  composerValue: string;
+  composerHistory: string[];
+  composerHistoryIndex: number;
+  composerAttachments: AttachmentContent[];
+  pendingUserAction: { kind: "permission" | "askUser"; count: number } | null;
+}
+
+export function createDefaultSessionTab(tabId: string, initial?: Partial<SessionTabState>): SessionTabState {
+  return {
+    tabId,
+    messages: [],
+    agentState: null,
+    currentAssistantId: null,
+    messageIdMap: new Map(),
+    uiToPiId: {},
+    sessionName: null,
+    sessionStats: null,
+    pendingMessageCount: 0,
+    unseenAssistantCount: 0,
+    fastContextStatus: null,
+    fastContextResults: null,
+    fastContextQuery: null,
+    fastContextError: null,
+    fastContextRunId: 0,
+    fastFetchStatus: null,
+    fastFetchResult: null,
+    fastFetchQuery: null,
+    fastFetchError: null,
+    fastFetchRunId: 0,
+    lastCompactionMessageKey: null,
+    retryStatus: { active: false, attempt: 0 },
+    planMode: readPlanMode(),
+    planFilePath: null,
+    planLoading: false,
+    forkBanner: null,
+    composerInjection: null,
+    composerValue: "",
+    composerHistory: [],
+    composerHistoryIndex: -1,
+    composerAttachments: [],
+    pendingUserAction: null,
+    ...initial,
+  };
+}
+
+type SessionTabPatch = Partial<Omit<SessionTabState, "tabId">>;
+
+const TAB_FIELD_KEYS = new Set<keyof SessionTabState>([
+  "messages",
+  "agentState",
+  "currentAssistantId",
+  "messageIdMap",
+  "uiToPiId",
+  "sessionName",
+  "sessionStats",
+  "pendingMessageCount",
+  "unseenAssistantCount",
+  "fastContextStatus",
+  "fastContextResults",
+  "fastContextQuery",
+  "fastContextError",
+  "fastContextRunId",
+  "fastFetchStatus",
+  "fastFetchResult",
+  "fastFetchQuery",
+  "fastFetchError",
+  "fastFetchRunId",
+  "lastCompactionMessageKey",
+  "retryStatus",
+  "planMode",
+  "planFilePath",
+  "planLoading",
+  "forkBanner",
+  "composerInjection",
+  "composerValue",
+  "composerHistory",
+  "composerHistoryIndex",
+  "composerAttachments",
+  "pendingUserAction",
+]);
+
+function pickTabPatch(partial: Partial<ChatState>): SessionTabPatch {
+  const patch: SessionTabPatch = {};
+  for (const key of TAB_FIELD_KEYS) {
+    if (key in partial) {
+      (patch as Record<string, unknown>)[key] = (partial as Record<string, unknown>)[key as string];
+    }
+  }
+  return patch;
+}
+
+function tabProjection(tab: SessionTabState): Partial<ChatState> {
+  return {
+    planMode: tab.planMode,
+    planFilePath: tab.planFilePath,
+    planLoading: tab.planLoading,
+    agentState: tab.agentState,
+    retryStatus: tab.retryStatus,
+    pendingMessageCount: tab.pendingMessageCount,
+    sessionStats: tab.sessionStats,
+    uiToPiId: tab.uiToPiId,
+    messages: tab.messages,
+    currentAssistantId: tab.currentAssistantId,
+    messageIdMap: tab.messageIdMap,
+    composerInjection: tab.composerInjection,
+    composerValue: tab.composerValue,
+    composerHistory: tab.composerHistory,
+    composerHistoryIndex: tab.composerHistoryIndex,
+    composerAttachments: tab.composerAttachments,
+    pendingUserAction: tab.pendingUserAction,
+    forkBanner: tab.forkBanner,
+    fastContextStatus: tab.fastContextStatus,
+    fastContextResults: tab.fastContextResults,
+    fastContextQuery: tab.fastContextQuery,
+    fastContextError: tab.fastContextError,
+    fastContextRunId: tab.fastContextRunId,
+    fastFetchStatus: tab.fastFetchStatus,
+    fastFetchResult: tab.fastFetchResult,
+    fastFetchQuery: tab.fastFetchQuery,
+    fastFetchError: tab.fastFetchError,
+    fastFetchRunId: tab.fastFetchRunId,
+    lastCompactionMessageKey: tab.lastCompactionMessageKey,
+  };
+}
+
 interface ChatState {
   // транспорт
   generation: number;
@@ -104,6 +267,12 @@ interface ChatState {
   stderrBuffer: string[];
   /** буфер для подстановки в композер из set_editor_text / Edit */
   composerInjection: { text: string; nonce: number } | null;
+  /** Черновик composer-а активного таба. */
+  composerValue: string;
+  composerHistory: string[];
+  composerHistoryIndex: number;
+  composerAttachments: AttachmentContent[];
+  pendingUserAction: { kind: "permission" | "askUser"; count: number } | null;
   /** баннер после fork: пользователь теперь в новой ветке */
   forkBanner: string | null;
   /** Fast Context статус и результаты */
@@ -119,6 +288,20 @@ interface ChatState {
   fastFetchError: string | null;
   fastFetchRunId: number;
   lastCompactionMessageKey: string | null;
+  // multi-session tabs
+  tabs: Map<string, SessionTabState>;
+  tabOrder: string[];
+  activeTabId: string | null;
+  activateTab(tabId: string): Promise<void>;
+  createSessionTab(name?: string, options?: { mode?: "empty" | "copy"; sourceSessionId?: string | null; sessionPath?: string | null }): Promise<string | null>;
+  createForkTab(): Promise<string | null>;
+  openSessionTab(file: string, name?: string | null, activate?: boolean): Promise<string | null>;
+  closeSessionTab(tabId: string): Promise<void>;
+  moveTab(fromIndex: number, toIndex: number): void;
+  moveTabById(tabId: string, beforeTabId: string | null): void;
+  updateTab(tabId: string, patch: SessionTabPatch): void;
+  syncFromTab(tabId: string): void;
+  ensureTab(tabId: string, initial?: Partial<SessionTabState>): void;
   // действия
   init(): Promise<void>;
   startRpc(opts?: { sessionFile?: string; safe?: boolean }): Promise<void>;
@@ -174,13 +357,15 @@ interface ChatState {
   setError(msg: string | null): void;
 
   /** Add a pending permission block to the current assistant message */
-  addPendingPermissionBlock(permId: string, name: string, input: unknown): void;
+  addPendingPermissionBlock(permId: string, name: string, input: unknown, tabId?: string | null): void;
   /** Remove a pending permission block by permission id */
-  removePendingPermissionBlock(permId: string): void;
+  removePendingPermissionBlock(permId: string, tabId?: string | null): void;
   /** Add a pending ask_user block to the current assistant message */
-  addPendingAskUserBlock(askUserId: string, input: { question: string; options: string[]; allowMultiple: boolean }): void;
+  addPendingAskUserBlock(askUserId: string, input: { question: string; options: string[]; allowMultiple: boolean }, tabId?: string | null): void;
   /** Remove a pending ask_user block by askUser id */
-  removePendingAskUserBlock(askUserId: string): void;
+  removePendingAskUserBlock(askUserId: string, tabId?: string | null): void;
+  markTabWaiting(kind: "permission" | "askUser", tabId?: string | null): void;
+  clearTabWaiting(kind: "permission" | "askUser", tabId?: string | null): void;
 }
 
 const STORAGE_KEY_CLI = "pi-pine.cliPathOverride";
@@ -189,6 +374,55 @@ const STORAGE_KEY_PROVIDER = "pi-pine.provider";
 const STORAGE_KEY_MODEL = "pi-pine.model";
 const STORAGE_KEY_PLAN_MODE = "pi-pine.planMode";
 const STORAGE_KEY_SKILLS = "pi-pine.attachedSkills";
+const STORAGE_KEY_OPEN_TABS_PREFIX = "pi-pine.openTabs.";
+const SESSIONS_CHANGED_EVENT = "pi-pine:sessions-changed";
+
+function openTabsStorageKey(cwd: string): string {
+  return `${STORAGE_KEY_OPEN_TABS_PREFIX}${cwd}`;
+}
+
+interface RememberedOpenTabsState {
+  files: string[];
+  activeFile?: string;
+}
+
+function readRememberedOpenTabs(cwd: string): RememberedOpenTabsState {
+  if (!cwd || typeof window === "undefined") return { files: [] };
+  try {
+    const raw = localStorage.getItem(openTabsStorageKey(cwd));
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) {
+      return { files: parsed.filter((x): x is string => typeof x === "string" && x.length > 0) };
+    }
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      const files = Array.isArray(obj.files)
+        ? obj.files.filter((x): x is string => typeof x === "string" && x.length > 0)
+        : [];
+      const activeFile = typeof obj.activeFile === "string" ? obj.activeFile : undefined;
+      return { files, activeFile };
+    }
+  } catch {
+    // ignore
+  }
+  return { files: [] };
+}
+
+function writeRememberedOpenTabs(cwd: string, state: RememberedOpenTabsState): void {
+  if (!cwd || typeof window === "undefined") return;
+  const unique = Array.from(new Set(state.files.filter(Boolean)));
+  if (unique.length === 0) {
+    localStorage.removeItem(openTabsStorageKey(cwd));
+  } else {
+    localStorage.setItem(openTabsStorageKey(cwd), JSON.stringify({ files: unique, activeFile: state.activeFile }));
+  }
+}
+
+function notifySessionsChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SESSIONS_CHANGED_EVENT));
+  }
+}
 
 function readPlanMode(): boolean {
   return localStorage.getItem(STORAGE_KEY_PLAN_MODE) === "1";
@@ -338,6 +572,19 @@ async function rememberCurrentSession(cwd: string, sessionFile?: string) {
   await invoke("write_last_session_file", { cwd, sessionFile }).catch(() => undefined);
 }
 
+function collectOpenSessionFiles(state: ChatState): string[] {
+  return state.tabOrder
+    .map((tabId) => state.tabs.get(tabId)?.agentState?.sessionFile)
+    .filter((file): file is string => typeof file === "string" && file.length > 0);
+}
+
+function rememberOpenTabsSnapshot(state: ChatState): void {
+  const files = collectOpenSessionFiles(state);
+  const activeFile = state.agentState?.sessionFile;
+  writeRememberedOpenTabs(state.cwd, { files, activeFile });
+  if (activeFile) void rememberCurrentSession(state.cwd, activeFile);
+}
+
 function joinText(blocks: UiBlock[]): string {
   return blocks
     .filter((b): b is UiBlockText => b.kind === "text")
@@ -399,7 +646,7 @@ async function resolveUserForkPiId(
   const target = normalizeForMatch(userText);
   if (!target) return null;
   try {
-    const res = await rpc.getForkMessages();
+    const res = await rpc.getForkMessages(useChat.getState().activeTabId);
     const messages = Array.isArray(res.messages) ? res.messages : [];
     const exact = messages.filter((m) => normalizeForMatch(m.text) === target);
     if (exact.length > 0) return forkPointId(closestForkPoint(exact, timestamp) ?? exact[exact.length - 1]) ?? null;
@@ -426,6 +673,22 @@ function closestForkPoint(
     if (!Number.isFinite(bt)) return cur;
     return Math.abs(ct - timestamp) < Math.abs(bt - timestamp) ? cur : best;
   });
+}
+
+function closestUiMessageByText(
+  messages: UiMessage[],
+  target: string,
+  timestamp?: number,
+): UiMessage | undefined {
+  const candidates = messages.filter((m) => {
+    const text = normalizeForMatch(joinText(m.blocks));
+    return text === target || text.includes(target) || target.includes(text);
+  });
+  if (candidates.length === 0) return undefined;
+  if (typeof timestamp !== "number") return candidates[candidates.length - 1];
+  return candidates.reduce((best, cur) =>
+    Math.abs(cur.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? cur : best,
+  );
 }
 
 function blockToString(v: unknown): string {
@@ -746,7 +1009,92 @@ function formatCompactionMessage(result: unknown): { key: string; text: string }
   return { key: keyParts.join(":"), text };
 }
 
-export const useChat = create<ChatState>((set, get) => ({
+
+function applyScopedPartial(
+  tabId: string,
+  partialOrFn:
+    | Partial<ChatState>
+    | ((s: ChatState) => Partial<ChatState>),
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  get: () => ChatState,
+): void {
+  const current = get();
+  const currentTab = current.tabs.get(tabId) ?? createDefaultSessionTab(tabId);
+  const scopedState = { ...current, ...tabProjection(currentTab), activeTabId: tabId } as ChatState;
+  const partial = typeof partialOrFn === "function" ? partialOrFn(scopedState) : partialOrFn;
+  const tabPatch = pickTabPatch(partial);
+  const globalPatch: Partial<ChatState> = {};
+  for (const [key, value] of Object.entries(partial) as Array<[keyof ChatState, unknown]>) {
+    if (!TAB_FIELD_KEYS.has(key as keyof SessionTabState)) {
+      (globalPatch as Record<string, unknown>)[key as string] = value;
+    }
+  }
+  set((state) => {
+    const existing = state.tabs.get(tabId) ?? createDefaultSessionTab(tabId);
+    const nextTab = { ...existing, ...tabPatch, tabId };
+    const tabs = new Map(state.tabs).set(tabId, nextTab);
+    const tabOrder = state.tabOrder.includes(tabId) ? state.tabOrder : [...state.tabOrder, tabId];
+    const next: Partial<ChatState> = { ...globalPatch, tabs, tabOrder };
+    if (state.activeTabId === tabId) {
+      Object.assign(next, tabProjection(nextTab));
+    }
+    return next;
+  });
+}
+
+function makeScopedSet(
+  tabId: string,
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  get: () => ChatState,
+) {
+  return (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) =>
+    applyScopedPartial(tabId, partial, set, get);
+}
+
+function makeScopedGet(tabId: string, get: () => ChatState): () => ChatState {
+  return () => {
+    const state = get();
+    const tab = state.tabs.get(tabId);
+    if (!tab) return state;
+    return { ...state, ...tabProjection(tab), activeTabId: tabId } as ChatState;
+  };
+}
+
+export const useChat = create<ChatState>((rawSet, get) => {
+  const set = (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => {
+    rawSet((state) => {
+      const resolved = typeof partial === "function" ? partial(state) : partial;
+      if (!resolved || typeof resolved !== "object") return resolved;
+      if (resolved.tabs !== undefined || resolved.tabOrder !== undefined || resolved.activeTabId !== undefined) {
+        return resolved;
+      }
+      const activeTabId = state.activeTabId;
+      if (!activeTabId) return resolved;
+      const tabPatch = pickTabPatch(resolved);
+      if (Object.keys(tabPatch).length === 0) return resolved;
+      const existing = state.tabs.get(activeTabId) ?? createDefaultSessionTab(activeTabId);
+      const nextTab = { ...existing, ...tabPatch, tabId: activeTabId };
+      return {
+        ...resolved,
+        tabs: new Map(resolved.tabs ?? state.tabs).set(activeTabId, nextTab),
+        tabOrder: resolved.tabOrder ?? (state.tabOrder.includes(activeTabId) ? state.tabOrder : [...state.tabOrder, activeTabId]),
+      };
+    });
+  };
+
+  return ({
   generation: 0,
   rpcRunning: false,
   mcpLoading: false,
@@ -774,6 +1122,11 @@ export const useChat = create<ChatState>((set, get) => ({
   errorBanner: null,
   stderrBuffer: [],
   composerInjection: null,
+  composerValue: "",
+  composerHistory: [],
+  composerHistoryIndex: -1,
+  composerAttachments: [],
+  pendingUserAction: null,
   forkBanner: null,
   fastContextStatus: null,
   fastContextResults: null,
@@ -787,10 +1140,179 @@ export const useChat = create<ChatState>((set, get) => ({
   fastFetchRunId: 0,
   lastCompactionMessageKey: null,
 
+  tabs: new Map(),
+  tabOrder: [],
+  activeTabId: null,
+
+  ensureTab(tabId, initial) {
+    set((s) => {
+      if (s.tabs.has(tabId)) {
+        if (!initial) return {};
+        const existing = s.tabs.get(tabId)!;
+        const nextTab = { ...existing, ...initial, tabId };
+        const tabs = new Map(s.tabs).set(tabId, nextTab);
+        const next: Partial<ChatState> = { tabs };
+        if (s.activeTabId === tabId) Object.assign(next, tabProjection(nextTab));
+        return next;
+      }
+      const tab = createDefaultSessionTab(tabId, initial);
+      return {
+        tabs: new Map(s.tabs).set(tabId, tab),
+        tabOrder: s.tabOrder.includes(tabId) ? s.tabOrder : [...s.tabOrder, tabId],
+        activeTabId: s.activeTabId ?? tabId,
+        ...(s.activeTabId ? {} : tabProjection(tab)),
+      };
+    });
+  },
+
+  syncFromTab(tabId) {
+    const tab = get().tabs.get(tabId);
+    if (!tab) return;
+    set({ ...tabProjection(tab), activeTabId: tabId });
+  },
+
+  updateTab(tabId, patch) {
+    set((s) => {
+      const existing = s.tabs.get(tabId) ?? createDefaultSessionTab(tabId);
+      const nextTab = { ...existing, ...patch, tabId };
+      const tabs = new Map(s.tabs).set(tabId, nextTab);
+      const tabOrder = s.tabOrder.includes(tabId) ? s.tabOrder : [...s.tabOrder, tabId];
+      const next: Partial<ChatState> = { tabs, tabOrder };
+      if (s.activeTabId === tabId) Object.assign(next, tabProjection(nextTab));
+      return next;
+    });
+  },
+
+  async activateTab(tabId) {
+    if (!get().tabs.has(tabId)) return;
+    try {
+      if (get().rpcRunning) await rpc.switchActiveSession(tabId);
+    } catch (e) {
+      get().setError((e as Error).message);
+      return;
+    }
+    const tab = get().tabs.get(tabId);
+    if (!tab) return;
+    const nextTab = { ...tab, unseenAssistantCount: 0 };
+    set((s) => ({
+      tabs: new Map(s.tabs).set(tabId, nextTab),
+      activeTabId: tabId,
+      ...tabProjection(nextTab),
+    }));
+    rememberOpenTabsSnapshot(get());
+  },
+
+  async createSessionTab(name, options) {
+    try {
+      const { sessionId } = await rpc.createSession({
+        cwd: get().cwd,
+        mode: options?.mode ?? "empty",
+        sourceSessionId: options?.sourceSessionId ?? get().activeTabId,
+        sessionPath: options?.sessionPath ?? undefined,
+      });
+      const tab = createDefaultSessionTab(sessionId, { sessionName: name ?? null });
+      set((s) => ({
+        tabs: new Map(s.tabs).set(sessionId, tab),
+        tabOrder: s.tabOrder.includes(sessionId) ? s.tabOrder : [...s.tabOrder, sessionId],
+      }));
+      await get().activateTab(sessionId);
+      await get().refreshState().catch(() => undefined);
+      await get().reloadHistory().catch(() => undefined);
+      await get().refreshSessionStats().catch(() => undefined);
+      rememberOpenTabsSnapshot(get());
+      notifySessionsChanged();
+      return sessionId;
+    } catch (e) {
+      get().setError((e as Error).message);
+      return null;
+    }
+  },
+
+  async createForkTab() {
+    const source = get().activeTabId;
+    if (!source) return get().createSessionTab(undefined, { mode: "copy" });
+    const sourceTab = get().tabs.get(source);
+    const baseName = sourceTab?.sessionName?.trim() || (source === DEFAULT_TAB_ID ? "main" : source);
+    return get().createSessionTab(`${baseName} fork`, { mode: "copy", sourceSessionId: source });
+  },
+
+  async openSessionTab(file, name, activate = true) {
+    const existing = Array.from(get().tabs.values()).find((tab) => tab.agentState?.sessionFile === file);
+    if (existing) {
+      if (activate) await get().activateTab(existing.tabId);
+      return existing.tabId;
+    }
+    const previousActive = get().activeTabId;
+    const tabId = await get().createSessionTab(name ?? undefined, { mode: "empty", sessionPath: file });
+    if (tabId && !activate && previousActive && previousActive !== tabId) {
+      await get().activateTab(previousActive).catch(() => undefined);
+    }
+    return tabId;
+  },
+
+  async closeSessionTab(tabId) {
+    const st = get();
+    if (st.tabOrder.length <= 1) {
+      get().setError("Нельзя закрыть последнюю сессию");
+      return;
+    }
+    const idx = st.tabOrder.indexOf(tabId);
+    if (idx === -1) return;
+    try {
+      if (st.rpcRunning) await rpc.closeSession(tabId);
+    } catch (e) {
+      get().setError((e as Error).message);
+      return;
+    }
+    const nextOrder = st.tabOrder.filter((id) => id !== tabId);
+    const nextTabs = new Map(st.tabs);
+    nextTabs.delete(tabId);
+    const nextActive = st.activeTabId === tabId ? nextOrder[Math.max(0, idx - 1)] ?? nextOrder[0] ?? null : st.activeTabId;
+    set({ tabs: nextTabs, tabOrder: nextOrder, activeTabId: nextActive });
+    if (nextActive) await get().activateTab(nextActive);
+    rememberOpenTabsSnapshot(get());
+  },
+
+  moveTab(fromIndex, toIndex) {
+    set((s) => {
+      const order = [...s.tabOrder];
+      if (fromIndex < 0 || fromIndex >= order.length || toIndex < 0 || toIndex >= order.length) return {};
+      const [item] = order.splice(fromIndex, 1);
+      order.splice(toIndex, 0, item);
+      return { tabOrder: order };
+    });
+    rememberOpenTabsSnapshot(get());
+  },
+
+  moveTabById(tabId, beforeTabId) {
+    set((s) => {
+      if (!s.tabOrder.includes(tabId) || tabId === beforeTabId) return {};
+      const order = s.tabOrder.filter((id) => id !== tabId);
+      const insertAt = beforeTabId ? order.indexOf(beforeTabId) : -1;
+      if (insertAt >= 0) order.splice(insertAt, 0, tabId);
+      else order.push(tabId);
+      return { tabOrder: order };
+    });
+    rememberOpenTabsSnapshot(get());
+  },
+
   async init() {
     if (initOnce) return;
     initOnce = true;
-    rpc.onEvent((event) => handleAgentEvent(event, set, get));
+    rpc.onEvent((event) => {
+      const sid = typeof event.sessionId === "string" ? event.sessionId : get().activeTabId;
+      if (!sid) {
+        handleAgentEvent(event, set, get);
+        return;
+      }
+      get().ensureTab(sid);
+      const wasInactive = sid !== get().activeTabId;
+      handleAgentEvent(event, makeScopedSet(sid, set, get), makeScopedGet(sid, get));
+      if (wasInactive && (event.type === "message_end" || event.type === "agent_end" || event.type === "extension_error")) {
+        const tab = get().tabs.get(sid);
+        if (tab) get().updateTab(sid, { unseenAssistantCount: tab.unseenAssistantCount + 1 });
+      }
+    });
     rpc.onClosed((reason) => {
       set({ rpcRunning: false });
       if (reason !== "rpc_stop") {
@@ -861,13 +1383,43 @@ export const useChat = create<ChatState>((set, get) => ({
           messages: [],
           currentAssistantId: null,
           messageIdMap: new Map(),
+          tabs: new Map(),
+          tabOrder: [],
+          activeTabId: null,
         });
         // даем pi пару миллисекунд на инициализацию stdout
         await new Promise((r) => setTimeout(r, 50));
         await get().refreshState();
         await get().reloadHistory().catch(() => undefined);
         await get().refreshSessionStats().catch(() => undefined);
-        await rememberCurrentSession(cwd, get().agentState?.sessionFile);
+        const startupRemembered = readRememberedOpenTabs(cwd);
+        const activeFile = get().agentState?.sessionFile;
+        const rememberedOpenTabs = startupRemembered.files
+          .filter((file) => file && file !== activeFile);
+        for (const file of rememberedOpenTabs) {
+          await get().openSessionTab(file, null, false).catch(() => null);
+        }
+        const orderedFiles = startupRemembered.files;
+        if (orderedFiles.length > 0) {
+          const tabsByFile = new Map(
+            Array.from(get().tabs.values())
+              .map((tab) => [tab.agentState?.sessionFile, tab.tabId] as const)
+              .filter((entry): entry is readonly [string, string] => Boolean(entry[0])),
+          );
+          const orderedTabIds = orderedFiles
+            .map((file) => tabsByFile.get(file))
+            .filter((tabId): tabId is string => Boolean(tabId));
+          const leftovers = get().tabOrder.filter((tabId) => !orderedTabIds.includes(tabId));
+          set({ tabOrder: [...orderedTabIds, ...leftovers] });
+        }
+        const targetActiveFile = startupRemembered.activeFile || activeFile;
+        if (get().activeTabId && targetActiveFile) {
+          const activeTab = Array.from(get().tabs.values()).find((tab) => tab.agentState?.sessionFile === targetActiveFile);
+          if (activeTab && get().activeTabId !== activeTab.tabId) {
+            await get().activateTab(activeTab.tabId).catch(() => undefined);
+          }
+        }
+        rememberOpenTabsSnapshot(get());
         void get().loadAvailableModels();
 
         // Применяем сохранённую модель ПОСЛЕ старта.
@@ -879,7 +1431,7 @@ export const useChat = create<ChatState>((set, get) => ({
             void (async () => {
               await new Promise((r) => setTimeout(r, 1500));
               try {
-                await rpc.setModel(savedProvider, savedModel);
+                await rpc.setModel(savedProvider, savedModel, get().activeTabId);
                 await get().refreshState();
               } catch (e) {
                 localStorage.removeItem(STORAGE_KEY_PROVIDER);
@@ -907,7 +1459,7 @@ export const useChat = create<ChatState>((set, get) => ({
     clearScheduledSessionStatsRefresh();
     await rpc.rpcStop().catch(() => undefined);
     setMcpLoading(set, false);
-    set({ rpcRunning: false, agentState: null });
+    set({ rpcRunning: false, agentState: null, tabs: new Map(), tabOrder: [], activeTabId: null });
   },
 
   async restartRpc(opts) {
@@ -925,7 +1477,7 @@ export const useChat = create<ChatState>((set, get) => ({
     } catch {
       // ignore
     }
-    set({ rpcRunning: false, agentState: null });
+    set({ rpcRunning: false, agentState: null, tabs: new Map(), tabOrder: [], activeTabId: null });
     // Небольшая пауза, чтобы pi-процесс успел корректно завершиться
     await new Promise((r) => setTimeout(r, 200));
     await get().startRpc(opts?.safe ? { safe: true } : undefined);
@@ -1023,7 +1575,7 @@ export const useChat = create<ChatState>((set, get) => ({
         opts.streamingBehavior = streamingBehavior;
       }
       if (images && images.length > 0) opts.images = images;
-      await rpc.sendPrompt(body, Object.keys(opts).length > 0 ? opts : undefined);
+      await rpc.sendPrompt(body, { ...(Object.keys(opts).length > 0 ? opts : {}), sessionId: get().activeTabId });
       ensurePendingAssistantAfterUser(set, optimisticId);
     } catch (e) {
       const messageText = (e as Error).message;
@@ -1040,7 +1592,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async abortStreaming() {
     try {
-      await rpc.abort();
+      await rpc.abort(get().activeTabId);
     } catch (e) {
       get().setError((e as Error).message);
     }
@@ -1079,7 +1631,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async setAutoRetry(enabled) {
     try {
-      await rpc.setAutoRetry(enabled);
+      await rpc.setAutoRetry(enabled, get().activeTabId);
       await get().refreshState();
     } catch (e) {
       get().setError((e as Error).message);
@@ -1088,7 +1640,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async abortRetry() {
     try {
-      await rpc.abortRetry();
+      await rpc.abortRetry(get().activeTabId);
       set((s) => ({
         retryStatus: { ...s.retryStatus, active: false, finalError: "Retry cancelled" },
         agentState: s.agentState ? { ...s.agentState, isRetrying: false, retryAttempt: 0 } : s.agentState,
@@ -1101,7 +1653,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async setThinking(level) {
     try {
-      await rpc.setThinkingLevel(level);
+      await rpc.setThinkingLevel(level, get().activeTabId);
       await get().refreshState();
     } catch (e) {
       get().setError((e as Error).message);
@@ -1110,7 +1662,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async switchModel(provider, modelId) {
     try {
-      await rpc.setModel(provider, modelId);
+      await rpc.setModel(provider, modelId, get().activeTabId);
       localStorage.setItem(STORAGE_KEY_PROVIDER, provider);
       localStorage.setItem(STORAGE_KEY_MODEL, modelId);
       await get().refreshState();
@@ -1133,8 +1685,21 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async refreshState() {
     try {
-      const s = await rpc.getState();
-      set({ agentState: s, pendingMessageCount: s.pendingMessageCount ?? 0 });
+      const s = await rpc.getState(get().activeTabId);
+      const tabId = s.sessionId || get().activeTabId || DEFAULT_TAB_ID;
+      get().ensureTab(tabId, {
+        agentState: s,
+        pendingMessageCount: s.pendingMessageCount ?? 0,
+        sessionName: s.sessionName ?? null,
+      });
+      if (!get().activeTabId || get().activeTabId === tabId) {
+        get().updateTab(tabId, {
+          agentState: s,
+          pendingMessageCount: s.pendingMessageCount ?? 0,
+          sessionName: s.sessionName ?? null,
+        });
+        get().syncFromTab(tabId);
+      }
     } catch {
       // RPC может ещё не быть готов
     }
@@ -1142,7 +1707,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async reloadHistory() {
     try {
-      const res = await rpc.getMessages();
+      const res = await rpc.getMessages(get().activeTabId);
       const messages = Array.isArray(res.messages) ? res.messages : [];
       const ui: UiMessage[] = [];
       const idMap = new Map<string, string>();
@@ -1250,9 +1815,9 @@ export const useChat = create<ChatState>((set, get) => ({
     clearScheduledSessionStatsRefresh();
     set({ switching: true });
     try {
-      await rpc.newSession();
+      await rpc.newSession(undefined, get().activeTabId);
       await get().refreshState().catch(() => undefined);
-      await rememberCurrentSession(get().cwd, get().agentState?.sessionFile);
+      rememberOpenTabsSnapshot(get());
       get().clearMessages();
       await get().reloadHistory().catch(() => undefined);
       await get().refreshSessionStats().catch(() => undefined);
@@ -1292,11 +1857,11 @@ export const useChat = create<ChatState>((set, get) => ({
         // session_switch (MCP reload). Это нормальное поведение pi — мы не
         // вызываем этот RPC дважды и не делаем ничего, что добавило бы
         // лишних циклов.
-        await rpc.switchSession(file);
+        await rpc.switchSession(file, get().activeTabId);
         debugMcp("switchSession:after rpc.switchSession", { file });
         await get().refreshState().catch(() => undefined);
         debugMcp("switchSession:after refreshState", { file, sessionFile: get().agentState?.sessionFile });
-        await rememberCurrentSession(get().cwd, get().agentState?.sessionFile);
+        rememberOpenTabsSnapshot(get());
         await get().reloadHistory().catch(() => undefined);
         await get().refreshSessionStats().catch(() => undefined);
         debugMcp("switchSession:after reloadHistory", { file });
@@ -1337,19 +1902,19 @@ export const useChat = create<ChatState>((set, get) => ({
   async runSlashCommand(command, arg = "") {
     try {
       if (command === "/pwd") {
-        const result = await rpc.pwd();
+        const result = await rpc.pwd(get().activeTabId);
         set((state) => ({ messages: [...state.messages, createSystemMessage(`pwd\n\n${result.cwd}`)] }));
         return;
       }
       if (command === "/ls") {
-        const result = await rpc.ls(arg.trim() || undefined);
+        const result = await rpc.ls(arg.trim() || undefined, get().activeTabId);
         set((state) => ({
           messages: [...state.messages, createSystemMessage(`${result.displayPath}:\n\n${result.entries}`)],
         }));
         return;
       }
       if (command === "/cd") {
-        const result = await rpc.cd(arg.trim());
+        const result = await rpc.cd(arg.trim(), get().activeTabId);
         get().setCwd(result.cwd);
         set((state) => ({
           agentState: state.agentState ? { ...state.agentState, cwd: result.cwd } : state.agentState,
@@ -1410,7 +1975,7 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ planMode: false });
     const prompt = `Реализуй план из файла \`${planFilePath}\`. Сначала прочитай plan file, затем выполняй задачи по порядку. По мере выполнения обновляй чекбоксы в plan file с [ ] на [x], измени Status на "executing", а после завершения на "done". Можешь редактировать код и запускать команды. Если возникнут вопросы — спроси.`;
     try {
-      await rpc.sendPrompt(prompt);
+      await rpc.sendPrompt(prompt, { sessionId: get().activeTabId });
     } catch (e) {
       get().setError((e as Error).message);
     }
@@ -1437,7 +2002,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async setSessionName(name) {
     try {
-      await rpc.setSessionName(name);
+      await rpc.setSessionName(name, get().activeTabId);
       await get().refreshState();
     } catch (e) {
       get().setError((e as Error).message);
@@ -1446,7 +2011,7 @@ export const useChat = create<ChatState>((set, get) => ({
 
   async refreshSessionStats() {
     try {
-      const s = await rpc.getSessionStats();
+      const s = await rpc.getSessionStats(get().activeTabId);
       set({ sessionStats: s });
     } catch {
       // не фатально
@@ -1474,21 +2039,43 @@ export const useChat = create<ChatState>((set, get) => ({
     }
 
     if (!piId) {
+      // Last-resort fallback: after reload UI ids are regenerated, so match by
+      // message text/timestamp against current rendered history.
+      const text = joinText(msg.blocks);
+      const reloaded = get().messages.filter((m) => m.role === msg.role);
+      const target = normalizeForMatch(text);
+      const matched = closestUiMessageByText(reloaded, target, msg.timestamp);
+      piId = matched ? get().uiToPiId[matched.id] ?? null : null;
+    }
+
+    if (!piId) {
       get().setError("Не нашёл pi-id у сообщения для форка");
       return;
     }
     try {
       set({ switching: true });
-      // position: "at" — новая сессия включает само нажатое сообщение.
-      const res = await rpc.fork(piId, { position: "at" });
-      if (res.cancelled) { set({ switching: false }); return; }
-      get().clearMessages();
+      const sourceFile = get().agentState?.sessionFile;
+      if (!sourceFile) {
+        get().setError("Нельзя создать fork-tab: у текущей сессии ещё нет файла истории");
+        return;
+      }
+      const sourceTabId = get().activeTabId;
+      const forkTabId = await get().createSessionTab("fork", { mode: "empty", sessionPath: sourceFile });
+      if (!forkTabId) return;
+      const res = await rpc.fork(piId, { position: "at", sessionId: forkTabId });
+      if (res.cancelled) {
+        if (sourceTabId) await get().activateTab(sourceTabId).catch(() => undefined);
+        return;
+      }
+      await get().activateTab(forkTabId);
       await get().refreshState();
       await get().reloadHistory();
-      // показываем баннер «вы теперь в новой ветке», авто-скрываем через 5 с
+      await get().refreshSessionStats().catch(() => undefined);
+      rememberOpenTabsSnapshot(get());
+      notifySessionsChanged();
       const label = res.text
         ? `Форк от: «${res.text.slice(0, 80)}${res.text.length > 80 ? "…" : ""}»`
-        : "Создан форк — вы в новой ветке";
+        : "Создан fork-tab — исходная вкладка сохранена";
       set({ forkBanner: label });
       setTimeout(() => set({ forkBanner: null }), 5000);
     } catch (e) {
@@ -1526,12 +2113,12 @@ export const useChat = create<ChatState>((set, get) => ({
     try {
       set({ switching: true });
       // navigate_tree на user-сообщение: leaf = parent (убирает это сообщение и всё после).
-      const res = await rpc.navigateTree(piId);
+      const res = await rpc.navigateTree(piId, { sessionId: get().activeTabId });
       if (res.cancelled) return;
       get().clearMessages();
       await get().refreshState().catch(() => undefined);
       await get().reloadHistory().catch(() => undefined);
-      await rpc.sendPrompt(text);
+      await rpc.sendPrompt(text, { sessionId: get().activeTabId });
     } catch (e) {
       get().setError((e as Error).message);
     } finally {
@@ -1566,7 +2153,7 @@ export const useChat = create<ChatState>((set, get) => ({
     try {
       set({ switching: true });
       try {
-        const treeRes = await rpc.navigateTree(editedPiId);
+        const treeRes = await rpc.navigateTree(editedPiId, { sessionId: get().activeTabId });
         if (treeRes.cancelled) return;
         await get().refreshState().catch(() => undefined);
         get().clearMessages();
@@ -1592,7 +2179,7 @@ export const useChat = create<ChatState>((set, get) => ({
   async runBash(command) {
     if (!command.trim()) return;
     try {
-      const result = await rpc.bash(command);
+      const result = await rpc.bash(command, 120_000, get().activeTabId);
       // Добавляем system-блок в конец потока, чтобы пользователь видел вывод.
       const blocks: UiBlock[] = [
         { kind: "text", text: "$ " + command },
@@ -1627,11 +2214,15 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ forkBanner: null });
   },
 
-  addPendingPermissionBlock(permId, name, input) {
-    addPendingToolBlock(set, permId, name, input);
+  addPendingPermissionBlock(permId, name, input, tabId) {
+    const target = tabId ?? get().activeTabId;
+    if (target) get().markTabWaiting("permission", target);
+    addPendingToolBlock(target ? makeScopedSet(target, set, get) : set, permId, name, input);
   },
-  removePendingPermissionBlock(permId) {
-    set((s) => ({
+  removePendingPermissionBlock(permId, tabId) {
+    const target = tabId ?? get().activeTabId;
+    const scopedSet = target ? makeScopedSet(target, set, get) : set;
+    scopedSet((s) => ({
       messages: s.messages.map((m) => ({
         ...m,
         blocks: m.blocks.filter(
@@ -1639,13 +2230,18 @@ export const useChat = create<ChatState>((set, get) => ({
         ),
       })),
     }));
+    if (target) get().clearTabWaiting("permission", target);
   },
 
-  addPendingAskUserBlock(askUserId, input) {
-    addPendingToolBlock(set, askUserId, "ask_user", input);
+  addPendingAskUserBlock(askUserId, input, tabId) {
+    const target = tabId ?? get().activeTabId;
+    if (target) get().markTabWaiting("askUser", target);
+    addPendingToolBlock(target ? makeScopedSet(target, set, get) : set, askUserId, "ask_user", input);
   },
-  removePendingAskUserBlock(askUserId) {
-    set((s) => ({
+  removePendingAskUserBlock(askUserId, tabId) {
+    const target = tabId ?? get().activeTabId;
+    const scopedSet = target ? makeScopedSet(target, set, get) : set;
+    scopedSet((s) => ({
       messages: s.messages.map((m) => ({
         ...m,
         blocks: m.blocks.filter(
@@ -1653,6 +2249,32 @@ export const useChat = create<ChatState>((set, get) => ({
         ),
       })),
     }));
+    if (target) get().clearTabWaiting("askUser", target);
+  },
+
+  markTabWaiting(kind, tabId) {
+    const target = tabId ?? get().activeTabId;
+    if (!target) return;
+    const tab = get().tabs.get(target) ?? createDefaultSessionTab(target);
+    const current = tab.pendingUserAction;
+    get().updateTab(target, {
+      pendingUserAction: {
+        kind,
+        count: (current?.count ?? 0) + 1,
+      },
+    });
+  },
+
+  clearTabWaiting(kind, tabId) {
+    const target = tabId ?? get().activeTabId;
+    if (!target) return;
+    const tab = get().tabs.get(target);
+    if (!tab?.pendingUserAction) return;
+    const current = tab.pendingUserAction;
+    const nextCount = current.count - 1;
+    get().updateTab(target, {
+      pendingUserAction: nextCount > 0 ? { ...current, count: nextCount } : null,
+    });
   },
 
   async runFastContext(query) {
@@ -1670,7 +2292,7 @@ export const useChat = create<ChatState>((set, get) => ({
       fastContextError: null,
     });
     try {
-      const result = await rpc.fastContext(q);
+      const result = await rpc.fastContext(q, get().activeTabId);
       if (get().fastContextRunId !== runId) return;
       set({ fastContextStatus: "done", fastContextResults: result, fastContextError: null });
     } catch (e) {
@@ -1701,7 +2323,7 @@ export const useChat = create<ChatState>((set, get) => ({
       fastFetchError: null,
     });
     try {
-      const result = await rpc.fastFetch(q, options);
+      const result = await rpc.fastFetch(q, { ...options, sessionId: get().activeTabId });
       if (get().fastFetchRunId !== runId) return;
       set({ fastFetchStatus: "done", fastFetchResult: result, fastFetchError: null });
       const title = result.details?.url ? `Fast Fetch: ${result.details.url}` : `Fast Fetch: ${q}`;
@@ -1724,7 +2346,8 @@ export const useChat = create<ChatState>((set, get) => ({
   setError(msg) {
     set({ errorBanner: msg });
   },
-}));
+});
+});
 
 // === обработка событий pi ===
 
@@ -1787,7 +2410,10 @@ function handleAgentEvent(
           ? { ...s.agentState, isStreaming: false }
           : s.agentState,
       }));
-      void get().refreshSessionStats();
+      void Promise.all([
+        get().refreshSessionStats(),
+        get().refreshState(),
+      ]).finally(() => notifySessionsChanged());
       break;
     }
     case "message_start":

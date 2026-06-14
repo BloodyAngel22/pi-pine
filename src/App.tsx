@@ -16,6 +16,7 @@ import { AgentScreen } from "@/components/VirtualDisplay";
 import { TerminalPanel } from "@/components/Terminal/TerminalPanel";
 import { TerminalErrorBoundary } from "@/components/Terminal/TerminalErrorBoundary";
 import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
+import { SessionTabs } from "@/components/Sessions/SessionTabs";
 import { SidePanel } from "@/components/SidePanel/SidePanel";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { PiMissingCard } from "@/components/Onboarding/PiMissingCard";
@@ -37,6 +38,10 @@ export default function App() {
   const restartRpc = useChat((s) => s.restartRpc);
   const refreshState = useChat((s) => s.refreshState);
   const newSession = useChat((s) => s.newSession);
+  const createSessionTab = useChat((s) => s.createSessionTab);
+  const createForkTab = useChat((s) => s.createForkTab);
+  const closeSessionTab = useChat((s) => s.closeSessionTab);
+  const activateTab = useChat((s) => s.activateTab);
   const setError = useChat((s) => s.setError);
   const commitPlan = useChat((s) => s.commitPlan);
   const errorBanner = useChat((s) => s.errorBanner);
@@ -164,7 +169,27 @@ export default function App() {
       if (ctrl && e.key.toLowerCase() === "n") {
         if (inEditable) return;
         e.preventDefault();
-        void newSession();
+        void createSessionTab();
+        return;
+      }
+      if (ctrl && e.key.toLowerCase() === "w") {
+        if (inEditable) return;
+        e.preventDefault();
+        const st = useChat.getState();
+        if (st.activeTabId) void closeSessionTab(st.activeTabId);
+        return;
+      }
+      if (ctrl && e.key === "Tab") {
+        e.preventDefault();
+        const st = useChat.getState();
+        if (st.tabOrder.length > 0) {
+          const idx = Math.max(0, st.tabOrder.indexOf(st.activeTabId ?? st.tabOrder[0]));
+          const next = e.shiftKey
+            ? st.tabOrder[(idx - 1 + st.tabOrder.length) % st.tabOrder.length]
+            : st.tabOrder[(idx + 1) % st.tabOrder.length];
+          void activateTab(next);
+        }
+        return;
       }
       if (ctrl && (e.key === "`" || e.code === "Backquote")) {
         e.preventDefault();
@@ -173,12 +198,15 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [commitPlan, newSession]);
+  }, [activateTab, closeSessionTab, commitPlan, createSessionTab, newSession]);
 
   const onSlash = (cmd: string, arg = "") => {
     switch (cmd) {
       case "/new":
-        void newSession();
+        void createSessionTab();
+        break;
+      case "/forktab":
+        void createForkTab();
         break;
       case "/sessions":
         setSidebarOpen(true);
@@ -255,11 +283,12 @@ export default function App() {
       <div className="flex-1 flex min-h-0">
         {sidebarOpen && <SessionsSidebar onClose={() => setSidebarOpen(false)} />}
         <main className="flex-1 flex flex-col min-w-0">
+          <SessionTabs />
           <Header
             onToggleSidebar={() => setSidebarOpen((v) => !v)}
             onToggleSidePanel={() => setPanelOpen((v) => !v)}
             onOpenSettings={() => setSettingsOpen(true)}
-            onNewSession={() => void newSession()}
+            onNewSession={() => void createSessionTab()}
             onToggleBash={() => setMainTab("terminal")}
           />
           {errorBanner && (

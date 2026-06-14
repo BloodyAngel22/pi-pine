@@ -40,6 +40,11 @@ const COALESCE_TIMEOUT = 300;
 /* Символы, создающие границу undo-шага: пробельные, пунктуация, разделители */
 const WORD_BOUNDARY_RE = /[\s\p{P}\p{Z}]/u;
 
+type Updater<T> = T | ((prev: T) => T);
+function resolveUpdater<T>(next: Updater<T>, prev: T): T {
+  return typeof next === "function" ? (next as (prev: T) => T)(prev) : next;
+}
+
 function countPlanTasks(markdown: string): number {
   let count = 0;
   let inTasksSection = false;
@@ -107,15 +112,41 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const toggleAttachedSkill = useChat((s) => s.toggleAttachedSkill);
   const yoloMode = useExt((s) => s.yoloMode);
   const toggleYoloMode = useExt((s) => s.toggleYoloMode);
+  const activeTabId = useChat((s) => s.activeTabId);
+  const updateTab = useChat((s) => s.updateTab);
 
-  const [value, setValue] = useState("");
-  const [history, setHistory] = useState<string[]>([]);
-  const [hIndex, setHIndex] = useState(-1);
+  const value = useChat((s) => s.composerValue);
+  const history = useChat((s) => s.composerHistory);
+  const hIndex = useChat((s) => s.composerHistoryIndex);
+  const attachments = useChat((s) => s.composerAttachments);
+  const setValue = useCallback((next: Updater<string>) => {
+    const tabId = useChat.getState().activeTabId;
+    if (!tabId) return;
+    const prev = useChat.getState().tabs.get(tabId)?.composerValue ?? useChat.getState().composerValue;
+    updateTab(tabId, { composerValue: resolveUpdater(next, prev) });
+  }, [updateTab]);
+  const setHistory = useCallback((next: Updater<string[]>) => {
+    const tabId = useChat.getState().activeTabId;
+    if (!tabId) return;
+    const prev = useChat.getState().tabs.get(tabId)?.composerHistory ?? useChat.getState().composerHistory;
+    updateTab(tabId, { composerHistory: resolveUpdater(next, prev) });
+  }, [updateTab]);
+  const setHIndex = useCallback((next: Updater<number>) => {
+    const tabId = useChat.getState().activeTabId;
+    if (!tabId) return;
+    const prev = useChat.getState().tabs.get(tabId)?.composerHistoryIndex ?? useChat.getState().composerHistoryIndex;
+    updateTab(tabId, { composerHistoryIndex: resolveUpdater(next, prev) });
+  }, [updateTab]);
+  const setAttachments = useCallback((next: Updater<AttachmentContent[]>) => {
+    const tabId = useChat.getState().activeTabId;
+    if (!tabId) return;
+    const prev = useChat.getState().tabs.get(tabId)?.composerAttachments ?? useChat.getState().composerAttachments;
+    updateTab(tabId, { composerAttachments: resolveUpdater(next, prev) });
+  }, [updateTab]);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [cdCompletions, setCdCompletions] = useState<DirectoryCompletion[]>([]);
   const [cdHighlight, setCdHighlight] = useState(0);
-  const [attachments, setAttachments] = useState<AttachmentContent[]>([]);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [planReady, setPlanReady] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -222,6 +253,22 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   useEffect(() => {
     ref.current?.focus();
   }, []);
+
+  // При переключении таба textarea получает draft именно активного таба.
+  useEffect(() => {
+    const snap: ComposerSnapshot = {
+      value,
+      selectionStart: value.length,
+      selectionEnd: value.length,
+    };
+    composerCurrentSnapshot.current = snap;
+    composerUndoStack.current = [];
+    composerRedoStack.current = [];
+    lastTypingTime.current = 0;
+    setSlashOpen(value.trim().startsWith("/") && !value.trim().includes("\n"));
+    setCdCompletions([]);
+    setSlashHighlight(0);
+  }, [activeTabId]);
 
   // подстановка из set_editor_text / Edit
   useEffect(() => {
