@@ -112,6 +112,14 @@ function stringList(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function formatSeconds(value: unknown): string | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const seconds = Math.max(0, Math.round(value));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
+}
+
 function taskDetails(details: unknown): {
   description?: string;
   cwd?: string;
@@ -166,6 +174,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   }
   if (block.name === "task") {
     return <TaskToolCall block={block} open={open} setOpen={setOpen} />;
+  }
+  if (block.name === "deep_research") {
+    return <DeepResearchToolCall block={block} open={open} setOpen={setOpen} />;
   }
   if (block.name === "fast_fetch") {
     return <FastFetchToolCall block={block} open={open} setOpen={setOpen} />;
@@ -240,6 +251,107 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
           )}
           {block.images && block.images.length > 0 && (
             <ToolImages images={block.images} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeepResearchToolCall({
+  block,
+  open,
+  setOpen,
+}: {
+  block: UiBlockTool;
+  open: boolean;
+  setOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
+}) {
+  const isError = block.status === "error";
+  const isRunning = block.status === "running";
+  const input = asRecord(block.input);
+  const details = asRecord(block.details);
+  const question = String(input.question ?? details.question ?? "Deep research");
+  const iteration = typeof details.iteration === "number" ? details.iteration : typeof details.iterationCount === "number" ? details.iterationCount : 0;
+  const maxIterations = typeof details.maxIterations === "number" ? details.maxIterations : typeof input.depth === "number" ? input.depth : undefined;
+  const confidence = typeof details.confidence === "number" ? details.confidence : undefined;
+  const sourcesCount = typeof details.sourcesCount === "number" ? details.sourcesCount : typeof details.sourceCount === "number" ? details.sourceCount : undefined;
+  const phase = typeof details.currentPhase === "string" ? details.currentPhase : isRunning ? "running" : "done";
+  const currentQuery = typeof details.currentQuery === "string" ? details.currentQuery : undefined;
+  const currentStep = typeof details.currentStep === "string" ? details.currentStep : undefined;
+  const mode = typeof details.mode === "string" ? details.mode : typeof input.mode === "string" ? input.mode : undefined;
+  const elapsed = formatSeconds(details.elapsedSeconds);
+  const remaining = formatSeconds(details.remainingSeconds);
+  const budget = typeof details.timeBudgetMinutes === "number" ? `${details.timeBudgetMinutes}m` : undefined;
+  const stoppedReason = typeof details.stoppedReason === "string" ? details.stoppedReason : undefined;
+  const totalQueries = typeof details.totalQueries === "number" ? details.totalQueries : undefined;
+  const gaps = stringList(details.gaps);
+  const progress = maxIterations && maxIterations > 0 ? Math.min(100, Math.round((iteration / maxIterations) * 100)) : undefined;
+  return (
+    <div
+      className={clsx(
+        "my-1 rounded-md border text-xs",
+        isError
+          ? "border-(--color-danger)/30 bg-(--color-danger)/5"
+          : "border-(--color-accent)/20 bg-(--color-accent)/5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-(--color-bg-mute) rounded-md text-left"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        {isError ? (
+          <AlertCircle size={12} className="text-(--color-danger)" />
+        ) : (
+          <Search size={12} className="text-(--color-accent)" />
+        )}
+        <span className="font-mono text-(--color-accent)">deep_research</span>
+        <span className="text-(--color-fg) truncate min-w-0" title={question}>{question}</span>
+        <span className="ml-auto shrink-0 text-(--color-fg-dim)">
+          {isRunning ? `${phase}${remaining ? ` · ${remaining} left` : ""}` : isError ? "ошибка" : confidence != null ? `${Math.round(confidence * 100)}%` : "готово"}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 space-y-2">
+          {progress != null && (
+            <div>
+              <div className="flex justify-between text-[11px] text-(--color-fg-dim) mb-1">
+                <span>iteration {iteration}/{maxIterations}</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="h-1.5 rounded bg-(--color-bg-mute) overflow-hidden">
+                <div className="h-full bg-(--color-accent)" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2 text-[11px] text-(--color-fg-dim)">
+            <span>phase: {phase}</span>
+            {currentStep && <span>step: {currentStep}</span>}
+            {mode && <span>mode: {mode}</span>}
+            {confidence != null && <span>confidence: {Math.round(confidence * 100)}%</span>}
+            {sourcesCount != null && <span>sources: {sourcesCount}</span>}
+            {totalQueries != null && <span>queries: {totalQueries}</span>}
+            {elapsed && <span>elapsed: {elapsed}</span>}
+            {remaining && <span>left: {remaining}</span>}
+            {budget && <span>budget: {budget}</span>}
+            {stoppedReason && <span>stopped: {stoppedReason}</span>}
+          </div>
+          {currentQuery && (
+            <div className="text-[11px] text-(--color-fg-dim) truncate" title={currentQuery}>
+              current query: {currentQuery}
+            </div>
+          )}
+          {gaps.length > 0 && (
+            <div className="text-[11px] text-(--color-fg-dim)">
+              gaps: {gaps.join(", ")}
+            </div>
+          )}
+          {block.output != null && block.output !== "" && (
+            <pre className="font-mono text-[11px] whitespace-pre-wrap bg-(--color-bg) border border-(--color-border) rounded p-2 max-h-80 overflow-y-auto">
+              {pretty(block.output)}
+            </pre>
           )}
         </div>
       )}

@@ -4,11 +4,13 @@ const KEY_FONT = "pi-pine.fontScale";
 const KEY_CHAT_FONT = "pi-pine.chatFontSize";
 const KEY_SESSIONS_W = "pi-pine.sessionsWidth";
 const KEY_SIDEPANEL_W = "pi-pine.sidePanelWidth";
+const KEY_DEEP_RESEARCH_MODE = "pi-pine.deepResearchMode";
 
 const DEFAULT_FONT = 1.0;
 const DEFAULT_CHAT_FONT = 1.0;
 const DEFAULT_SESSIONS_W = 288;
 const DEFAULT_SIDEPANEL_W = 320;
+const DEFAULT_DEEP_RESEARCH_MODE: DeepResearchMode = "balanced";
 
 export const FONT_MIN = 0.85;
 export const FONT_MAX = 1.5;
@@ -20,16 +22,20 @@ export const SESSIONS_MIN = 200;
 export const SESSIONS_MAX = 480;
 export const SIDEPANEL_MIN = 260;
 export const SIDEPANEL_MAX = 600;
+export type DeepResearchMode = "quick" | "balanced" | "deep";
+export const DEEP_RESEARCH_MODES: DeepResearchMode[] = ["quick", "balanced", "deep"];
 
 interface UiPrefsState {
   fontScale: number;
   chatFontSize: number;
   sessionsWidth: number;
   sidePanelWidth: number;
+  deepResearchMode: DeepResearchMode;
   setFontScale(v: number): void;
   setChatFontSize(v: number): void;
   setSessionsWidth(v: number): void;
   setSidePanelWidth(v: number): void;
+  setDeepResearchMode(v: DeepResearchMode): void;
   resetFont(): void;
   resetChatFont(): void;
 }
@@ -43,6 +49,11 @@ function readNum(key: string, def: number): number {
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
+}
+
+function readDeepResearchMode(): DeepResearchMode {
+  const raw = localStorage.getItem(KEY_DEEP_RESEARCH_MODE);
+  return raw === "quick" || raw === "balanced" || raw === "deep" ? raw : DEFAULT_DEEP_RESEARCH_MODE;
 }
 
 function applyFontScale(scale: number) {
@@ -93,6 +104,7 @@ export const useUiPrefs = create<UiPrefsState>((set) => {
     SIDEPANEL_MIN,
     SIDEPANEL_MAX,
   );
+  const deepResearchMode = readDeepResearchMode();
   applyFontScale(fontScale);
   applyChatFontSize(chatFontSize);
 
@@ -101,6 +113,7 @@ export const useUiPrefs = create<UiPrefsState>((set) => {
     chatFontSize,
     sessionsWidth,
     sidePanelWidth,
+    deepResearchMode,
 
     setFontScale(v) {
       const next = clamp(v, FONT_MIN, FONT_MAX);
@@ -123,6 +136,11 @@ export const useUiPrefs = create<UiPrefsState>((set) => {
       const next = clamp(Math.round(v), SIDEPANEL_MIN, SIDEPANEL_MAX);
       localStorage.setItem(KEY_SIDEPANEL_W, String(next));
       set({ sidePanelWidth: next });
+    },
+    setDeepResearchMode(v) {
+      const next = v === "quick" || v === "balanced" || v === "deep" ? v : DEFAULT_DEEP_RESEARCH_MODE;
+      localStorage.setItem(KEY_DEEP_RESEARCH_MODE, next);
+      set({ deepResearchMode: next });
     },
     resetFont() {
       localStorage.removeItem(KEY_FONT);

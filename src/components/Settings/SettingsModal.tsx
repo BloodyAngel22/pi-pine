@@ -7,7 +7,17 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useChat } from "@/store/chat";
 import { useTheme } from "@/store/theme";
-import { useUiPrefs, FONT_MIN, FONT_MAX, FONT_STEP, CHAT_FONT_MIN, CHAT_FONT_MAX, CHAT_FONT_STEP } from "@/store/uiPrefs";
+import {
+  useUiPrefs,
+  FONT_MIN,
+  FONT_MAX,
+  FONT_STEP,
+  CHAT_FONT_MIN,
+  CHAT_FONT_MAX,
+  CHAT_FONT_STEP,
+  DEEP_RESEARCH_MODES,
+  type DeepResearchMode,
+} from "@/store/uiPrefs";
 import type { ThinkingLevel } from "@/rpc/types";
 import { t } from "@/i18n/ru";
 
@@ -55,10 +65,13 @@ export function SettingsModal({
   const chatFontSize = useUiPrefs((s) => s.chatFontSize);
   const setChatFontSize = useUiPrefs((s) => s.setChatFontSize);
   const resetChatFont = useUiPrefs((s) => s.resetChatFont);
+  const deepResearchMode = useUiPrefs((s) => s.deepResearchMode);
+  const setDeepResearchMode = useUiPrefs((s) => s.setDeepResearchMode);
 
   const [pathDraft, setPathDraft] = useState(cliPathOverride ?? "");
   const [cwdDraft, setCwdDraft] = useState(cwd);
   const [modelFilter, setModelFilter] = useState("");
+  const [deepResearchModeDraft, setDeepResearchModeDraft] = useState<DeepResearchMode>(deepResearchMode);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [agentDir, setAgentDir] = useState<string | null>(null);
 
@@ -82,6 +95,7 @@ export function SettingsModal({
     if (!open) return;
     setPathDraft(cliPathOverride ?? "");
     setCwdDraft(cwd);
+    setDeepResearchModeDraft(deepResearchMode);
     void invoke<AuthStatus>("read_auth_status").then(setAuth);
     void invoke<{ agent_dir?: string }>("detect_environment").then((env) =>
       setAgentDir(env.agent_dir ?? null),
@@ -110,7 +124,7 @@ export function SettingsModal({
       ocr_languages_available: string;
       ollama_available: boolean;
     }>("get_analyze_image_status", { pi_binary_path: piPathForStatus || null }).then(setImgStatus).catch(() => {});
-  }, [open, cliPathOverride, cwd]);
+  }, [open, cliPathOverride, cwd, deepResearchMode]);
 
   const detectPi = async () => {
     const found = await invoke<string | null>("find_pi_binary");
@@ -130,9 +144,11 @@ export function SettingsModal({
   const save = async () => {
     const cliChanged = pathDraft !== (cliPathOverride ?? "");
     const cwdChanged = cwdDraft !== cwd;
+    const deepResearchModeChanged = deepResearchModeDraft !== deepResearchMode;
     setCliPathOverride(pathDraft || null);
     if (cwdChanged) setCwd(cwdDraft);
-    if (cliChanged || cwdChanged) {
+    if (deepResearchModeChanged) setDeepResearchMode(deepResearchModeDraft);
+    if (cliChanged || cwdChanged || deepResearchModeChanged) {
       await stopRpc();
       await startRpc();
     }
@@ -214,6 +230,30 @@ export function SettingsModal({
             <Button variant="subtle" size="md" onClick={pickDir} icon={<Folder size={14} />}>
               {t.settings.pickCwd}
             </Button>
+          </div>
+        </Section>
+
+        <Section title="Deep Research">
+          <div className="space-y-2">
+            <div className="text-xs text-(--color-fg-dim)">
+              Режим по умолчанию для инструмента <code className="font-mono">deep_research</code>.
+              Изменение перезапустит pi RPC, чтобы агент получил новый default через окружение.
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {DEEP_RESEARCH_MODES.map((mode) => (
+                <Button
+                  key={mode}
+                  variant={deepResearchModeDraft === mode ? "primary" : "subtle"}
+                  size="sm"
+                  onClick={() => setDeepResearchModeDraft(mode)}
+                >
+                  {mode}
+                </Button>
+              ))}
+            </div>
+            <div className="text-[11px] text-(--color-fg-dim)">
+              quick ≈ 5m/snippets · balanced ≈ 10m/1 page per query · deep ≈ 20m/2 pages per query
+            </div>
           </div>
         </Section>
 

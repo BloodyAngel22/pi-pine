@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import * as rpc from "@/rpc/bridge";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { useExt } from "@/store/ext";
+import { useUiPrefs } from "@/store/uiPrefs";
 import type {
   AnyContent,
   Model,
@@ -1492,6 +1493,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
             QT_QPA_PLATFORM: "xcb",
             ELECTRON_OZONE_PLATFORM_HINT: "x11",
             NO_AT_BRIDGE: "1",
+            PI_DEEP_RESEARCH_MODE: useUiPrefs.getState().deepResearchMode,
           },
         });
         setMcpLoading(set, true);
