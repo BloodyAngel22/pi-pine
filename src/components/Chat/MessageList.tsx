@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Sparkles, ArrowDown } from "lucide-react";
 import { useChat, type UiMessage } from "@/store/chat";
 import { useShallow } from "zustand/react/shallow";
 import { useThrottledValue } from "@/lib/useThrottledValue";
+import { useChunkedRender } from "@/lib/useChunkedRender";
 import { Message } from "./Message";
 import { PlanTodoInline } from "./PlanTodoInline";
 import { t } from "@/i18n/ru";
 
 interface Props {
+  tabId?: string | null;
+  active?: boolean;
   onCopy(text: string): void;
   onFork(message: UiMessage): void;
   onRegenerate(message: UiMessage): void;
@@ -16,12 +19,15 @@ interface Props {
 
 /** How close to the bottom (px) counts as "at bottom". */
 const AT_BOTTOM_THRESHOLD = 80;
+const EMPTY_MESSAGES: UiMessage[] = [];
 
-export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
-  const rawMessages = useChat(useShallow((s) => s.messages));
-  const messages = useThrottledValue(rawMessages, 100);
-  const agentState = useChat(useShallow((s) => s.agentState));
-  const switching = useChat((s) => s.switching);
+export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate, onEdit }: Props) {
+  const rawMessages = useChat(useShallow((s) => (tabId ? (s.tabs.get(tabId)?.messages ?? EMPTY_MESSAGES) : s.messages)));
+  const throttledMessages = useThrottledValue(rawMessages, 100);
+  const messages = useDeferredValue(throttledMessages);
+  const chunked = useChunkedRender(messages, { active, chunkSize: 40, enabledThreshold: 80 });
+  const agentState = useChat(useShallow((s) => (tabId ? (s.tabs.get(tabId)?.agentState ?? null) : s.agentState)));
+  const switching = useChat((s) => active && s.switching);
   const parentRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef(messages);
   const [atBottomUI, setAtBottomUI] = useState(true);
@@ -37,6 +43,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   // for the scroll-to-bottom button visibility.
 
   const updateAtBottom = useCallback(() => {
+    if (!active) return;
     const el = parentRef.current;
     if (!el) return;
     const isEnd =
@@ -50,15 +57,16 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     if (isEnd) {
       setLastSeenIdx(messagesRef.current.length);
     }
-  }, []);
+  }, [active]);
 
   // ─── Native scroll-to-end helpers ─────────────────────────────────
 
   const scrollContainerToEnd = useCallback(() => {
+    if (!active) return;
     const el = parentRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, []);
+  }, [active]);
 
   // ─── Auto-follow on append ────────────────────────────────────────
   //
@@ -66,10 +74,16 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   // to keep the latest content visible.
 
   useLayoutEffect(() => {
-    if (messages.length > 0 && atBottomRef.current) {
+    if (active && messages.length > 0 && atBottomRef.current) {
       scrollContainerToEnd();
     }
-  }, [messages.length, scrollContainerToEnd]);
+  }, [active, messages.length, scrollContainerToEnd]);
+
+  useLayoutEffect(() => {
+    if (active && !chunked.done && atBottomRef.current) {
+      scrollContainerToEnd();
+    }
+  }, [active, chunked.done, chunked.renderedCount, scrollContainerToEnd]);
 
   // ─── Force scroll on new-turn ─────────────────────────────────────
   //
@@ -80,6 +94,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   const [followKey, setFollowKey] = useState(0);
 
   useLayoutEffect(() => {
+    if (!active) return;
     const last = messages[messages.length - 1];
     if (!last) return;
     const isNewTurn =
@@ -91,24 +106,23 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
     setAtBottomUI(true);
     setLastSeenIdx(messages.length);
     setFollowKey((k) => k + 1);
-  }, [messages]);
+  }, [active, messages]);
 
   useLayoutEffect(() => {
-    if (followKey > 0) {
+    if (active && followKey > 0) {
       scrollContainerToEnd();
     }
-  }, [followKey, scrollContainerToEnd]);
+  }, [active, followKey, scrollContainerToEnd]);
 
   // ─── Initial mount scroll ─────────────────────────────────────────
 
   const initialScrollDone = useRef(false);
   useLayoutEffect(() => {
-    if (!initialScrollDone.current && parentRef.current) {
+    if (active && !initialScrollDone.current && parentRef.current) {
       initialScrollDone.current = true;
       scrollContainerToEnd();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [active, scrollContainerToEnd]);
 
   // ─── Wheel handler: prevent `<pre>` from stealing vertical scroll ─
   //
@@ -123,6 +137,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   // horizontal scrollbar.
 
   useLayoutEffect(() => {
+    if (!active) return;
     const el = parentRef.current;
     if (!el) return;
 
@@ -144,7 +159,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
 
     el.addEventListener("wheel", handler, { passive: false, capture: true });
     return () => el.removeEventListener("wheel", handler, { capture: true } as EventListenerOptions);
-  }, []);
+  }, [active]);
 
   // Reset on messages clear.
   useEffect(() => {
@@ -214,14 +229,9 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
   // positioning, no transform, no ResizeObserver, no measurement
   // corrections. The browser handles layout and scrolling natively.
   //
-  // This is the same approach used by Telegram Web, Element Web,
-  // Zulip, and other production chat UIs. Virtual list libraries
-  // cause inherent scroll jitter with dynamic-height messages
-  // because item positions shift when above-viewport items get
-  // measured for the first time.
-  //
   // Message component is wrapped in React.memo to prevent re-renders
-  // when unrelated messages update.
+  // when unrelated messages update. `.pi-stream-item` uses CSS
+  // containment/content-visibility so offscreen messages are cheap.
 
   return (
     <div className="flex-1 min-h-0 relative">
@@ -232,10 +242,16 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
         style={{ overflowAnchor: "none", overflowY: "auto", height: "100%" }}
       >
         <div className="pi-stream-content">
-          <PlanTodoInline />
+          <PlanTodoInline tabId={tabId} active={active} />
 
-          {messages.map((message) => (
-            <div key={message.id} style={{ marginBottom: "1.25rem" }}>
+          {!chunked.done && (
+            <div className="pi-stream-chunk-placeholder" aria-hidden="true">
+              Загружаем старые сообщения… {chunked.renderedCount}/{chunked.totalCount}
+            </div>
+          )}
+
+          {chunked.items.map((message) => (
+            <div key={message.id} className="pi-stream-item">
               <Message
                 message={message}
                 onCopy={onCopy}
@@ -251,7 +267,7 @@ export function MessageList({ onCopy, onFork, onRegenerate, onEdit }: Props) {
         </div>
       </div>
 
-      {!atBottomUI && (
+      {active && !atBottomUI && (
         <div className="absolute bottom-6 right-6 z-30 pointer-events-none">
           <button
             type="button"

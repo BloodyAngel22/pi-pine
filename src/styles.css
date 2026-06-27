@@ -286,6 +286,24 @@ body {
   padding: 1.25rem 1rem 0;
 }
 
+.pi-stream-item {
+  margin-bottom: 1.25rem;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+  contain: layout style paint;
+}
+
+.pi-stream-chunk-placeholder {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-fg-dim);
+  font-size: 12px;
+  text-align: center;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+  contain: layout style paint;
+}
+
 .pi-stream-msg {
   margin-bottom: 0;
 }

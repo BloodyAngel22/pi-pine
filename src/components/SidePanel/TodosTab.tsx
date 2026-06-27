@@ -1,7 +1,8 @@
 import { CheckCircle2, Circle, ListTodo } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
-import { useChat, type UiBlock, type UiBlockTool } from "@/store/chat";
+import { useChat, type UiBlock, type UiBlockTool, type UiMessage } from "@/store/chat";
+import { useShallow } from "zustand/react/shallow";
 
 interface TodoItem {
   id: string;
@@ -119,8 +120,10 @@ function latestTodos(blocks: UiBlockTool[]): TodoItem[] {
   return [];
 }
 
+const EMPTY_MESSAGES: UiMessage[] = [];
+
 export function TodosTab() {
-  const messages = useChat((s) => s.messages);
+  const messages = useChat(useShallow((s) => s.tabs.get(s.activeTabId ?? "")?.messages ?? s.messages ?? EMPTY_MESSAGES));
   const planFilePath = useChat((s) => s.planFilePath);
   const planMode = useChat((s) => s.planMode);
   const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);

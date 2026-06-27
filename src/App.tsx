@@ -52,6 +52,8 @@ export default function App() {
   const cwd = useChat((s) => s.cwd);
   const setCwd = useChat((s) => s.setCwd);
   const rpcRunning = useChat((s) => s.rpcRunning);
+  const tabOrder = useChat((s) => s.tabOrder);
+  const activeTabId = useChat((s) => s.activeTabId);
   const loadAvailableModels = useChat((s) => s.loadAvailableModels);
   const initExt = useExt((s) => s.init);
   const loadTheme = useTheme((s) => s.load);
@@ -65,6 +67,7 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"chat" | "terminal">("chat");
+  const [keptChatTabIds, setKeptChatTabIds] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [btwOpen, setBtwOpen] = useState(false);
   const [btwQuestion, setBtwQuestion] = useState<string | undefined>(undefined);
@@ -123,6 +126,11 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    setKeptChatTabIds((prev) => [activeTabId, ...prev.filter((id) => id !== activeTabId && tabOrder.includes(id))].slice(0, 5));
+  }, [activeTabId, tabOrder]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -262,6 +270,8 @@ export default function App() {
     setBtwOpen(true);
   };
 
+  const renderedChatTabIds = tabOrder.filter((tabId) => tabId === activeTabId || keptChatTabIds.includes(tabId));
+
   if (!bootstrapped) {
     return <SplashScreen stage={bootStage} cwd={bootCwd} note={bootNote} />;
   }
@@ -377,12 +387,37 @@ export default function App() {
             <span className="ml-auto text-[10px] text-(--color-fg-dim)">Ctrl+`</span>
           </div>
           <div className={mainTab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-            <MessageList
-              onCopy={onCopy}
-              onFork={onFork}
-              onRegenerate={onRegenerate}
-              onEdit={onEdit}
-            />
+            <div className="flex-1 min-h-0 relative">
+              {tabOrder.length === 0 ? (
+                <MessageList
+                  active={mainTab === "chat"}
+                  onCopy={onCopy}
+                  onFork={onFork}
+                  onRegenerate={onRegenerate}
+                  onEdit={onEdit}
+                />
+              ) : (
+                renderedChatTabIds.map((tabId) => {
+                  const active = mainTab === "chat" && tabId === activeTabId;
+                  return (
+                    <div
+                      key={tabId}
+                      className={active ? "absolute inset-0 min-h-0 flex flex-col" : "hidden"}
+                      aria-hidden={!active}
+                    >
+                      <MessageList
+                        tabId={tabId}
+                        active={active}
+                        onCopy={onCopy}
+                        onFork={onFork}
+                        onRegenerate={onRegenerate}
+                        onEdit={onEdit}
+                      />
+                    </div>
+                  );
+                })
+              )}
+            </div>
             <Composer onSlash={onSlash} onToggleBash={() => setMainTab("terminal")} onBtw={onBtw} />
           </div>
           <div className={mainTab === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>

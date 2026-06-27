@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Search, X } from "lucide-react";
-import { useChat, type UiBlockText } from "@/store/chat";
+import { useChat, type UiBlockText, type UiMessage } from "@/store/chat";
+import { useShallow } from "zustand/react/shallow";
 
 interface Props {
   open: boolean;
@@ -26,8 +27,10 @@ function formatDate(timestamp: number): string {
   });
 }
 
+const EMPTY_MESSAGES: UiMessage[] = [];
+
 export function PromptSearchPalette({ open, onClose }: Props) {
-  const messages = useChat((s) => s.messages);
+  const messages = useChat(useShallow((s) => s.tabs.get(s.activeTabId ?? "")?.messages ?? s.messages ?? EMPTY_MESSAGES));
   const injectComposer = useChat((s) => s.injectComposer);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);

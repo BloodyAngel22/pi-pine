@@ -1393,21 +1393,30 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   async activateTab(tabId) {
-    if (!get().tabs.has(tabId)) return;
+    const initial = get();
+    const existing = initial.tabs.get(tabId);
+    if (!existing) return;
+    if (initial.activeTabId === tabId && existing.unseenAssistantCount === 0) {
+      rememberOpenTabsSnapshot(initial);
+      return;
+    }
     try {
-      if (get().rpcRunning) await rpc.switchActiveSession(tabId);
+      if (initial.activeTabId !== tabId && get().rpcRunning) await rpc.switchActiveSession(tabId);
     } catch (e) {
       get().setError((e as Error).message);
       return;
     }
-    const tab = get().tabs.get(tabId);
-    if (!tab) return;
-    const nextTab = { ...tab, unseenAssistantCount: 0 };
-    set((s) => ({
-      tabs: new Map(s.tabs).set(tabId, nextTab),
-      activeTabId: tabId,
-      ...tabProjection(nextTab),
-    }));
+    set((s) => {
+      const tab = s.tabs.get(tabId);
+      if (!tab) return {};
+      const nextTab = tab.unseenAssistantCount === 0 ? tab : { ...tab, unseenAssistantCount: 0 };
+      const tabs = nextTab === tab ? s.tabs : new Map(s.tabs).set(tabId, nextTab);
+      return {
+        tabs,
+        activeTabId: tabId,
+        ...tabProjection(nextTab),
+      };
+    });
     rememberOpenTabsSnapshot(get());
   },
 

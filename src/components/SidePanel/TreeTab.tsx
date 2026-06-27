@@ -107,7 +107,12 @@ export function TreeTab() {
   const clearMessages = useChat((s) => s.clearMessages);
   const injectComposer = useChat((s) => s.injectComposer);
   const setError = useChat((s) => s.setError);
-  const sessionKey = useChat((s) => `${s.generation}:${s.agentState?.sessionFile ?? s.agentState?.sessionId ?? ""}:${s.messages.length}`);
+  const sessionKey = useChat((s) => {
+    const activeTab = s.tabs.get(s.activeTabId ?? "");
+    const agentState = activeTab?.agentState ?? s.agentState;
+    const messageCount = activeTab?.messages.length ?? s.messages.length;
+    return `${s.generation}:${agentState?.sessionFile ?? agentState?.sessionId ?? ""}:${messageCount}`;
+  });
   const [tree, setTree] = useState<rpc.SessionTreeNode[]>([]);
   const [leafId, setLeafId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);

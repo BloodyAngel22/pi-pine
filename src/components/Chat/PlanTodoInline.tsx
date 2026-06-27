@@ -124,25 +124,32 @@ function latestToolTodos(messages: ReturnType<typeof useChat.getState>["messages
   return [];
 }
 
-export function PlanTodoInline() {
-  const messages = useChat((s) => s.messages);
-  const planMode = useChat((s) => s.planMode);
-  const planFilePath = useChat((s) => s.planFilePath);
-  const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
+interface Props {
+  tabId?: string | null;
+  active?: boolean;
+}
+
+const EMPTY_MESSAGES: ReturnType<typeof useChat.getState>["messages"] = [];
+
+export function PlanTodoInline({ tabId, active = true }: Props) {
+  const messages = useChat((s) => (tabId ? (s.tabs.get(tabId)?.messages ?? EMPTY_MESSAGES) : s.messages));
+  const planMode = useChat((s) => (tabId ? (s.tabs.get(tabId)?.planMode ?? false) : s.planMode));
+  const planFilePath = useChat((s) => (tabId ? (s.tabs.get(tabId)?.planFilePath ?? null) : s.planFilePath));
+  const isStreaming = useChat((s) => (tabId ? (s.tabs.get(tabId)?.agentState?.isStreaming ?? false) : (s.agentState?.isStreaming ?? false)));
   const loadPlan = useChat((s) => s.loadPlan);
   const [planText, setPlanText] = useState("");
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    if (planMode && !planFilePath) {
+    if (active && planMode && !planFilePath) {
       void loadPlan().catch(() => undefined);
     }
-  }, [planMode, planFilePath, loadPlan]);
+  }, [active, planMode, planFilePath, loadPlan]);
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      if (!planFilePath) {
+      if (!active || !planFilePath) {
         setPlanText("");
         return;
       }
@@ -155,7 +162,7 @@ export function PlanTodoInline() {
         });
     };
     load();
-    if (!planFilePath) {
+    if (!active || !planFilePath) {
       return () => {
         cancelled = true;
       };
@@ -165,7 +172,7 @@ export function PlanTodoInline() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [planFilePath, isStreaming, messages.length]);
+  }, [active, planFilePath, isStreaming, messages.length]);
 
   const todos = useMemo(() => {
     const planTodos = parsePlanTasks(planText);

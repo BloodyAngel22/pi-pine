@@ -1,5 +1,6 @@
 import { Bot, CheckCircle2, Circle, AlertCircle, Wrench } from "lucide-react";
-import { useChat, type UiBlockTool } from "@/store/chat";
+import { useChat, type UiBlockTool, type UiMessage } from "@/store/chat";
+import { useShallow } from "zustand/react/shallow";
 import { useExt } from "@/store/ext";
 
 interface TaskInfo {
@@ -45,9 +46,11 @@ function formatNumber(value?: number): string {
   return value == null ? "—" : value.toLocaleString();
 }
 
+const EMPTY_MESSAGES: UiMessage[] = [];
+
 export function SubagentsTab() {
   const status = useExt((s) => s.statuses.subagent);
-  const messages = useChat((s) => s.messages);
+  const messages = useChat(useShallow((s) => s.tabs.get(s.activeTabId ?? "")?.messages ?? s.messages ?? EMPTY_MESSAGES));
   const tasks = messages
     .flatMap((message) => message.blocks.filter((block): block is UiBlockTool => block.kind === "tool" && block.name === "task"))
     .map(toTaskInfo)

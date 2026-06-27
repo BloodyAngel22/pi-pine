@@ -108,7 +108,14 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const setThinking = useChat((s) => s.setThinking);
   const planMode = useChat((s) => s.planMode);
   const planFilePath = useChat((s) => s.planFilePath);
-  const messages = useChat((s) => s.messages);
+  const assistantPlanSource = useChat((s) => {
+    const messages = s.tabs.get(s.activeTabId ?? "")?.messages ?? s.messages;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role === "assistant") return blocksText(message.blocks);
+    }
+    return "";
+  });
   const togglePlanMode = useChat((s) => s.togglePlanMode);
   const commitPlan = useChat((s) => s.commitPlan);
   const attachedSkills = useChat((s) => s.attachedSkills);
@@ -168,14 +175,9 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   /** Время последнего пользовательского ввода (для coalescing) */
   const lastTypingTime = useRef(0);
   const assistantPlanReady = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i];
-      if (message.role !== "assistant") continue;
-      const text = blocksText(message.blocks);
-      if (countPlanTasks(text) > 0 || hasMeaningfulPlan(text)) return true;
-    }
-    return false;
-  }, [messages]);
+    if (!assistantPlanSource) return false;
+    return countPlanTasks(assistantPlanSource) > 0 || hasMeaningfulPlan(assistantPlanSource);
+  }, [assistantPlanSource]);
 
   // --- undo/redo helpers ---
 
