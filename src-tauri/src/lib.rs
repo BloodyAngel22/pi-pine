@@ -1,3 +1,4 @@
+mod agents;
 mod analyze_image;
 mod clipboard;
 mod favorites;
@@ -68,6 +69,14 @@ pub fn run() {
             favorites::write_favorites,
             favorites::read_pi_settings,
             favorites::write_pi_settings_partial,
+            // agent presets
+            agents::list_agent_presets,
+            agents::read_agent_preset,
+            agents::write_agent_preset,
+            agents::delete_agent_preset,
+            agents::rpc_load_agent_preset,
+            agents::get_preset_for_cwd,
+            agents::ensure_default_preset,
             // sessions
             sessions::list_project_sessions,
             sessions::read_last_session_file,

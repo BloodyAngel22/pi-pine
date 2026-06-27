@@ -9,15 +9,26 @@ import { PlanTab } from "./PlanTab";
 import { TreeTab } from "./TreeTab";
 import { SubagentsTab } from "./SubagentsTab";
 import { CommandsTab } from "./CommandsTab";
+import { PresetsTab } from "./PresetsTab";
 import { useUiPrefs, SIDEPANEL_MIN, SIDEPANEL_MAX } from "@/store/uiPrefs";
 import { useResize } from "@/lib/useResize";
 import { useChat } from "@/store/chat";
 
-type Tab = "models" | "mcp" | "status" | "plan" | "tree" | "subagents" | "commands";
+type Tab = "models" | "presets" | "mcp" | "status" | "plan" | "tree" | "subagents" | "commands";
+const SIDE_PANEL_TAB_KEY = "pi-pine.sidePanelTab";
+const isTab = (value: string | null): value is Tab =>
+  value === "models" || value === "presets" || value === "mcp" || value === "status" || value === "plan" || value === "tree" || value === "subagents" || value === "commands";
 
 export function SidePanel({ onClose }: { onClose: () => void }) {
   const planMode = useChat((s) => s.planMode);
-  const [tab, setTab] = useState<Tab>(planMode ? "plan" : "models");
+  const [tab, setTabState] = useState<Tab>(() => {
+    const saved = localStorage.getItem(SIDE_PANEL_TAB_KEY);
+    return isTab(saved) ? saved : planMode ? "plan" : "models";
+  });
+  const setTab = (next: Tab) => {
+    localStorage.setItem(SIDE_PANEL_TAB_KEY, next);
+    setTabState(next);
+  };
   const width = useUiPrefs((s) => s.sidePanelWidth);
   const setWidth = useUiPrefs((s) => s.setSidePanelWidth);
   const resize = useResize({
@@ -53,6 +64,7 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
           className="pi-sidepanel-tabs flex items-center min-w-0 overflow-x-hidden overflow-y-hidden flex-1"
         >
           <TabBtn icon={<Layers size={12} />} label="Модели" active={tab === "models"} onClick={() => setTab("models")} />
+          <TabBtn icon={<Bot size={12} />} label="Presets" active={tab === "presets"} onClick={() => setTab("presets")} />
           <TabBtn icon={<Database size={12} />} label="MCP" active={tab === "mcp"} onClick={() => setTab("mcp")} />
           <TabBtn icon={<ListTodo size={12} />} label="План" active={tab === "plan"} onClick={() => setTab("plan")} />
           <TabBtn icon={<GitBranch size={12} />} label="Tree" active={tab === "tree"} onClick={() => setTab("tree")} />
@@ -64,6 +76,7 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-3">
         {tab === "models" && <ModelsTab />}
+        {tab === "presets" && <PresetsTab />}
         {tab === "mcp" && <McpTab />}
         {tab === "plan" && <PlanTab />}
         {tab === "tree" && <TreeTab />}

@@ -11,6 +11,32 @@ export type ThinkingLevel =
 
 export type StreamingBehavior = "steer" | "followUp";
 export type QueueMode = "all" | "one-at-a-time";
+export type AgentPresetPermissionMode = "allow" | "read-only" | "deny";
+export type AgentPresetMcpMode = "allow-all" | "deny-all";
+
+export interface AgentPresetConfig {
+  name: string;
+  description?: string | null;
+  model?: {
+    provider?: string | null;
+    modelId?: string | null;
+    id?: string | null;
+  } | null;
+  thinkingLevel?: ThinkingLevel | null;
+  systemPrompt?: string | null;
+  permissions?: {
+    bash?: AgentPresetPermissionMode | null;
+    files?: AgentPresetPermissionMode | null;
+  } | null;
+  mcpPermissions?: {
+    mode?: AgentPresetMcpMode | null;
+  } | null;
+  autoRetry?: boolean | null;
+  autoCompaction?: boolean | null;
+  steeringMode?: QueueMode | null;
+  followUpMode?: QueueMode | null;
+  projectCwd?: string | null;
+}
 
 export interface Model {
   provider: string;

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import * as rpc from "@/rpc/bridge";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { useExt } from "@/store/ext";
+import { useAgentsStore } from "@/store/agents";
 import { useUiPrefs } from "@/store/uiPrefs";
 import type {
   AnyContent,
@@ -1672,10 +1673,18 @@ export const useChat = create<ChatState>((rawSet, get) => {
         }
         rememberOpenTabsSnapshot(get());
         void get().loadAvailableModels();
+        await useAgentsStore.getState().ensureDefault().catch(() => undefined);
+        const autoPresetName = await useAgentsStore
+          .getState()
+          .checkAutoPreset(get().cwd, { sessionId: get().activeTabId, force: true })
+          .catch(() => null);
+        if (autoPresetName) {
+          await get().refreshState().catch(() => undefined);
+        }
 
         // Применяем сохранённую модель ПОСЛЕ старта.
         // Если safe=true — пропускаем (использовать дефолт pi).
-        if (!opts?.safe) {
+        if (!opts?.safe && !autoPresetName) {
           const savedProvider = localStorage.getItem(STORAGE_KEY_PROVIDER);
           const savedModel = localStorage.getItem(STORAGE_KEY_MODEL);
           if (savedProvider && savedModel) {
@@ -2183,6 +2192,11 @@ export const useChat = create<ChatState>((rawSet, get) => {
         set((state) => ({
           agentState: state.agentState ? { ...state.agentState, cwd: result.cwd } : state.agentState,
         }));
+        await get().refreshState().catch(() => undefined);
+        await useAgentsStore
+          .getState()
+          .checkAutoPreset(result.cwd, { sessionId: get().activeTabId, force: true })
+          .catch(() => null);
         await get().refreshState().catch(() => undefined);
         set((state) => ({
           messages: [...state.messages, createSystemMessage(`→ ${result.displayPath}\n\n${result.entries}`)],

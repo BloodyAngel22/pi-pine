@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Menu, Settings as SettingsIcon, Plus, Cpu, Brain, Layers, Terminal, Folder } from "lucide-react";
+import { Menu, Settings as SettingsIcon, Plus, Cpu, Brain, Layers, Terminal, Folder, Bot } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
+import { useAgentsStore } from "@/store/agents";
 import { shortenPath } from "@/utils/path";
 
 interface Props {
@@ -21,6 +22,7 @@ export function Header({ onToggleSidebar, onToggleSidePanel, onOpenSettings, onN
   const changeCwd = useChat((s) => s.changeCwd);
   const planMode = useChat((s) => s.planMode);
   const togglePlanMode = useChat((s) => s.togglePlanMode);
+  const activePreset = useAgentsStore((s) => s.activePreset);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
@@ -97,6 +99,20 @@ export function Header({ onToggleSidebar, onToggleSidePanel, onOpenSettings, onN
           <span className="font-medium">Plan</span>
           <span className={"w-1.5 h-1.5 rounded-full " + (planMode ? "bg-(--color-warn)" : "bg-(--color-fg-dim)")} />
         </button>
+        {activePreset && (
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem("pi-pine.sidePanelTab", "presets");
+              onToggleSidePanel();
+            }}
+            className="text-xs text-(--color-accent) bg-(--color-accent-soft)/40 flex items-center gap-1 px-2 py-1 rounded hover:bg-(--color-accent-soft)/60"
+            title={`Активный пресет: ${activePreset}`}
+          >
+            <Bot size={12} />
+            <span className="font-mono truncate max-w-[140px]">{activePreset}</span>
+          </button>
+        )}
         {model && (
           <button
             type="button"

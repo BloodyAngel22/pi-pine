@@ -403,6 +403,14 @@ export async function setFollowUpMode(mode: QueueMode, sessionId?: string | null
   await request("set_follow_up_mode", { mode }, { sessionId });
 }
 
+export async function loadAgentPreset(name: string, sessionId?: string | null): Promise<import("./types").AgentPresetConfig> {
+  return request<import("./types").AgentPresetConfig>("load_agent_preset", { presetName: name }, { sessionId });
+}
+
+export async function setCustomInstructions(instructions: string, sessionId?: string | null): Promise<void> {
+  await request("set_custom_instructions", { instructions }, { sessionId });
+}
+
 export async function compact(sessionId?: string | null): Promise<CompactResult> {
   return request<CompactResult>("compact", {}, { sessionId, timeoutMs: 120_000 });
 }
