@@ -501,8 +501,9 @@ function readAttachedSkillsFromId(sessionId: string): string[] {
 function writeAttachedSkills(idOrFile: string | null | undefined, names: string[], isFile: boolean): void {
   if (!idOrFile) return;
   const key = isFile ? attachedSkillsFileKey(idOrFile) : attachedSkillsIdKey(idOrFile);
-  if (names.length > 0) localStorage.setItem(key, JSON.stringify(names));
-  else localStorage.removeItem(key);
+  // Empty list is meaningful: the user explicitly unpinned all skills.
+  // Store [] as a tombstone so refresh/migration cannot resurrect stale keys.
+  localStorage.setItem(key, JSON.stringify(names));
 }
 
 function migrateAttachedSkillsKey(fromSessionId: string, toSessionFile: string): void {
@@ -526,17 +527,24 @@ function reconcileAttachedSkillsForSession(
   sessionFile: string | null | undefined,
   current: string[] | null | undefined,
 ): string[] {
+  const hasCurrent = Array.isArray(current);
   const currentSkills = Array.from(new Set((current ?? []).map(normalizeSkillName).filter(Boolean)));
-  if (!sessionFile) return currentSkills.length > 0 ? currentSkills : readAttachedSkillsFromId(sessionId);
+  if (!sessionFile) {
+    if (hasCurrent) {
+      writeAttachedSkills(sessionId, currentSkills, false);
+      return currentSkills;
+    }
+    return readAttachedSkillsFromId(sessionId);
+  }
 
   migrateAttachedSkillsKey(sessionId, sessionFile);
-  const fileSkills = readAttachedSkillsFromFile(sessionFile);
-  if (fileSkills.length > 0) return fileSkills;
-
-  if (currentSkills.length > 0) {
+  if (hasCurrent) {
+    // Active tab state is the user's latest choice; [] means "unpinned all".
     writeAttachedSkills(sessionFile, currentSkills, true);
+    return currentSkills;
   }
-  return currentSkills;
+
+  return readAttachedSkillsFromFile(sessionFile);
 }
 
 function slugify(s: string): string {
