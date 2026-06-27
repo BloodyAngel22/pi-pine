@@ -5,6 +5,7 @@ import { Markdown } from "./Markdown";
 import { ToolCall } from "./ToolCall";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { SkillBlock } from "./SkillBlock";
+import { CommandBlock } from "./CommandBlock";
 import { ActionBar } from "./ActionBar";
 
 interface Props {
@@ -149,6 +150,9 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
     }
     if (b.kind === "thinking") return <ThinkingBlock key={i} text={b.text} />;
     if (b.kind === "tool") return <ToolCall key={i} block={b} />;
+    if (b.kind === "command") {
+      return <CommandBlock key={i} name={b.name} content={b.content} />;
+    }
     if (b.kind === "image") {
       return (
         <img

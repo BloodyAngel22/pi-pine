@@ -38,11 +38,22 @@ export interface UiBlockImage {
   mimeType: string;
   data: string;
 }
+/**
+ * Блок команды/скилла в сообщении.
+ * name — название команды (e.g. "commit-msg"), отображается пользователю.
+ * content — полное содержимое скилла (SKILL.md), отправляется агенту.
+ */
+export interface UiBlockCommand {
+  kind: "command";
+  name: string;
+  content: string;
+}
 export type UiBlock =
   | UiBlockText
   | UiBlockThinking
   | UiBlockTool
-  | UiBlockImage;
+  | UiBlockImage
+  | UiBlockCommand;
 
 export interface UiMessage {
   id: string;
@@ -676,9 +687,13 @@ function createOptimisticUserBlocks(
   text: string,
   images?: import("@/rpc/types").ImageContent[],
   files?: import("@/rpc/types").FileContent[],
+  commandBlocks?: UiBlockCommand[],
 ): UiBlock[] {
   const blocks: UiBlock[] = [];
   if (text.trim()) blocks.push({ kind: "text", text: text.trim() });
+  if (commandBlocks && commandBlocks.length > 0) {
+    blocks.push(...commandBlocks);
+  }
   for (const img of images ?? []) {
     blocks.push({ kind: "image", mimeType: img.mimeType, data: img.data });
   }
@@ -687,6 +702,118 @@ function createOptimisticUserBlocks(
       kind: "text",
       text: files.map((f) => `📎 ${f.name} (${f.mimeType})`).join("\n"),
     });
+  }
+  return blocks;
+}
+
+// -------------------------------------------------------------------------
+// Resolve commands & skills inline
+// -------------------------------------------------------------------------
+
+/**
+ * Найти все /skill:name и /name токены в тексте и зарезолвить их.
+ * /skill:name — явная ссылка на скилл.
+ * /name (без skill:) — попытка авто-детекта: если getSkillDetail успешен,
+ * то трактуем как команду; иначе оставляем текст нетронутым.
+ */
+async function resolveSkillTokens(
+  text: string,
+): Promise<{ cleanText: string; commandBlocks: UiBlockCommand[] }> {
+  // Сначала ищем /skill:name
+  const found: Array<{ name: string; start: number; end: number; origin: "explicit" | "auto" }> = [];
+  const tokenRe = /\/skill:([\w.-]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = tokenRe.exec(text)) !== null) {
+    found.push({ name: m[1], start: m.index, end: m.index + m[0].length, origin: "explicit" });
+  }
+
+  // Также ищем голые /name (без skill:) на строках, не занятых explicit-токенами
+  const bareRe = /(?:^|\s)\/([\w.-]+)(?=\s|$)/g;
+  while ((m = bareRe.exec(text)) !== null) {
+    const start = m.index + (m[0].startsWith("/") ? 0 : 1);
+    const end = start + m[1].length + 1;
+    // Не дублируем, если уже нашли explicit-токен на этой позиции
+    const overlaps = found.some((f) => start < f.end && end > f.start);
+    if (!overlaps) {
+      found.push({ name: m[1], start, end, origin: "auto" });
+    }
+  }
+
+  if (found.length === 0) return { cleanText: text, commandBlocks: [] };
+
+  // Убираем токены из текста
+  let cleanText = text;
+  for (let i = found.length - 1; i >= 0; i--) {
+    const f = found[i];
+    cleanText = cleanText.slice(0, f.start) + cleanText.slice(f.end);
+  }
+  cleanText = cleanText.replace(/\s+/g, " ").trim();
+
+  // Резолвим параллельно
+  const results = await Promise.allSettled(
+    found.map((f) =>
+      rpc.getSkillDetail(f.name, useChat.getState().activeTabId).catch(() => null),
+    ),
+  );
+
+  const commandBlocks: UiBlockCommand[] = [];
+  for (let i = 0; i < found.length; i++) {
+    const f = found[i];
+    const result = results[i];
+    if (result.status === "fulfilled" && result.value?.content) {
+      commandBlocks.push({
+        kind: "command",
+        name: f.name,
+        content: result.value.content,
+      });
+    } else if (f.origin === "explicit") {
+      // explicit /skill:name не зарезолвился — оставляем токен в тексте
+      cleanText = cleanText
+        ? `${cleanText} /skill:${f.name}`
+        : `/skill:${f.name}`;
+    } else {
+      // auto-detected /name не зарезолвился — возвращаем токен в текст
+      cleanText = cleanText
+        ? `${cleanText} /${f.name}`
+        : `/${f.name}`;
+    }
+  }
+
+  return { cleanText, commandBlocks };
+}
+
+/** Превратить команды в блоки для отправки агенту (полный контент). */
+function commandsToAgentBody(commands: UiBlockCommand[]): string {
+  if (commands.length === 0) return "";
+  return commands
+    .map(
+      (cmd) =>
+        `<command name="${cmd.name}">\n${cmd.content}\n</command>`,
+    )
+    .join("\n\n");
+}
+
+/** Получить команды из attachedSkills (с резолвом). */
+async function resolveAttachedCommands(
+  names: string[],
+): Promise<UiBlockCommand[]> {
+  if (names.length === 0) return [];
+  const results = await Promise.allSettled(
+    names.map((n) =>
+      rpc.getSkillDetail(n, useChat.getState().activeTabId).catch(() => null),
+    ),
+  );
+  const blocks: UiBlockCommand[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const result = results[i];
+    if (result.status === "fulfilled" && result.value?.content) {
+      blocks.push({
+        kind: "command",
+        name: names[i],
+        content: result.value.content,
+      });
+    }
+    // Если не зарезолвилось — просто пропускаем (не ломаем отправку)
   }
   return blocks;
 }
@@ -1615,24 +1742,30 @@ export const useChat = create<ChatState>((rawSet, get) => {
     const files = sendOpts?.files;
     if (!trimmed && (!images || images.length === 0) && (!files || files.length === 0)) return;
 
+    // Resolve inline /skill:name tokens and attached skills
+    const { cleanText, commandBlocks } = await resolveSkillTokens(trimmed);
+    const attachedCommandBlocks = await resolveAttachedCommands(attachedSkills);
+    const allCommandBlocks = [...commandBlocks, ...attachedCommandBlocks];
+
+    // Build body
     // 1) plan mode: префикс с инструкциями для модели.
-    let body = trimmed;
+    let body = "";
     if (planMode) {
       const planPath = planFilePath || "<plan.md>";
-      const prefix =
+      body =
         `[PLAN MODE] Не модифицируй файлы кроме \`${planPath}\`. ` +
         `Не запускай разрушительные команды (rm, mv, git push, drop и т.п.). ` +
         `Сначала исследуй кодовую базу через read-only инструменты (read_file, grep, list_dir). ` +
         `Веди и обновляй план в \`${planPath}\` (markdown, секция "## Шаги" или "## Tasks" с чек-листами, ссылки на файлы). ` +
         `Если доступен todo tool/todo_list, обязательно создай и обновляй видимый список задач. ` +
         `Жди явного «Реализуй» от пользователя — не приступай к изменениям сейчас.\n\n`;
-      body = prefix + body;
     }
 
-    // 2) attached skills: добавляем хвостом
-    if (attachedSkills.length > 0) {
-      const tail = attachedSkills.map((s) => `/skill:${s}`).join(" ");
-      body = body ? `${body}\n\n${tail}` : tail;
+    // 2) clean text (without /skill: tokens) + command content for agent
+    if (cleanText) body += cleanText;
+    if (allCommandBlocks.length > 0) {
+      const cmdBody = commandsToAgentBody(allCommandBlocks);
+      body = body ? `${body}\n\n${cmdBody}` : cmdBody;
     }
 
     // 3) file attachments: pi RPC не поддерживает файлы, поэтому
@@ -1659,7 +1792,8 @@ export const useChat = create<ChatState>((rawSet, get) => {
     };
 
     const optimisticId = newId();
-    const optimisticBlocks = createOptimisticUserBlocks(trimmed, images, files);
+    const optimisticText = allCommandBlocks.length > 0 ? cleanText : trimmed;
+    const optimisticBlocks = createOptimisticUserBlocks(optimisticText, images, files, allCommandBlocks);
     set((s) => ({
       messages: [
         ...s.messages,
@@ -2978,6 +3112,7 @@ function sameBlocks(a: UiBlock[], b: UiBlock[]): boolean {
     if (x.kind !== y.kind) return false;
     if (x.kind === "text" && y.kind === "text" && x.text !== y.text) return false;
     if (x.kind === "thinking" && y.kind === "thinking" && x.text !== y.text) return false;
+    if (x.kind === "command" && y.kind === "command" && (x.name !== y.name || x.content !== y.content)) return false;
   }
   return true;
 }

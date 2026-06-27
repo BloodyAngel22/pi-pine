@@ -14,8 +14,11 @@ interface Props {
 
 function flattenText(m: UiMessage): string {
   return m.blocks
-    .filter((b) => b.kind === "text")
-    .map((b) => (b as { text: string }).text)
+    .map((b) => {
+      if (b.kind === "text") return (b as { text: string }).text;
+      if (b.kind === "command") return `/skill:${b.name}`;
+      return "";
+    })
     .join("\n");
 }
 

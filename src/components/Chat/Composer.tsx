@@ -76,8 +76,11 @@ function hasMeaningfulPlan(markdown: string): boolean {
 
 function blocksText(blocks: UiBlock[]): string {
   return blocks
-    .filter((block) => block.kind === "text")
-    .map((block) => block.text)
+    .map((block) => {
+      if (block.kind === "text") return block.text;
+      if (block.kind === "command") return `/skill:${block.name}`;
+      return "";
+    })
     .join("\n");
 }
 
