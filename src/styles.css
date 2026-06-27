@@ -19,6 +19,15 @@
   --color-user-fg: #ededed;
   --color-thinking: #a3a3a3;
   --chat-font-mult: 1;
+
+  /* highlight.js — маппятся из темы через loader.ts */
+  --hljs-comment:  #6b6b6b;
+  --hljs-keyword:  #bb9af7;
+  --hljs-string:   #9ece6a;
+  --hljs-number:   #ff9e64;
+  --hljs-type:     #7aa2f7;
+  --hljs-builtin:  #2ac3de;
+  --hljs-variable: #f7768e;
 }
 
 @theme {
@@ -190,14 +199,14 @@ body {
   margin: 0.4rem 0;
 }
 
-/* highlight.js (rehype-highlight) — минимальная тёмная тема */
+/* highlight.js (rehype-highlight) — цвета из темы через CSS-переменные */
 .hljs {
-  color: #ededed;
+  color: var(--color-fg);
   background: transparent;
 }
 .hljs-comment,
 .hljs-quote {
-  color: #6b6b6b;
+  color: var(--hljs-comment);
   font-style: italic;
 }
 .hljs-keyword,
@@ -205,28 +214,28 @@ body {
 .hljs-literal,
 .hljs-section,
 .hljs-link {
-  color: #bb9af7;
+  color: var(--hljs-keyword);
 }
 .hljs-string,
 .hljs-attr {
-  color: #9ece6a;
+  color: var(--hljs-string);
 }
 .hljs-number,
 .hljs-meta {
-  color: #ff9e64;
+  color: var(--hljs-number);
 }
 .hljs-title,
 .hljs-name,
 .hljs-type {
-  color: #7aa2f7;
+  color: var(--hljs-type);
 }
 .hljs-built_in,
 .hljs-builtin-name {
-  color: #2ac3de;
+  color: var(--hljs-builtin);
 }
 .hljs-variable,
 .hljs-template-variable {
-  color: #f7768e;
+  color: var(--hljs-variable);
 }
 
 /* Composer card в стиле Windsurf */

@@ -55,6 +55,17 @@ const TOKEN_MAP: Array<[string, string[], string]> = [
   ["--color-user-bg", ["userMessageBg", "mantle"], "#131313"],
   ["--color-user-fg", ["userMessageText", "text"], "#ededed"],
   ["--color-thinking", ["thinkingText", "subtext0"], "#a3a3a3"],
+
+  // highlight.js
+  ["--hljs-comment",  ["syntaxComment", "overlay2", "overlay1"], "#6b6b6b"],
+  ["--hljs-keyword",  ["syntaxKeyword", "mauve", "purple", "lavender"], "#bb9af7"],
+  ["--hljs-string",   ["syntaxString", "yellow"], "#9ece6a"],
+  ["--hljs-number",   ["syntaxNumber", "peach", "orange"], "#ff9e64"],
+  ["--hljs-type",     ["syntaxType", "teal", "blue", "sky"], "#7aa2f7"],
+  ["--hljs-builtin",  ["syntaxFunction", "green", "teal"], "#2ac3de"],
+  ["--hljs-variable", ["syntaxVariable", "peach", "red", "pink"], "#f7768e"],
+  ["--hljs-operator", ["syntaxOperator", "sky", "teal"], "#2ac3de"],
+  ["--hljs-punctuation", ["syntaxPunctuation", "overlay2", "overlay1"], "#6b6b6b"],
 ];
 
 export function applyTheme(file: ThemeFile): void {
