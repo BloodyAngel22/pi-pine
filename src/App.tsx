@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, X, GitFork } from "lucide-react";
-import { useChat, type UiMessage } from "@/store/chat";
+import { useChat, type StartupProgressEvent, type UiMessage } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useTheme } from "@/store/theme";
 import { compact as rpcCompact, sendPrompt } from "@/rpc/bridge";
@@ -20,7 +20,7 @@ import { SessionTabs } from "@/components/Sessions/SessionTabs";
 import { SidePanel } from "@/components/SidePanel/SidePanel";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { PiMissingCard } from "@/components/Onboarding/PiMissingCard";
-import { SplashScreen, type BootStage } from "@/components/Onboarding/SplashScreen";
+import { SplashScreen, type BootDetail, type BootLogEntry, type BootStage } from "@/components/Onboarding/SplashScreen";
 import { Toasts } from "@/components/ExtUI/Toasts";
 import { DialogQueue } from "@/components/ExtUI/DialogQueue";
 import { Button } from "@/components/ui/Button";
@@ -28,8 +28,24 @@ import { Button } from "@/components/ui/Button";
 interface EnvironmentInfo {
   home?: string;
   agent_dir?: string;
+  auth_file?: string;
+  settings_file?: string;
+  sessions_dir?: string;
   pi_binary?: string;
   default_cwd: string;
+}
+
+const BOOT_LOG_LIMIT = 6;
+const BOOT_TEXT_LIMIT = 180;
+
+function shortBootText(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= BOOT_TEXT_LIMIT) return normalized;
+  return `${normalized.slice(0, BOOT_TEXT_LIMIT - 1)}…`;
+}
+
+function bootProgressText(event: StartupProgressEvent): string {
+  return event.detail ? `${event.label} — ${event.detail}` : event.label;
 }
 
 export default function App() {
@@ -62,6 +78,9 @@ export default function App() {
   const [bootStage, setBootStage] = useState<BootStage>("init");
   const [bootCwd, setBootCwd] = useState<string | null>(null);
   const [bootNote, setBootNote] = useState<string | null>(null);
+  const [bootAction, setBootAction] = useState<string | null>(null);
+  const [bootDetails, setBootDetails] = useState<BootDetail[]>([]);
+  const [bootLogs, setBootLogs] = useState<BootLogEntry[]>([]);
   const [piResolved, setPiResolved] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -74,14 +93,52 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let bootLogCounter = 0;
+    const appendBootLog = (text: string, tone: BootLogEntry["tone"] = "muted") => {
+      if (cancelled) return;
+      const clipped = shortBootText(text);
+      if (!clipped) return;
+      bootLogCounter += 1;
+      setBootLogs((prev) => {
+        if (prev.at(-1)?.text === clipped) return prev;
+        return [...prev, { id: `${Date.now()}-${bootLogCounter}`, text: clipped, tone }].slice(-BOOT_LOG_LIMIT);
+      });
+    };
+    const setBootDetail = (label: string, value: string | null | undefined, tone: BootDetail["tone"] = "normal") => {
+      if (cancelled || !value) return;
+      setBootDetails((prev) => [...prev.filter((d) => d.label !== label), { label, value, tone }]);
+    };
+    const handleStartupProgress = (event: StartupProgressEvent) => {
+      if (cancelled) return;
+      const text = bootProgressText(event);
+      setBootAction(shortBootText(text));
+      appendBootLog(text, event.tone ?? "muted");
+      if (event.id === "mcp:status" || event.id === "mcp:error") {
+        setBootDetail("MCP", event.label.replace(/^MCP:\s*/, ""), event.tone);
+      }
+      if (event.id === "session:selected") {
+        setBootDetail("session", event.detail ? "restored" : "new", event.tone);
+      }
+      if (event.id === "rpc:started" && event.detail) {
+        setBootDetail("pi", event.detail, "success");
+      }
+      if (event.tone === "danger") {
+        setBootNote(event.label);
+      }
+    };
+
     (async () => {
       initExt();
       void loadTheme();
       setBootStage("init");
+      setBootAction("Готовим UI и подписки RPC…");
+      appendBootLog("Инициализация UI…");
       await init();
       if (cancelled) return;
 
       setBootStage("detect");
+      setBootAction("Определяем окружение и рабочую директорию…");
+      appendBootLog("Запрашиваем detect_environment и CLI cwd…");
       // Параллельно запрашиваем env и CLI-аргумент `pi-pine [path]`.
       const [env, cliCwd] = await Promise.all([
         invoke<EnvironmentInfo>("detect_environment"),
@@ -89,33 +146,51 @@ export default function App() {
       ]);
       if (cancelled) return;
       useChat.getState().setHome(env.home ?? null);
+      setBootDetail("agent dir", env.agent_dir, "muted");
+      setBootDetail("settings", env.settings_file, "muted");
 
       // Приоритет cwd: CLI-аргумент → сохранённый в localStorage → default_cwd
       // CLI-аргумент перебивает сохранённый, чтобы `pi-pine .` всегда открывал
       // именно эту директорию (как в VSCode).
+      const savedCwd = localStorage.getItem("pi-pine.cwd");
+      let selectedCwd = env.default_cwd;
+      let cwdSource = "default";
       if (cliCwd) {
-        setCwd(cliCwd);
-        setBootCwd(cliCwd);
-      } else if (!localStorage.getItem("pi-pine.cwd") && env.default_cwd) {
-        setCwd(env.default_cwd);
-        setBootCwd(env.default_cwd);
+        selectedCwd = cliCwd;
+        cwdSource = "CLI argument";
+      } else if (!savedCwd && env.default_cwd) {
+        selectedCwd = env.default_cwd;
+        cwdSource = "default cwd";
       } else {
-        setBootCwd(localStorage.getItem("pi-pine.cwd") || env.default_cwd);
+        selectedCwd = savedCwd || env.default_cwd;
+        cwdSource = savedCwd ? "saved localStorage" : "default cwd";
       }
+      setCwd(selectedCwd);
+      setBootCwd(selectedCwd);
+      setBootDetail("cwd", selectedCwd);
+      setBootDetail("cwd source", cwdSource, cliCwd ? "success" : "muted");
+      appendBootLog(`cwd: ${selectedCwd} (${cwdSource})`, cliCwd ? "success" : "muted");
 
       const cliPath = cliPathOverride || env.pi_binary || null;
       if (!cliPath) {
+        setBootDetail("pi", "not found", "danger");
         setBootNote("Не найден бинарник pi — настрой путь на следующем экране.");
+        appendBootLog("Бинарник pi не найден", "danger");
         setBootstrapped(true);
         return;
       }
       setPiResolved(cliPath);
+      setBootDetail("pi", cliPath, cliPathOverride ? "warn" : "success");
+      appendBootLog(`pi: ${cliPath}`, "success");
 
       setBootStage("starting");
-      await startRpc();
+      setBootAction("Запускаем pi…");
+      await startRpc({ onStartupProgress: handleStartupProgress });
       if (cancelled) return;
 
       setBootStage("ready");
+      setBootAction("pi готов к работе");
+      appendBootLog("pi готов к работе", "success");
       // Минимальная задержка, чтобы splash успел показать «готово».
       await new Promise((r) => setTimeout(r, 120));
       if (cancelled) return;
@@ -273,7 +348,16 @@ export default function App() {
   const renderedChatTabIds = tabOrder.filter((tabId) => tabId === activeTabId || keptChatTabIds.includes(tabId));
 
   if (!bootstrapped) {
-    return <SplashScreen stage={bootStage} cwd={bootCwd} note={bootNote} />;
+    return (
+      <SplashScreen
+        stage={bootStage}
+        cwd={bootCwd}
+        note={bootNote}
+        currentAction={bootAction}
+        details={bootDetails}
+        logs={bootLogs}
+      />
+    );
   }
 
   const cliPath = cliPathOverride || piPath || piResolved;

@@ -75,6 +75,13 @@ export interface UiMessage {
 
 export const DEFAULT_TAB_ID = "session-1";
 
+export interface StartupProgressEvent {
+  id: string;
+  label: string;
+  detail?: string;
+  tone?: "normal" | "muted" | "warn" | "danger" | "success";
+}
+
 export interface SessionTabState {
   tabId: string;
   messages: UiMessage[];
@@ -322,7 +329,7 @@ interface ChatState {
   ensureTab(tabId: string, initial?: Partial<SessionTabState>): void;
   // действия
   init(): Promise<void>;
-  startRpc(opts?: { sessionFile?: string; safe?: boolean }): Promise<void>;
+  startRpc(opts?: { sessionFile?: string; safe?: boolean; onStartupProgress?: (event: StartupProgressEvent) => void }): Promise<void>;
   stopRpc(): Promise<void>;
   restartRpc(opts?: { safe?: boolean }): Promise<void>;
   send(
@@ -1599,16 +1606,34 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   async startRpc(opts) {
     if (activeStartPromise) return activeStartPromise;
+    const progress = (event: StartupProgressEvent) => {
+      try {
+        opts?.onStartupProgress?.(event);
+      } catch {
+        // UI progress must never affect RPC startup.
+      }
+    };
     const run = (async () => {
       const { cliPathOverride, cwd } = get();
+      const offBootStderr = rpc.onStderr((line) => {
+        progress({ id: `stderr:${line}`, label: line, tone: "warn" });
+      });
       try {
+        progress({ id: "sessions:remembered", label: "Читаем сохранённые вкладки сессий…" });
         const startupRemembered = opts?.sessionFile ? { files: [] as string[] } : readRememberedOpenTabs(cwd);
+        progress({ id: "sessions:last", label: "Ищем последнюю сессию проекта…" });
         const legacyRememberedSessionFile = await invoke<string | null>("read_last_session_file", { cwd }).catch(() => null);
         const rememberedSessionFile =
           opts?.sessionFile ??
           startupRemembered.activeFile ??
           startupRemembered.files[0] ??
           legacyRememberedSessionFile;
+        progress({
+          id: "session:selected",
+          label: rememberedSessionFile ? "Сессия для восстановления выбрана" : "Стартуем новую сессию",
+          detail: rememberedSessionFile ?? undefined,
+          tone: rememberedSessionFile ? "success" : "muted",
+        });
         // ВАЖНО: НЕ передаём provider/model как CLI-флаги.
         // У pi есть extension-провайдеры (devin, omniroute и т.п.),
         // которые инициализируются лениво и НЕ известны на этапе argv-парсинга
@@ -1617,15 +1642,24 @@ export const useChat = create<ChatState>((rawSet, get) => {
         // через RPC `set_model` после того, как pi полностью поднялся
         // (включая extension-провайдеры).
         // Определяем наличие активных MCP-серверов ДО старта индикатора загрузки.
+        progress({ id: "mcp:config", label: "Читаем конфигурацию MCP-серверов…" });
         try {
           const mcpCfg = await invoke<{ servers: { disabled: boolean }[] }>("read_mcp_config");
           mcpHasServers = mcpCfg.servers.some((s) => !s.disabled);
-        } catch {
+          progress({
+            id: "mcp:status",
+            label: mcpHasServers ? "MCP: есть активные серверы" : "MCP: активных серверов нет",
+            tone: mcpHasServers ? "success" : "muted",
+          });
+        } catch (e) {
           mcpHasServers = null;
+          progress({ id: "mcp:error", label: `MCP: не удалось прочитать конфиг (${(e as Error).message})`, tone: "warn" });
         }
         // Virtual display must exist before pi starts: GUI apps launched by the agent
         // inherit DISPLAY=:99 and appear in the isolated environment instead of the user's desktop.
+        progress({ id: "display:start", label: "Запускаем изолированный X-дисплей :99…" });
         await useVirtualDisplay.getState().start();
+        progress({ id: "rpc:spawn", label: "Стартуем pi --mode rpc…", detail: cliPathOverride ?? undefined });
         const res = await rpc.rpcStart({
           cliPath: cliPathOverride ?? null,
           cwd,
@@ -1641,6 +1675,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
             PI_DEEP_RESEARCH_MODE: useUiPrefs.getState().deepResearchMode,
           },
         });
+        progress({ id: "rpc:started", label: "RPC-процесс pi запущен", detail: res.piPath, tone: "success" });
         setMcpLoading(set, true);
         closedTabIds.clear();
         set({
@@ -1659,13 +1694,22 @@ export const useChat = create<ChatState>((rawSet, get) => {
         });
         // даем pi пару миллисекунд на инициализацию stdout
         await new Promise((r) => setTimeout(r, 50));
+        progress({ id: "state:refresh", label: "Получаем состояние агента…" });
         await get().refreshState();
+        progress({ id: "history:load", label: "Загружаем историю текущей сессии…" });
         await get().reloadHistory().catch(() => undefined);
+        progress({ id: "stats:load", label: "Считаем статистику сессии…" });
         await get().refreshSessionStats().catch(() => undefined);
         const activeFile = get().agentState?.sessionFile;
         const rememberedOpenTabs = startupRemembered.files
           .filter((file) => file && file !== activeFile);
+        progress({
+          id: "tabs:restore",
+          label: rememberedOpenTabs.length > 0 ? `Восстанавливаем вкладки (${rememberedOpenTabs.length})…` : "Дополнительных вкладок для восстановления нет",
+          tone: rememberedOpenTabs.length > 0 ? "normal" : "muted",
+        });
         for (const file of rememberedOpenTabs) {
+          progress({ id: `tabs:restore:${file}`, label: "Открываем сохранённую вкладку…", detail: file });
           await get().openSessionTab(file, null, false).catch(() => null);
         }
         const orderedFiles = startupRemembered.files;
@@ -1685,17 +1729,22 @@ export const useChat = create<ChatState>((rawSet, get) => {
         if (get().activeTabId && targetActiveFile) {
           const activeTab = Array.from(get().tabs.values()).find((tab) => tab.agentState?.sessionFile === targetActiveFile);
           if (activeTab && get().activeTabId !== activeTab.tabId) {
+            progress({ id: "tabs:activate", label: "Активируем последнюю вкладку…", detail: targetActiveFile });
             await get().activateTab(activeTab.tabId).catch(() => undefined);
           }
         }
         rememberOpenTabsSnapshot(get());
+        progress({ id: "models:load", label: "Загружаем список доступных моделей…" });
         void get().loadAvailableModels();
+        progress({ id: "agents:default", label: "Проверяем дефолтный пресет агента…" });
         await useAgentsStore.getState().ensureDefault().catch(() => undefined);
+        progress({ id: "agents:auto", label: "Проверяем auto preset для проекта…" });
         const autoPresetName = await useAgentsStore
           .getState()
           .checkAutoPreset(get().cwd, { sessionId: get().activeTabId, force: true })
           .catch(() => null);
         if (autoPresetName) {
+          progress({ id: "agents:auto:applied", label: `Применён auto preset: ${autoPresetName}`, tone: "success" });
           await get().refreshState().catch(() => undefined);
         }
 
@@ -1705,6 +1754,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
           const savedProvider = localStorage.getItem(STORAGE_KEY_PROVIDER);
           const savedModel = localStorage.getItem(STORAGE_KEY_MODEL);
           if (savedProvider && savedModel) {
+            progress({ id: "models:saved", label: `Запланирована активация модели ${savedProvider}/${savedModel}`, tone: "muted" });
             void (async () => {
               await new Promise((r) => setTimeout(r, 1500));
               try {
@@ -1720,11 +1770,14 @@ export const useChat = create<ChatState>((rawSet, get) => {
             })();
           }
         }
+        progress({ id: "startup:done", label: "pi готов к работе", tone: "success" });
       } catch (e) {
+        progress({ id: "startup:error", label: (e as Error).message, tone: "danger" });
         get().setError((e as Error).message);
         set({ rpcRunning: false });
         setMcpLoading(set, false);
       } finally {
+        offBootStderr();
         activeStartPromise = null;
       }
     })();
