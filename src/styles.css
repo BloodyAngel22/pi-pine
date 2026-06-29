@@ -127,6 +127,8 @@ select {
 }
 
 .pi-thinking-control-label {
+  position: relative !important;
+  z-index: 2 !important;
   height: 26px !important;
   padding-inline: 10px !important;
   color: var(--color-fg-mute) !important;
@@ -140,9 +142,9 @@ select {
   box-shadow: none !important;
 }
 
-.pi-thinking-control [data-active] .pi-thinking-control-label {
+.pi-thinking-control-label[data-active] {
   color: var(--color-accent) !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
 }
 
 @keyframes pi-popover-in {

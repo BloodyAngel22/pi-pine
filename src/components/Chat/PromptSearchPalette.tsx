@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Search, X } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type UiBlockText, type UiMessage } from "@/store/chat";
 import { useShallow } from "zustand/react/shallow";
+import { modalOverlayVariants, popoverContentVariants, softEase } from "@/lib/motionPresets";
 
 interface Props {
   open: boolean;
@@ -34,6 +36,7 @@ export function PromptSearchPalette({ open, onClose }: Props) {
   const injectComposer = useChat((s) => s.injectComposer);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const reduceMotion = useReducedMotion();
 
   const prompts = useMemo(
     () =>
@@ -65,17 +68,32 @@ export function PromptSearchPalette({ open, onClose }: Props) {
     setHighlight((current) => Math.min(current, Math.max(0, filtered.length - 1)));
   }, [filtered.length]);
 
-  if (!open) return null;
-
   const pick = (text: string) => {
     injectComposer(text);
     onClose();
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex items-end justify-center pb-24">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative w-full max-w-[760px] mx-3 bg-(--color-bg-soft) border border-(--color-border) rounded-lg shadow-2xl flex flex-col max-h-[70vh] overflow-hidden">
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div className="absolute inset-0 z-40 flex items-end justify-center pb-24">
+          <motion.div
+            className="absolute inset-0"
+            onClick={onClose}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={modalOverlayVariants(Boolean(reduceMotion))}
+            transition={softEase}
+          />
+          <motion.div
+            className="relative w-full max-w-[760px] mx-3 bg-(--color-bg-soft) border border-(--color-border) rounded-lg shadow-2xl flex flex-col max-h-[70vh] overflow-hidden"
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={popoverContentVariants(Boolean(reduceMotion))}
+            transition={softEase}
+          >
         <div className="flex items-center gap-2 border-b border-(--color-border) px-2 py-1.5">
           <Search size={13} className="text-(--color-fg-dim)" />
           <input
@@ -146,7 +164,9 @@ export function PromptSearchPalette({ open, onClose }: Props) {
           <span><kbd className="pi-kbd">Esc</kbd> закрыть</span>
           <span className="ml-auto"><kbd className="pi-kbd">Ctrl+F</kbd> search</span>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

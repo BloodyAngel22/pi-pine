@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import clsx from "clsx";
+import { popoverContentVariants, softEase } from "@/lib/motionPresets";
 
 interface PopoverSurfaceProps {
   children: ReactNode;
@@ -9,17 +11,23 @@ interface PopoverSurfaceProps {
 }
 
 export function PopoverSurface({ children, className, align = "left", width }: PopoverSurfaceProps) {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <div
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      variants={popoverContentVariants(Boolean(reduceMotion))}
+      transition={softEase}
       className={clsx(
         "absolute z-40 rounded-xl border border-(--color-border) bg-(--color-bg-soft) shadow-[0_18px_50px_-24px_rgba(0,0,0,0.35)]",
-        "animate-[pi-popover-in_140ms_cubic-bezier(0.22,1,0.36,1)]",
         align === "right" ? "right-0" : "left-0",
         className,
       )}
       style={{ width }}
     >
       {children}
-    </div>
+    </motion.div>
   );
 }

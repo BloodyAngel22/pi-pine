@@ -77,6 +77,7 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
       radius="md"
       withinPortal
       trapFocus={false}
+      transitionProps={{ transition: "pop", duration: 140, timingFunction: "cubic-bezier(0.22,1,0.36,1)" }}
       classNames={{ dropdown: "pi-run-settings-dropdown" }}
     >
       <Popover.Target>
@@ -122,6 +123,7 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
               searchable
               disabled={loadingPresets}
               allowDeselect={false}
+              comboboxProps={{ transitionProps: { transition: "pop", duration: 140, timingFunction: "cubic-bezier(0.22,1,0.36,1)" } }}
               classNames={{ input: "pi-mantine-input", dropdown: "pi-mantine-select-dropdown", option: "pi-mantine-select-option" }}
             />
             <div className="mt-1.5 truncate text-[11px] text-(--color-fg-mute)">

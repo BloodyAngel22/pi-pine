@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import clsx from "clsx";
+import { popoverContentVariants, softEase } from "@/lib/motionPresets";
 
 interface PopoverProps {
   open?: boolean;
@@ -25,24 +28,46 @@ export function Popover({
   className,
   modal = false,
 }: PopoverProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const actualOpen = open ?? uncontrolledOpen;
+  const setActualOpen = (next: boolean) => {
+    setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
+  const reduceMotion = useReducedMotion();
+
   return (
-    <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange} modal={modal}>
+    <PopoverPrimitive.Root open={actualOpen} onOpenChange={setActualOpen} modal={modal}>
       <PopoverPrimitive.Trigger asChild>{trigger}</PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          align={align}
-          side={side}
-          sideOffset={sideOffset}
-          collisionPadding={10}
-          avoidCollisions
-          className={clsx(
-            "z-50 rounded-xl border border-(--color-border) bg-(--color-bg-soft) text-(--color-fg) shadow-xl outline-none data-[state=open]:animate-[pi-popover-in_140ms_cubic-bezier(0.16,1,0.3,1)]",
-            className,
-          )}
-        >
-          {children}
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
+      <AnimatePresence initial={false}>
+        {actualOpen && (
+          <PopoverPrimitive.Portal forceMount>
+            <PopoverPrimitive.Content
+              forceMount
+              asChild
+              align={align}
+              side={side}
+              sideOffset={sideOffset}
+              collisionPadding={10}
+              avoidCollisions
+            >
+              <motion.div
+                className={clsx(
+                  "z-50 rounded-xl border border-(--color-border) bg-(--color-bg-soft) text-(--color-fg) shadow-xl outline-none",
+                  className,
+                )}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                variants={popoverContentVariants(Boolean(reduceMotion))}
+                transition={softEase}
+              >
+                {children}
+              </motion.div>
+            </PopoverPrimitive.Content>
+          </PopoverPrimitive.Portal>
+        )}
+      </AnimatePresence>
     </PopoverPrimitive.Root>
   );
 }

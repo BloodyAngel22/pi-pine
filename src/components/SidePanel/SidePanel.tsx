@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, Layers, Database, Activity, ListTodo, GitBranch, Bot, Command } from "lucide-react";
 import clsx from "clsx";
+import { motion, type Transition, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { ModelsTab } from "./ModelsTab";
 import { McpTab } from "./McpTab";
@@ -30,7 +31,26 @@ const tabMeta: Record<SidePanelTab, { title: string; hint: string; icon: React.R
   commands: { title: "Команды", hint: "Доступные slash-команды и расширения", icon: <Command size={15} /> },
 };
 
-export function SidePanel({ onClose, activeTab }: { onClose: () => void; activeTab?: SidePanelTab; onTabChange?: (tab: SidePanelTab) => void }) {
+interface SidePanelProps {
+  onClose: () => void;
+  activeTab?: SidePanelTab;
+  onTabChange?: (tab: SidePanelTab) => void;
+  motionInitial?: string;
+  motionAnimate?: string;
+  motionExit?: string;
+  motionVariants?: Variants;
+  motionTransition?: Transition;
+}
+
+export function SidePanel({
+  onClose,
+  activeTab,
+  motionInitial,
+  motionAnimate,
+  motionExit,
+  motionVariants,
+  motionTransition,
+}: SidePanelProps) {
   const planMode = useChat((s) => s.planMode);
   const [internalTab] = useState<SidePanelTab>(() => {
     const saved = localStorage.getItem(SIDE_PANEL_TAB_KEY);
@@ -49,7 +69,12 @@ export function SidePanel({ onClose, activeTab }: { onClose: () => void; activeT
   const meta = tabMeta[tab];
 
   return (
-    <aside
+    <motion.aside
+      initial={motionInitial}
+      animate={motionAnimate}
+      exit={motionExit}
+      variants={motionVariants}
+      transition={motionTransition}
       className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--color-bg-soft)"
       style={{ width }}
       aria-label={meta.title}
@@ -76,6 +101,6 @@ export function SidePanel({ onClose, activeTab }: { onClose: () => void; activeT
       <div className="border-t border-(--color-border-muted) px-3 py-2 text-[10px] text-(--color-fg-dim)">
         Открыто из правого rail. Для другой панели нажмите её кнопку справа.
       </div>
-    </aside>
+    </motion.aside>
   );
 }

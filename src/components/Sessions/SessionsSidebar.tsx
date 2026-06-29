@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, RefreshCw, Trash2, MessageSquare, MoreHorizontal, GitFork, Copy as CopyIcon, Pencil, Download, Search, X } from "lucide-react";
 import clsx from "clsx";
+import { motion, type Transition, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
 import { useUiPrefs } from "@/store/uiPrefs";
@@ -40,7 +41,23 @@ function bucketOf(unixSec: number): Bucket {
   return "Раньше";
 }
 
-export function SessionsSidebar({ onClose }: { onClose: () => void }) {
+interface SessionsSidebarProps {
+  onClose: () => void;
+  motionInitial?: string;
+  motionAnimate?: string;
+  motionExit?: string;
+  motionVariants?: Variants;
+  motionTransition?: Transition;
+}
+
+export function SessionsSidebar({
+  onClose,
+  motionInitial,
+  motionAnimate,
+  motionExit,
+  motionVariants,
+  motionTransition,
+}: SessionsSidebarProps) {
   const cwd = useChat((s) => s.cwd);
   const switchSession = useChat((s) => s.switchSession);
   const newSession = useChat((s) => s.newSession);
@@ -181,7 +198,12 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <aside
+    <motion.aside
+      initial={motionInitial}
+      animate={motionAnimate}
+      exit={motionExit}
+      variants={motionVariants}
+      transition={motionTransition}
       className="absolute bottom-0 left-[50px] top-[38px] z-30 flex flex-col border-r border-(--color-border) bg-(--color-bg-soft) shadow-[18px_0_50px_-34px_rgba(0,0,0,0.45)]"
       style={{ width: sessionsWidth }}
     >
@@ -369,7 +391,7 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
-    </aside>
+    </motion.aside>
   );
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { AlertCircle, X, GitFork } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type StartupProgressEvent, type UiMessage } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useTheme } from "@/store/theme";
@@ -25,6 +26,7 @@ import { SplashScreen, type BootDetail, type BootLogEntry, type BootStage } from
 import { Toasts } from "@/components/ExtUI/Toasts";
 import { DialogQueue } from "@/components/ExtUI/DialogQueue";
 import { Button } from "@/components/ui/Button";
+import { panelSpring, sidePanelVariants, softEase } from "@/lib/motionPresets";
 
 interface EnvironmentInfo {
   home?: string;
@@ -74,6 +76,7 @@ export default function App() {
   const loadAvailableModels = useChat((s) => s.loadAvailableModels);
   const initExt = useExt((s) => s.init);
   const loadTheme = useTheme((s) => s.load);
+  const reduceMotion = useReducedMotion();
 
   const [bootstrapped, setBootstrapped] = useState(false);
   const [bootStage, setBootStage] = useState<BootStage>("init");
@@ -359,6 +362,20 @@ export default function App() {
     setPanelOpen((open) => !(open && activePanelTab === tab));
   };
 
+  const bannerMotion = reduceMotion
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.12 },
+      }
+    : {
+        initial: { opacity: 0, y: -6 },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: -6 },
+        transition: softEase,
+      };
+
   if (!bootstrapped) {
     return (
       <SplashScreen
@@ -395,44 +412,74 @@ export default function App() {
             onOpenSearch={() => setSearchOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
           />
-          {sidebarOpen && <SessionsSidebar onClose={() => setSidebarOpen(false)} />}
+          <AnimatePresence initial={false}>
+            {sidebarOpen && (
+              <SessionsSidebar
+                key="sessions-sidebar"
+                motionInitial="hidden"
+                motionAnimate="visible"
+                motionExit="exit"
+                motionVariants={sidePanelVariants("left", Boolean(reduceMotion))}
+                motionTransition={panelSpring}
+                onClose={() => setSidebarOpen(false)}
+              />
+            )}
+          </AnimatePresence>
           <main className="flex min-w-0 flex-1 flex-col bg-(--color-bg)">
             <SessionTabs />
-            {errorBanner && (
-              <div className="flex items-center gap-2 border-b border-(--color-danger)/30 bg-(--color-danger)/15 px-3 py-1.5 text-xs text-(--color-danger)">
-                <AlertCircle size={12} />
-                <span className="flex-1">{errorBanner}</span>
-                <Button variant="subtle" size="sm" onClick={() => void restartRpc()} title="Перезапустить pi с сохранённой моделью">
-                  Перезапустить
-                </Button>
-                <Button variant="subtle" size="sm" onClick={() => void restartRpc({ safe: true })} title="Сбросить provider/model и стартовать с дефолтами pi">
-                  Безопасный режим
-                </Button>
-                <button type="button" onClick={() => setError(null)} className="text-(--color-danger) hover:text-(--color-fg)" aria-label="Закрыть ошибку">
-                  <X size={12} />
-                </button>
-              </div>
-            )}
-            {forkBanner && (
-              <div className="flex items-center gap-2 border-b border-(--color-accent)/30 bg-(--color-accent)/10 px-3 py-1.5 text-xs text-(--color-accent)">
-                <GitFork size={12} />
-                <span className="flex-1">{forkBanner}</span>
-                <button type="button" onClick={clearForkBanner} className="opacity-60 hover:opacity-100" aria-label="Закрыть уведомление">
-                  <X size={12} />
-                </button>
-              </div>
-            )}
-            {!rpcRunning && !errorBanner && (
-              <div className="flex items-center gap-2 border-b border-(--color-warn)/30 bg-(--color-warn)/10 px-3 py-2 text-xs text-(--color-warn)">
-                <span className="flex-1">RPC не запущен</span>
-                <Button variant="subtle" size="sm" onClick={() => void startRpc()}>
-                  Запустить
-                </Button>
-                <Button variant="subtle" size="sm" onClick={() => void restartRpc({ safe: true })} title="Сбросить provider/model и стартовать с дефолтами pi">
-                  Безопасный режим
-                </Button>
-              </div>
-            )}
+            <AnimatePresence initial={false}>
+              {errorBanner && (
+                <motion.div
+                  key="error-banner"
+                  {...bannerMotion}
+                  className="flex items-center gap-2 border-b border-(--color-danger)/30 bg-(--color-danger)/15 px-3 py-1.5 text-xs text-(--color-danger)"
+                >
+                  <AlertCircle size={12} />
+                  <span className="flex-1">{errorBanner}</span>
+                  <Button variant="subtle" size="sm" onClick={() => void restartRpc()} title="Перезапустить pi с сохранённой моделью">
+                    Перезапустить
+                  </Button>
+                  <Button variant="subtle" size="sm" onClick={() => void restartRpc({ safe: true })} title="Сбросить provider/model и стартовать с дефолтами pi">
+                    Безопасный режим
+                  </Button>
+                  <button type="button" onClick={() => setError(null)} className="text-(--color-danger) hover:text-(--color-fg)" aria-label="Закрыть ошибку">
+                    <X size={12} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence initial={false}>
+              {forkBanner && (
+                <motion.div
+                  key="fork-banner"
+                  {...bannerMotion}
+                  className="flex items-center gap-2 border-b border-(--color-accent)/30 bg-(--color-accent)/10 px-3 py-1.5 text-xs text-(--color-accent)"
+                >
+                  <GitFork size={12} />
+                  <span className="flex-1">{forkBanner}</span>
+                  <button type="button" onClick={clearForkBanner} className="opacity-60 hover:opacity-100" aria-label="Закрыть уведомление">
+                    <X size={12} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence initial={false}>
+              {!rpcRunning && !errorBanner && (
+                <motion.div
+                  key="rpc-stopped-banner"
+                  {...bannerMotion}
+                  className="flex items-center gap-2 border-b border-(--color-warn)/30 bg-(--color-warn)/10 px-3 py-2 text-xs text-(--color-warn)"
+                >
+                  <span className="flex-1">RPC не запущен</span>
+                  <Button variant="subtle" size="sm" onClick={() => void startRpc()}>
+                    Запустить
+                  </Button>
+                  <Button variant="subtle" size="sm" onClick={() => void restartRpc({ safe: true })} title="Сбросить provider/model и стартовать с дефолтами pi">
+                    Безопасный режим
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className={mainTab === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
               <div className="relative min-h-0 flex-1">
                 {tabOrder.length === 0 ? (
@@ -458,7 +505,21 @@ export default function App() {
             <PromptSearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
             <BtwOverlay open={btwOpen} initialQuestion={btwQuestion} onClose={() => setBtwOpen(false)} />
           </main>
-          {panelOpen && <SidePanel activeTab={activePanelTab} onTabChange={setActivePanelTab} onClose={() => setPanelOpen(false)} />}
+          <AnimatePresence initial={false}>
+            {panelOpen && (
+              <SidePanel
+                key="side-panel"
+                activeTab={activePanelTab}
+                onTabChange={setActivePanelTab}
+                onClose={() => setPanelOpen(false)}
+                motionInitial="hidden"
+                motionAnimate="visible"
+                motionExit="exit"
+                motionVariants={sidePanelVariants("right", Boolean(reduceMotion))}
+                motionTransition={panelSpring}
+              />
+            )}
+          </AnimatePresence>
           <RightRail
             activeTab={activePanelTab}
             panelOpen={panelOpen}

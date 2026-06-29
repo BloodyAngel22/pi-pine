@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Info, Pin, Plus, Search, Sparkles, X } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat } from "@/store/chat";
 import * as rpc from "@/rpc/bridge";
+import { bottomSheetVariants, popoverContentVariants, softEase } from "@/lib/motionPresets";
 
 interface PiCommand {
   name: string;
@@ -33,6 +35,7 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
   const [loading, setLoading] = useState(false);
   const [previewFor, setPreviewFor] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -79,8 +82,6 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
     }
   };
 
-  if (!open) return null;
-
   const insertPinned = () => {
     if (attached.length === 0) return;
     onInsert(attached.map((n) => `/skill:${n}`).join(" "));
@@ -88,7 +89,16 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
   };
 
   return (
-    <div className="pi-skills-panel mb-0 overflow-hidden rounded-t-2xl border border-(--color-border) border-b-0 bg-(--color-bg-soft) shadow-[0_18px_70px_-38px_rgba(0,0,0,0.55)]">
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          className="pi-skills-panel mb-0 overflow-hidden rounded-t-2xl border border-(--color-border) border-b-0 bg-(--color-bg-soft) shadow-[0_18px_70px_-38px_rgba(0,0,0,0.55)]"
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={bottomSheetVariants(Boolean(reduceMotion))}
+          transition={softEase}
+        >
       <div className="flex h-11 items-center gap-2 border-b border-(--color-border-muted) px-4">
         <Sparkles size={13} className="text-(--color-accent)" />
         <div className="text-sm font-semibold text-(--color-fg)">Скиллы</div>
@@ -161,7 +171,9 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
           </div>
         </section>
       </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -186,6 +198,8 @@ function SkillRow({
   onPreview(): void;
   onToggle(): void;
 }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <div
       className={clsx(
@@ -205,7 +219,20 @@ function SkillRow({
           {pinned ? <Pin size={11} /> : <Plus size={12} />}
         </button>
       </div>
-      {preview && <pre className="mx-2 mb-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-lg border border-(--color-border-muted) bg-(--color-bg-soft) p-2 text-[10px] text-(--color-fg-dim)">{preview}</pre>}
+      <AnimatePresence initial={false}>
+        {preview && (
+          <motion.pre
+            className="mx-2 mb-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-lg border border-(--color-border-muted) bg-(--color-bg-soft) p-2 text-[10px] text-(--color-fg-dim)"
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={popoverContentVariants(Boolean(reduceMotion))}
+            transition={softEase}
+          >
+            {preview}
+          </motion.pre>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
