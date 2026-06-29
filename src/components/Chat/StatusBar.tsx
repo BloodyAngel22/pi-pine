@@ -1,4 +1,4 @@
-import { Folder, Hash, DollarSign, Gauge, Monitor, RefreshCw, Pin } from "lucide-react";
+import { Folder, Hash, DollarSign, Gauge, Monitor, RefreshCw, Pin, ShieldAlert } from "lucide-react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
@@ -22,6 +22,7 @@ export function StatusBar() {
   const retryStatus = useChat((s) => s.retryStatus);
   const attachedSkills = useChat((s) => s.attachedSkills);
   const statuses = useExt((s) => s.statuses);
+  const yoloMode = useExt((s) => s.yoloMode);
 
   const extEntries: [string, string][] = Object.entries(statuses).filter(
     ([k]) => k !== "cwd" && k !== "context",
@@ -90,6 +91,15 @@ export function StatusBar() {
       {/* === RIGHT: транзитные индикаторы + ext-пилюля.
             Отдельная зона без overflow — иначе absolute popover клипуется. */}
       <div className="pi-statusbar-end">
+        {yoloMode && (
+          <span
+            className="pi-statusbar-item pi-statusbar-yolo"
+            title="YOLO permissions включены: разрешения подтверждаются автоматически"
+          >
+            <ShieldAlert size={11} />
+            <span>YOLO</span>
+          </span>
+        )}
         <ContextIndicator />
         {(agent?.isRetrying || retryStatus.active) && (
           <span

@@ -4,9 +4,9 @@ import clsx from "clsx";
 export type ActivityTone = "agent" | "tool" | "subagent" | "research" | "compact";
 export type ActivitySize = "compact" | "sm" | "md" | "lg";
 
-type ActivityPattern = "dots" | "bars" | "ring";
+type ActivityPattern = "orbit" | "braid" | "cursor-fold" | "weave" | "hinge" | "ledger" | "aperture";
 
-const PATTERNS: ActivityPattern[] = ["dots", "bars", "ring"];
+const PATTERNS: ActivityPattern[] = ["orbit", "braid", "cursor-fold", "weave", "hinge", "ledger", "aperture"];
 
 function pickPattern(except?: ActivityPattern): ActivityPattern {
   const pool = except ? PATTERNS.filter((pattern) => pattern !== except) : PATTERNS;
