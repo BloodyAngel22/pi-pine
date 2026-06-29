@@ -21,7 +21,7 @@ export const useTheme = create<ThemeState>((set) => ({
     try {
       const list = await listThemes();
       set({ available: list });
-      // приоритет: localStorage → settings.json (theme) → catppuccin-frappe → pi-pine-dark
+      // приоритет: localStorage → settings.json (theme) → pi-pine-light
       let want = localStorage.getItem(STORAGE_KEY);
       if (!want) {
         try {
@@ -34,13 +34,13 @@ export const useTheme = create<ThemeState>((set) => ({
         }
       }
       if (!want) {
-        // Приоритет: pi-pine-windsurf (новый дефолт) → user themes → pi-pine-dark
-        if (list.some((t) => t.name === "pi-pine-windsurf")) {
-          want = "pi-pine-windsurf";
+        // Приоритет: pi-pine-light (новый дефолт) → user themes → pi-pine-windsurf → pi-pine-dark
+        if (list.some((t) => t.name === "pi-pine-light")) {
+          want = "pi-pine-light";
         } else {
           want =
-            list.find((t) => t.name !== "pi-pine-dark" && t.name !== "pi-pine-windsurf")?.name ||
-            "pi-pine-dark";
+            list.find((t) => !["pi-pine-dark", "pi-pine-windsurf", "pi-pine-light"].includes(t.name))?.name ||
+            (list.some((t) => t.name === "pi-pine-windsurf") ? "pi-pine-windsurf" : "pi-pine-dark");
         }
       }
       const file = await readTheme(want).catch(() => null);

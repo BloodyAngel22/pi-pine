@@ -57,23 +57,26 @@ function readDeepResearchMode(): DeepResearchMode {
 }
 
 function applyFontScale(scale: number) {
-  // Используем CSS `zoom` на корневом элементе — это масштабирует ВСЁ
-  // (включая Tailwind utility text-xs/text-sm и pixel-defined text-[11px]),
-  // тогда как `font-size` влияет только на em/rem-зависимые размеры.
-  // Поддерживается во всех Chromium/WebKit-движках, что использует Tauri.
   const root = document.documentElement;
-  // 1.0 — без зума; убираем атрибут, чтобы не мешать дев-инструментам.
+  const rounded = Math.round(scale * 1000) / 1000;
+
+  // Важно: не используем CSS `zoom`. Он визуально масштабирует страницу,
+  // но ломает координаты floating UI (Popover/Tooltip), потому что
+  // библиотеки считают позицию через getBoundingClientRect в layout-space.
+  root.style.removeProperty("zoom");
+
   if (Math.abs(scale - 1.0) < 0.001) {
-    root.style.removeProperty("zoom");
+    root.style.removeProperty("font-size");
+    root.style.removeProperty("--app-font-size");
   } else {
-    root.style.setProperty("zoom", String(scale));
+    // Tailwind text-xs/text-sm основаны на rem, Mantine тоже использует rem.
+    // Меняя root font-size, мы масштабируем интерфейс через нормальный layout,
+    // поэтому popover/tooltip остаются в той же системе координат.
+    root.style.setProperty("font-size", `${16 * rounded}px`);
+    root.style.setProperty("--app-font-size", `${13 * rounded}px`);
   }
-  // Дополнительно сохраняем CSS-переменную (на случай, если кто-то будет
-  // её использовать в кастомных стилях).
-  root.style.setProperty(
-    "--app-font-scale",
-    String(Math.round(scale * 1000) / 1000),
-  );
+
+  root.style.setProperty("--app-font-scale", String(rounded));
 }
 
 function applyChatFontSize(scale: number) {

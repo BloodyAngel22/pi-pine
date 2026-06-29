@@ -25,22 +25,22 @@ export function Modal({ open, title, onClose, children, footer, width = "560px" 
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6 backdrop-blur-[2px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="bg-(--color-bg-soft) border border-(--color-border) rounded-lg shadow-2xl flex flex-col max-h-[80vh] overflow-hidden"
+        className="flex max-h-[86vh] flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--color-bg-soft) shadow-[0_24px_70px_-32px_rgba(0,0,0,0.55)]"
         style={{ width }}
       >
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-(--color-border)">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={14} />} />
+        <div className="flex items-center justify-between border-b border-(--color-border-muted) px-4 py-3">
+          <h2 className="text-sm font-semibold tracking-[-0.01em]">{title}</h2>
+          <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={14} />} aria-label="Закрыть" />
         </div>
-        <div className="overflow-y-auto p-4 flex-1">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
         {footer && (
-          <div className="px-4 py-2.5 border-t border-(--color-border) flex items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2 border-t border-(--color-border-muted) bg-(--color-bg)/55 px-4 py-3">
             {footer}
           </div>
         )}

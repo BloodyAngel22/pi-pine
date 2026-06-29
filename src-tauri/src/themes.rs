@@ -28,6 +28,11 @@ fn user_themes_dir() -> Option<PathBuf> {
 pub fn list_themes_full() -> Vec<ThemeInfo> {
     let mut out = vec![
         ThemeInfo {
+            name: "pi-pine-light".to_string(),
+            path: None,
+            source: "builtin".into(),
+        },
+        ThemeInfo {
             name: "pi-pine-dark".to_string(),
             path: None,
             source: "builtin".into(),
@@ -63,6 +68,9 @@ pub fn list_themes_full() -> Vec<ThemeInfo> {
 
 #[tauri::command]
 pub fn read_theme(name: String) -> Result<ThemeFile, String> {
+    if name == "pi-pine-light" {
+        return Ok(builtin_light());
+    }
     if name == "pi-pine-dark" {
         return Ok(builtin_dark());
     }
@@ -73,6 +81,64 @@ pub fn read_theme(name: String) -> Result<ThemeFile, String> {
     let path = dir.join(format!("{}.json", name));
     let txt = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     serde_json::from_str(&txt).map_err(|e| e.to_string())
+}
+
+fn builtin_light() -> ThemeFile {
+    let raw = serde_json::json!({
+        "name": "pi-pine-light",
+        "vars": {
+            "bg": "#F7F6F2",
+            "bgSoft": "#FEFDF9",
+            "bgMute": "#EFEEE8",
+            "surfaceRaised": "#FFFFFF",
+            "border": "#DDDAD0",
+            "borderMuted": "#ECE9DF",
+            "fg": "#24231F",
+            "fgMute": "#68645B",
+            "fgDim": "#9A9588",
+            "accent": "#5B57E0",
+            "accentSoft": "#ECEBFF",
+            "danger": "#C94D55",
+            "warn": "#B26A1B",
+            "success": "#3D8B5A",
+            "syntaxComment": "#8B8679",
+            "syntaxKeyword": "#5B57E0",
+            "syntaxString": "#3D7B4F",
+            "syntaxNumber": "#9B5B18",
+            "syntaxType": "#2F6F9F",
+            "syntaxFunction": "#4767C7",
+            "syntaxVariable": "#A34C68"
+        },
+        "colors": {
+            "base": "bg",
+            "mantle": "bgSoft",
+            "crust": "bgMute",
+            "surface0": "surfaceRaised",
+            "surface1": "bgMute",
+            "surface2": "border",
+            "text": "fg",
+            "subtext0": "fgMute",
+            "dim": "fgDim",
+            "border": "border",
+            "borderMuted": "borderMuted",
+            "accent": "accent",
+            "selectedBg": "accentSoft",
+            "userMessageBg": "surfaceRaised",
+            "userMessageText": "fg",
+            "thinkingText": "fgMute",
+            "success": "success",
+            "warning": "warn",
+            "error": "danger",
+            "syntaxComment": "syntaxComment",
+            "syntaxKeyword": "syntaxKeyword",
+            "syntaxString": "syntaxString",
+            "syntaxNumber": "syntaxNumber",
+            "syntaxType": "syntaxType",
+            "syntaxFunction": "syntaxFunction",
+            "syntaxVariable": "syntaxVariable"
+        }
+    });
+    serde_json::from_value(raw).unwrap()
 }
 
 fn builtin_windsurf() -> ThemeFile {

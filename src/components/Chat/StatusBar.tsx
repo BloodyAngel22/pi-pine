@@ -1,10 +1,11 @@
-import { Folder, Cpu, Brain, Hash, DollarSign, Gauge, Monitor, RefreshCw, Pin } from "lucide-react";
+import { Folder, Hash, DollarSign, Gauge, Monitor, RefreshCw, Pin } from "lucide-react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { shortenPath } from "@/utils/path";
 import { ExtensionsPill } from "./ExtensionsPill";
 import { FastFetchIndicator } from "./FastFetchIndicator";
+import { ContextIndicator } from "./ContextIndicator";
 
 /** Форматирует число токенов как 137k, 12.5k, 980 */
 function fmtTokens(n: number): string {
@@ -20,7 +21,6 @@ export function StatusBar() {
   const stats = useChat((s) => s.sessionStats);
   const retryStatus = useChat((s) => s.retryStatus);
   const attachedSkills = useChat((s) => s.attachedSkills);
-  const isStreaming = agent?.isStreaming;
   const statuses = useExt((s) => s.statuses);
 
   const extEntries: [string, string][] = Object.entries(statuses).filter(
@@ -40,33 +40,6 @@ export function StatusBar() {
         <Folder size={11} className="text-(--color-fg-dim)" />
         <span className="font-mono truncate max-w-[260px]">{cwdShort}</span>
       </span>
-      {agent?.model && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span
-            className="pi-statusbar-item"
-            title={`${agent.model.provider}/${agent.model.id}`}
-          >
-            <Cpu size={11} className="text-(--color-fg-dim)" />
-            <span className="font-mono truncate max-w-[220px]">
-              {agent.model.id}
-            </span>
-          </span>
-        </>
-      )}
-      {agent?.thinkingLevel && agent.thinkingLevel !== "off" && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span
-            className="pi-statusbar-item"
-            title={`thinking: ${agent.thinkingLevel}`}
-          >
-            <Brain size={11} className="text-(--color-fg-dim)" />
-            <span>{agent.thinkingLevel}</span>
-          </span>
-        </>
-      )}
-
       {/* === MIDDLE: метрики сессии === */}
       {totalTokens > 0 && (
         <>
@@ -117,11 +90,7 @@ export function StatusBar() {
       {/* === RIGHT: транзитные индикаторы + ext-пилюля.
             Отдельная зона без overflow — иначе absolute popover клипуется. */}
       <div className="pi-statusbar-end">
-        {isStreaming && (
-          <span className="pi-statusbar-item text-(--color-accent)">
-            ● стрим
-          </span>
-        )}
+        <ContextIndicator />
         {(agent?.isRetrying || retryStatus.active) && (
           <span
             className="pi-statusbar-item text-(--color-accent)"

@@ -7,6 +7,7 @@ import { ThinkingBlock } from "./ThinkingBlock";
 import { SkillBlock } from "./SkillBlock";
 import { CommandBlock } from "./CommandBlock";
 import { ActionBar } from "./ActionBar";
+import { ActivityIndicator } from "./ActivityIndicator";
 
 interface Props {
   message: UiMessage;
@@ -168,18 +169,13 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
 
   return (
     <div className="pi-stream-msg group">
-      <div className="flex items-center gap-2 mb-1.5 text-[10px] uppercase tracking-wider font-semibold text-(--color-fg-mute)">
+      <div className={clsx("mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-(--color-fg-mute)", isUser && "justify-end")}>
         {isUser ? (
           <span className="text-(--color-accent)">Вы</span>
         ) : isSystem ? (
           <span>Система</span>
         ) : (
-          <span>pi</span>
-        )}
-        {message.streaming && (
-          <span className="text-(--color-fg-dim) normal-case font-normal lowercase">
-            • стримит…
-          </span>
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-(--color-fg) text-[9px] lowercase tracking-normal text-(--color-bg-soft)">pi</span>
         )}
         {message.optimistic && (
           <span className="text-(--color-fg-dim) normal-case font-normal lowercase">
@@ -196,16 +192,12 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
       {isUser ? (
         <div className="pi-bubble-user space-y-1">{blocks}</div>
       ) : (
-        <div className={clsx("pi-assistant-divider space-y-1", isSystem && "italic text-(--color-fg-mute)")}>
+        <div className={clsx("pi-assistant-divider space-y-2", isSystem && "italic text-(--color-fg-mute)")}>
           {blocks}
-          {message.pendingAssistant && message.blocks.length === 0 && (
-            <div className="inline-flex items-center gap-2 text-sm text-(--color-fg-mute)">
-              <span className="w-1.5 h-1.5 rounded-full bg-(--color-accent) animate-pulse" />
-              <span>pi думает…</span>
+          {(message.pendingAssistant || message.streaming) && message.blocks.length === 0 && (
+            <div className="inline-flex items-center rounded-lg border border-(--color-border-muted) bg-(--color-bg-soft) px-3 py-2 text-(--color-fg-mute)">
+              <ActivityIndicator tone="agent" size="lg" label="pi работает" />
             </div>
-          )}
-          {message.streaming && message.blocks.length === 0 && (
-            <span className="pi-cursor" />
           )}
         </div>
       )}

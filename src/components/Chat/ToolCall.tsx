@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, 
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
 import { useExt } from "@/store/ext";
+import { ActivityIndicator } from "./ActivityIndicator";
 import {
   shortInput,
   pretty,
@@ -228,7 +229,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
           {block.images && block.images.length > 0 && (
             <ImageIcon size={10} />
           )}
-          {isRunning ? "…" : isError ? "ошибка" : ""}
+          {isRunning ? (
+            <ActivityIndicator tone="tool" size="sm" label={`${block.name} выполняется`} />
+          ) : isError ? "ошибка" : ""}
         </span>
       </button>
       {open && (
@@ -310,7 +313,14 @@ function DeepResearchToolCall({
         <span className="font-mono text-(--color-accent)">deep_research</span>
         <span className="text-(--color-fg) truncate min-w-0" title={question}>{question}</span>
         <span className="ml-auto shrink-0 text-(--color-fg-dim)">
-          {isRunning ? `${phase}${remaining ? ` · ${remaining} left` : ""}` : isError ? "ошибка" : confidence != null ? `${Math.round(confidence * 100)}%` : "готово"}
+          {isRunning ? (
+            <ActivityIndicator
+              tone="research"
+              size="sm"
+              label={`${phase}${remaining ? ` · ${remaining} left` : ""}`}
+              showLabel
+            />
+          ) : isError ? "ошибка" : confidence != null ? `${Math.round(confidence * 100)}%` : "готово"}
         </span>
       </button>
       {open && (
@@ -1007,7 +1017,9 @@ function TaskToolCall({
         {agent && <span className="font-mono text-(--color-fg-dim)">{agent}</span>}
         <span className="text-(--color-fg-mute) truncate">{description}</span>
         <span className="ml-auto text-(--color-fg-dim)">
-          {isRunning ? "running" : isError ? "ошибка" : "done"}
+          {isRunning ? (
+            <ActivityIndicator tone="subagent" size="sm" label="sub-agent running" showLabel />
+          ) : isError ? "ошибка" : "done"}
         </span>
       </button>
       {open && (

@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { X, Layers, Database, Activity, ListTodo, GitBranch, Bot, Terminal } from "lucide-react";
+import { useState } from "react";
+import { X, Layers, Database, Activity, ListTodo, GitBranch, Bot, Command } from "lucide-react";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import { ModelsTab } from "./ModelsTab";
@@ -14,21 +14,29 @@ import { useUiPrefs, SIDEPANEL_MIN, SIDEPANEL_MAX } from "@/store/uiPrefs";
 import { useResize } from "@/lib/useResize";
 import { useChat } from "@/store/chat";
 
-type Tab = "models" | "presets" | "mcp" | "status" | "plan" | "tree" | "subagents" | "commands";
+export type SidePanelTab = "models" | "presets" | "mcp" | "status" | "plan" | "tree" | "subagents" | "commands";
 const SIDE_PANEL_TAB_KEY = "pi-pine.sidePanelTab";
-const isTab = (value: string | null): value is Tab =>
+const isTab = (value: string | null): value is SidePanelTab =>
   value === "models" || value === "presets" || value === "mcp" || value === "status" || value === "plan" || value === "tree" || value === "subagents" || value === "commands";
 
-export function SidePanel({ onClose }: { onClose: () => void }) {
+const tabMeta: Record<SidePanelTab, { title: string; hint: string; icon: React.ReactNode }> = {
+  models: { title: "Модели", hint: "Выбор provider/model для текущей сессии", icon: <Layers size={15} /> },
+  presets: { title: "Пресеты", hint: "Готовые конфигурации агента", icon: <Bot size={15} /> },
+  mcp: { title: "MCP", hint: "Серверы расширений и их статус", icon: <Database size={15} /> },
+  status: { title: "Статус", hint: "RPC, окружение и служебная диагностика", icon: <Activity size={15} /> },
+  plan: { title: "План", hint: "Plan mode и файл текущего плана", icon: <ListTodo size={15} /> },
+  tree: { title: "Дерево сессии", hint: "Ветки диалога, навигация и restore checkpoints", icon: <GitBranch size={15} /> },
+  subagents: { title: "Agents", hint: "Подагенты и экран выполнения", icon: <Bot size={15} /> },
+  commands: { title: "Команды", hint: "Доступные slash-команды и расширения", icon: <Command size={15} /> },
+};
+
+export function SidePanel({ onClose, activeTab }: { onClose: () => void; activeTab?: SidePanelTab; onTabChange?: (tab: SidePanelTab) => void }) {
   const planMode = useChat((s) => s.planMode);
-  const [tab, setTabState] = useState<Tab>(() => {
+  const [internalTab] = useState<SidePanelTab>(() => {
     const saved = localStorage.getItem(SIDE_PANEL_TAB_KEY);
     return isTab(saved) ? saved : planMode ? "plan" : "models";
   });
-  const setTab = (next: Tab) => {
-    localStorage.setItem(SIDE_PANEL_TAB_KEY, next);
-    setTabState(next);
-  };
+  const tab = activeTab ?? internalTab;
   const width = useUiPrefs((s) => s.sidePanelWidth);
   const setWidth = useUiPrefs((s) => s.setSidePanelWidth);
   const resize = useResize({
@@ -38,43 +46,24 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
     max: SIDEPANEL_MAX,
     onChange: setWidth,
   });
-
-  const tabsRef = useRef<HTMLDivElement>(null);
-  const onTabsWheel = (e: React.WheelEvent) => {
-    const el = tabsRef.current;
-    if (!el) return;
-    if (el.scrollWidth <= el.clientWidth) return;
-    e.preventDefault();
-    el.scrollLeft += e.deltaY || e.deltaX;
-  };
+  const meta = tabMeta[tab];
 
   return (
     <aside
-      className="shrink-0 min-w-0 overflow-hidden border-l border-(--color-border) bg-(--color-bg-soft) flex flex-col relative"
+      className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--color-bg-soft)"
       style={{ width }}
+      aria-label={meta.title}
     >
-      <div
-        className={clsx("pi-resizer pi-resizer-left", resize.active && "pi-resizer-active")}
-        onMouseDown={resize.onMouseDown}
-      />
-      <div className="flex items-center min-w-0 border-b border-(--color-border)">
-        <div
-          ref={tabsRef}
-          onWheel={onTabsWheel}
-          className="pi-sidepanel-tabs flex items-center min-w-0 overflow-x-hidden overflow-y-hidden flex-1"
-        >
-          <TabBtn icon={<Layers size={12} />} label="Модели" active={tab === "models"} onClick={() => setTab("models")} />
-          <TabBtn icon={<Bot size={12} />} label="Presets" active={tab === "presets"} onClick={() => setTab("presets")} />
-          <TabBtn icon={<Database size={12} />} label="MCP" active={tab === "mcp"} onClick={() => setTab("mcp")} />
-          <TabBtn icon={<ListTodo size={12} />} label="План" active={tab === "plan"} onClick={() => setTab("plan")} />
-          <TabBtn icon={<GitBranch size={12} />} label="Tree" active={tab === "tree"} onClick={() => setTab("tree")} />
-          <TabBtn icon={<Bot size={12} />} label="Agents" active={tab === "subagents"} onClick={() => setTab("subagents")} />
-          <TabBtn icon={<Terminal size={12} />} label="Cmd" active={tab === "commands"} onClick={() => setTab("commands")} />
-          <TabBtn icon={<Activity size={12} />} label="Статус" active={tab === "status"} onClick={() => setTab("status")} />
+      <div className={clsx("pi-resizer pi-resizer-left", resize.active && "pi-resizer-active")} onMouseDown={resize.onMouseDown} />
+      <div className="flex items-start gap-2 border-b border-(--color-border-muted) px-3 py-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--color-accent-soft) text-(--color-accent)">{meta.icon}</div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-(--color-fg)">{meta.title}</div>
+          <div className="mt-0.5 truncate text-[11px] text-(--color-fg-dim)">{meta.hint}</div>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} className="shrink-0 mr-1" />
+        <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} className="shrink-0" aria-label="Закрыть панель" />
       </div>
-      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden pt-3">
+      <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-2">
         {tab === "models" && <ModelsTab />}
         {tab === "presets" && <PresetsTab />}
         {tab === "mcp" && <McpTab />}
@@ -84,24 +73,9 @@ export function SidePanel({ onClose }: { onClose: () => void }) {
         {tab === "commands" && <CommandsTab />}
         {tab === "status" && <StatusTab />}
       </div>
+      <div className="border-t border-(--color-border-muted) px-3 py-2 text-[10px] text-(--color-fg-dim)">
+        Открыто из правого rail. Для другой панели нажмите её кнопку справа.
+      </div>
     </aside>
-  );
-}
-
-function TabBtn({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick(): void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clsx(
-        "flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs border-b-2 transition-colors",
-        active
-          ? "border-(--color-accent) text-(--color-fg)"
-          : "border-transparent text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

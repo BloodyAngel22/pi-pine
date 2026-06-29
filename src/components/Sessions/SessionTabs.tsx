@@ -82,7 +82,7 @@ export function SessionTabs() {
   if (orderedTabs.length === 0) return null;
 
   return (
-    <div className="h-9 shrink-0 min-w-0 flex items-center border-b border-(--color-border) bg-(--color-bg-soft)">
+    <div className="h-9 shrink-0 min-w-0 flex items-center border-b border-(--color-border-muted) bg-(--color-bg-soft)">
       <div className="min-w-0 flex-1 h-full flex items-center">
         <div
           ref={tabsRef}
@@ -97,9 +97,9 @@ export function SessionTabs() {
             key={tab.tabId}
             draggable={renaming !== tab.tabId}
             className={clsx(
-              "group h-7 w-[220px] shrink-0 flex items-center gap-1.5 rounded-md border px-2 text-xs select-none transition-colors",
+              "group h-7 w-[220px] shrink-0 flex items-center gap-1.5 rounded-lg border px-2 text-xs select-none transition-colors",
               active
-                ? "bg-(--color-bg) border-(--color-border) text-(--color-fg)"
+                ? "bg-(--color-bg) border-(--color-accent)/35 text-(--color-fg) shadow-sm"
                 : "bg-transparent border-transparent text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg)",
               draggingTabId === tab.tabId && "opacity-50",
               dragOverTabId === tab.tabId && "ring-1 ring-(--color-accent) bg-(--color-accent-soft)/20",
@@ -188,7 +188,7 @@ export function SessionTabs() {
         </div>
       </div>
 
-      <div className="h-full shrink-0 flex items-center gap-1 border-l border-(--color-border) bg-(--color-bg-soft) px-2 shadow-[-8px_0_12px_rgba(0,0,0,0.12)]">
+      <div className="h-full shrink-0 flex items-center gap-1 border-l border-(--color-border-muted) bg-(--color-bg-soft) px-2 shadow-[-8px_0_12px_rgba(0,0,0,0.06)]">
         <button
           type="button"
           className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)"

@@ -2,37 +2,37 @@
 
 /* Дефолтные значения CSS-переменных. Тема pi заменит их через applyTheme. */
 :root {
-  --color-bg: #0a0a0a;
-  --color-bg-soft: #131313;
-  --color-bg-mute: #1a1a1a;
-  --color-border: #262626;
-  --color-border-muted: #1f1f1f;
-  --color-fg: #ededed;
-  --color-fg-mute: #a3a3a3;
-  --color-fg-dim: #6b6b6b;
-  --color-accent: #7aa2f7;
-  --color-accent-soft: #2c3a5a;
-  --color-danger: #f7768e;
-  --color-warn: #e0af68;
-  --color-success: #9ece6a;
-  --color-user-bg: #131313;
-  --color-user-fg: #ededed;
-  --color-thinking: #a3a3a3;
+  --color-bg: #f7f6f2;
+  --color-bg-soft: #fefdf9;
+  --color-bg-mute: #efeee8;
+  --color-border: #dddad0;
+  --color-border-muted: #ece9df;
+  --color-fg: #24231f;
+  --color-fg-mute: #68645b;
+  --color-fg-dim: #9a9588;
+  --color-accent: #5b57e0;
+  --color-accent-soft: #ecebff;
+  --color-danger: #c94d55;
+  --color-warn: #b26a1b;
+  --color-success: #3d8b5a;
+  --color-user-bg: #ffffff;
+  --color-user-fg: #24231f;
+  --color-thinking: #68645b;
   --chat-font-mult: 1;
 
   /* highlight.js — маппятся из темы через loader.ts */
-  --hljs-comment:  #6b6b6b;
-  --hljs-keyword:  #bb9af7;
-  --hljs-string:   #9ece6a;
-  --hljs-number:   #ff9e64;
-  --hljs-type:     #7aa2f7;
-  --hljs-builtin:  #2ac3de;
-  --hljs-variable: #f7768e;
+  --hljs-comment:  #8b8679;
+  --hljs-keyword:  #5b57e0;
+  --hljs-string:   #3d7b4f;
+  --hljs-number:   #9b5b18;
+  --hljs-type:     #2f6f9f;
+  --hljs-builtin:  #4767c7;
+  --hljs-variable: #a34c68;
 }
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 html,
@@ -47,6 +47,113 @@ body {
   color: var(--color-fg);
   font-size: var(--app-font-size, 13px);
   line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.pi-run-settings-dropdown,
+.pi-mantine-tooltip {
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-soft) !important;
+  color: var(--color-fg) !important;
+  box-shadow: 0 18px 50px -28px rgba(0, 0, 0, 0.55) !important;
+}
+
+.pi-run-settings-dropdown {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.pi-mantine-tooltip {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+}
+
+.pi-mantine-tooltip-arrow {
+  background: var(--color-bg-soft) !important;
+  border-color: var(--color-border) !important;
+}
+
+.pi-mantine-input {
+  min-height: 34px !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-soft) !important;
+  color: var(--color-fg) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+}
+
+.pi-mantine-input:focus,
+.pi-mantine-input:focus-within {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent) !important;
+}
+
+.pi-mantine-select-dropdown {
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-soft) !important;
+  color: var(--color-fg) !important;
+  box-shadow: 0 18px 50px -28px rgba(0, 0, 0, 0.55) !important;
+}
+
+.pi-mantine-select-option {
+  color: var(--color-fg) !important;
+  font-size: 12px !important;
+}
+
+.pi-mantine-select-option[data-combobox-selected],
+.pi-mantine-select-option[data-checked],
+.pi-mantine-select-option:hover {
+  background: var(--color-accent-soft) !important;
+  color: var(--color-accent) !important;
+}
+
+.pi-thinking-control {
+  height: 32px !important;
+  gap: 2px !important;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-soft) !important;
+  padding: 2px !important;
+}
+
+.pi-thinking-control-item {
+  border: 0 !important;
+}
+
+.pi-thinking-control-label {
+  height: 26px !important;
+  padding-inline: 10px !important;
+  color: var(--color-fg-mute) !important;
+  font-size: 12px !important;
+  line-height: 26px !important;
+}
+
+.pi-thinking-control-indicator {
+  background: var(--color-accent-soft) !important;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.pi-thinking-control [data-active] .pi-thinking-control-label {
+  color: var(--color-accent) !important;
+  font-weight: 600 !important;
+}
+
+@keyframes pi-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* тонкий скролл */
@@ -238,19 +345,22 @@ body {
   color: var(--hljs-variable);
 }
 
-/* Composer card в стиле Windsurf */
+/* Composer */
 .pi-composer-card {
   background: var(--color-bg-soft);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 20px;
   transition:
     border-color 0.12s,
-    box-shadow 0.12s;
-  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.2);
+    box-shadow 0.12s,
+    transform 0.12s;
+  box-shadow: 0 22px 70px -42px rgba(0, 0, 0, 0.45);
 }
 .pi-composer-card:focus-within {
-  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 10%, transparent),
+    0 24px 78px -42px rgba(0, 0, 0, 0.48);
 }
 .pi-composer-card textarea {
   font-size: calc(0.875rem * var(--chat-font-mult, 1));
@@ -280,7 +390,7 @@ body {
 /* Centered content inside the scroller. Bottom spacing belongs to
    the virtualizer padding, so measured item offsets stay exact. */
 .pi-stream-content {
-  max-width: 850px;
+  max-width: min(1040px, calc(100vw - 12rem));
   margin: 0 auto;
   width: 100%;
   padding: 1.25rem 1rem 0;
@@ -332,39 +442,176 @@ body {
 }
 
 .pi-bubble-user {
+  margin-left: auto;
+  max-width: min(78%, 620px);
   background: var(--color-user-bg);
   color: var(--color-user-fg);
-  border-radius: 12px;
-  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 14px;
+  padding: 0.65rem 0.9rem;
+  box-shadow: 0 10px 32px -28px rgba(0, 0, 0, 0.4);
 }
 .pi-bubble-user ::selection {
   background: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }
 .pi-assistant-divider {
   position: relative;
-  padding-left: 0.85rem;
+  padding-left: 0;
 }
 .pi-assistant-divider::before {
-  content: "";
+  content: none;
+}
+
+/* Activity indicators — нейтральные формы, хорошо ложатся на любую тему. */
+.pi-activity {
+  --pi-activity-size: 20px;
+  --pi-activity-color: var(--color-fg-mute);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--pi-activity-color);
+  line-height: 1;
+  vertical-align: middle;
+}
+.pi-activity[data-size="compact"] {
+  --pi-activity-size: 16px;
+  gap: 0.35rem;
+}
+.pi-activity[data-size="sm"] {
+  --pi-activity-size: 20px;
+}
+.pi-activity[data-size="md"] {
+  --pi-activity-size: 30px;
+  gap: 0.6rem;
+}
+.pi-activity[data-size="lg"] {
+  --pi-activity-size: 42px;
+  gap: 0.75rem;
+}
+.pi-activity[data-tone="agent"],
+.pi-activity[data-tone="research"] {
+  --pi-activity-color: var(--color-accent);
+}
+.pi-activity[data-tone="tool"] {
+  --pi-activity-color: var(--color-fg-mute);
+}
+.pi-activity[data-tone="subagent"] {
+  --pi-activity-color: var(--color-success);
+}
+.pi-activity[data-tone="compact"] {
+  --pi-activity-color: var(--color-warn);
+}
+.pi-activity-glyph {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--pi-activity-size);
+  height: var(--pi-activity-size);
+  flex: 0 0 auto;
+  color: var(--pi-activity-color);
+}
+.pi-activity-mark {
   position: absolute;
-  left: 0;
-  top: 0.15rem;
-  bottom: 0.15rem;
-  width: 2px;
-  background: var(--color-accent);
-  border-radius: 1px;
+  display: block;
+  background: currentColor;
+  opacity: 0.42;
+  transform-origin: center;
+}
+.pi-activity-label {
+  min-width: 0;
+  color: var(--color-fg-mute);
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+
+/* Three soft dots. */
+.pi-activity[data-pattern="dots"] .pi-activity-mark {
+  width: 22%;
+  height: 22%;
+  border-radius: 999px;
+  top: 39%;
+}
+.pi-activity[data-pattern="dots"] .pi-activity-mark-a { left: 14%; }
+.pi-activity[data-pattern="dots"] .pi-activity-mark-b { left: 39%; }
+.pi-activity[data-pattern="dots"] .pi-activity-mark-c { left: 64%; }
+.pi-activity[data-active="true"][data-pattern="dots"] .pi-activity-mark-a {
+  animation: pi-activity-dot 1.05s ease-in-out infinite;
+}
+.pi-activity[data-active="true"][data-pattern="dots"] .pi-activity-mark-b {
+  animation: pi-activity-dot 1.05s ease-in-out 0.14s infinite;
+}
+.pi-activity[data-active="true"][data-pattern="dots"] .pi-activity-mark-c {
+  animation: pi-activity-dot 1.05s ease-in-out 0.28s infinite;
+}
+
+/* Calm equalizer bars. */
+.pi-activity[data-pattern="bars"] .pi-activity-mark {
+  width: 14%;
+  height: 48%;
+  bottom: 24%;
+  border-radius: 999px;
+}
+.pi-activity[data-pattern="bars"] .pi-activity-mark-a { left: 24%; }
+.pi-activity[data-pattern="bars"] .pi-activity-mark-b { left: 43%; }
+.pi-activity[data-pattern="bars"] .pi-activity-mark-c { left: 62%; }
+.pi-activity[data-active="true"][data-pattern="bars"] .pi-activity-mark-a {
+  animation: pi-activity-bar 1.15s ease-in-out infinite;
+}
+.pi-activity[data-active="true"][data-pattern="bars"] .pi-activity-mark-b {
+  animation: pi-activity-bar 1.15s ease-in-out 0.16s infinite;
+}
+.pi-activity[data-active="true"][data-pattern="bars"] .pi-activity-mark-c {
+  animation: pi-activity-bar 1.15s ease-in-out 0.32s infinite;
+}
+
+/* Minimal ring: one glyph, no glow. */
+.pi-activity[data-pattern="ring"] .pi-activity-glyph {
+  border: max(2px, calc(var(--pi-activity-size) * 0.08)) solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  border-radius: 999px;
+}
+.pi-activity[data-pattern="ring"] .pi-activity-mark {
+  display: none;
+}
+.pi-activity[data-active="true"][data-pattern="ring"] .pi-activity-glyph {
+  animation: pi-activity-ring 1s linear infinite;
+}
+
+.pi-activity[data-active="false"] {
+  opacity: 0.58;
+}
+
+@keyframes pi-activity-dot {
+  0%, 100% { opacity: 0.32; transform: translateY(0) scale(0.84); }
+  45% { opacity: 1; transform: translateY(-18%) scale(1); }
+}
+@keyframes pi-activity-bar {
+  0%, 100% { opacity: 0.35; transform: scaleY(0.55); }
+  50% { opacity: 0.95; transform: scaleY(1); }
+}
+@keyframes pi-activity-ring {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pi-activity[data-active="true"] .pi-activity-glyph,
+  .pi-activity[data-active="true"] .pi-activity-mark {
+    animation: pi-activity-dot 2.4s ease-in-out infinite !important;
+  }
 }
 
 /* bottom status-bar */
 .pi-statusbar {
-  height: 22px;
+  height: 34px;
   background: var(--color-bg-soft);
-  border-top: 1px solid var(--color-border);
-  font-size: 11px;
+  border-top: 1px solid var(--color-border-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
   color: var(--color-fg-mute);
   display: flex;
   align-items: center;
-  padding: 0 0.6rem;
+  padding: 0 0.85rem;
   white-space: nowrap;
   /* НЕ ставим overflow здесь — иначе absolute popover из правой зоны клипуется. */
 }
@@ -393,7 +640,8 @@ body {
 .pi-statusbar-item {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  min-height: 22px;
 }
 .pi-statusbar-sep {
   color: var(--color-fg-dim);
@@ -465,11 +713,67 @@ body {
   animation: pi-blink 1s step-end infinite;
 }
 
+@media (max-width: 900px) {
+  .pi-stream-content {
+    max-width: 100%;
+    padding-inline: 0.75rem;
+  }
+  .pi-bubble-user {
+    max-width: 88%;
+  }
+}
+
+@media (max-width: 640px) {
+  .pi-statusbar {
+    height: 30px;
+    font-size: 11px;
+    padding-inline: 0.55rem;
+  }
+  .pi-statusbar-scroll {
+    gap: 0.45rem;
+  }
+  .pi-statusbar-end {
+    gap: 0.45rem;
+    padding-left: 0.45rem;
+  }
+  .pi-composer-card {
+    border-radius: 16px;
+  }
+  .pi-composer-card textarea {
+    font-size: 13px;
+  }
+}
+
 /* Splash screen */
 .splash-card {
   position: relative;
   overflow: hidden;
 }
+.splash-log-stream {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 32%, transparent) transparent;
+}
+.splash-log-stream::-webkit-scrollbar {
+  width: 4px;
+}
+.splash-log-stream::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-accent) 32%, transparent);
+  border-radius: 999px;
+}
+.splash-log-newest {
+  animation: splash-log-pulse 0.42s ease-out;
+}
+@keyframes splash-log-pulse {
+  from {
+    color: var(--color-accent);
+    transform: translateY(1px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 .splash-card::before {
   content: "";
   position: absolute;

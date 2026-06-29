@@ -17,11 +17,11 @@ export function ContextIndicator({ variant = "statusbar" }: ContextIndicatorProp
   const contextWindow = contextUsage?.contextWindow ?? agent?.model?.contextWindow ?? 0;
   const contextTokens = contextUsage?.tokens ?? null;
 
-  if (variant === "statusbar" && (!contextUsage || contextUsage.percent == null)) return null;
-
   const pctRaw =
     contextUsage?.percent ??
     (contextTokens != null && contextWindow > 0 ? (contextTokens / contextWindow) * 100 : null);
+
+  if (variant === "statusbar" && pctRaw == null && contextWindow <= 0) return null;
   const pct = Math.min(Math.max(pctRaw ?? 0, 0), 100);
   const pctRounded = pctRaw == null ? null : Math.round(pct);
 
@@ -36,8 +36,8 @@ export function ContextIndicator({ variant = "statusbar" }: ContextIndicatorProp
     color = "var(--color-warn)";
   }
 
-  const size = 14;
-  const strokeWidth = 2.5;
+  const size = variant === "statusbar" ? 18 : 14;
+  const strokeWidth = variant === "statusbar" ? 3 : 2.5;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - pct / 100);

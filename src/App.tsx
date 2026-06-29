@@ -6,7 +6,8 @@ import { useChat, type StartupProgressEvent, type UiMessage } from "@/store/chat
 import { useExt } from "@/store/ext";
 import { useTheme } from "@/store/theme";
 import { compact as rpcCompact, sendPrompt } from "@/rpc/bridge";
-import { Header } from "@/components/Chat/Header";
+import { LeftRail } from "@/components/AppShell/LeftRail";
+import { RightRail } from "@/components/AppShell/RightRail";
 import { MessageList } from "@/components/Chat/MessageList";
 import { Composer } from "@/components/Chat/Composer";
 import { PromptSearchPalette } from "@/components/Chat/PromptSearchPalette";
@@ -17,7 +18,7 @@ import { TerminalPanel } from "@/components/Terminal/TerminalPanel";
 import { TerminalErrorBoundary } from "@/components/Terminal/TerminalErrorBoundary";
 import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
 import { SessionTabs } from "@/components/Sessions/SessionTabs";
-import { SidePanel } from "@/components/SidePanel/SidePanel";
+import { SidePanel, type SidePanelTab } from "@/components/SidePanel/SidePanel";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
 import { PiMissingCard } from "@/components/Onboarding/PiMissingCard";
 import { SplashScreen, type BootDetail, type BootLogEntry, type BootStage } from "@/components/Onboarding/SplashScreen";
@@ -84,6 +85,12 @@ export default function App() {
   const [piResolved, setPiResolved] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [activePanelTab, setActivePanelTab] = useState<SidePanelTab>(() => {
+    const saved = localStorage.getItem("pi-pine.sidePanelTab");
+    return saved === "models" || saved === "presets" || saved === "mcp" || saved === "status" || saved === "plan" || saved === "tree" || saved === "subagents" || saved === "commands"
+      ? saved
+      : "tree";
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"chat" | "terminal">("chat");
   const [keptChatTabIds, setKeptChatTabIds] = useState<string[]>([]);
@@ -295,7 +302,7 @@ export default function App() {
         setSidebarOpen(true);
         break;
       case "/model":
-        setPanelOpen(true);
+        selectPanel("models");
         break;
       case "/settings":
         setSettingsOpen(true);
@@ -346,6 +353,11 @@ export default function App() {
   };
 
   const renderedChatTabIds = tabOrder.filter((tabId) => tabId === activeTabId || keptChatTabIds.includes(tabId));
+  const selectPanel = (tab: SidePanelTab) => {
+    localStorage.setItem("pi-pine.sidePanelTab", tab);
+    setActivePanelTab(tab);
+    setPanelOpen((open) => !(open && activePanelTab === tab));
+  };
 
   if (!bootstrapped) {
     return (
@@ -373,148 +385,90 @@ export default function App() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <div className="flex-1 flex min-h-0">
-        {sidebarOpen && <SessionsSidebar onClose={() => setSidebarOpen(false)} />}
-        <main className="flex-1 flex flex-col min-w-0">
-          <SessionTabs />
-          <Header
-            onToggleSidebar={() => setSidebarOpen((v) => !v)}
-            onToggleSidePanel={() => setPanelOpen((v) => !v)}
-            onOpenSettings={() => setSettingsOpen(true)}
+    <div className="relative h-full w-full overflow-hidden bg-(--color-bg) text-(--color-fg)">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="relative flex min-h-0 flex-1">
+          <LeftRail
+            sessionsOpen={sidebarOpen}
+            onToggleSessions={() => setSidebarOpen((v) => !v)}
             onNewSession={() => void createSessionTab()}
-            onToggleBash={() => setMainTab("terminal")}
+            onOpenSearch={() => setSearchOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
-          {errorBanner && (
-            <div className="px-3 py-1.5 bg-(--color-danger)/15 border-b border-(--color-danger)/30 text-(--color-danger) text-xs flex items-center gap-2">
-              <AlertCircle size={12} />
-              <span className="flex-1">{errorBanner}</span>
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => void restartRpc()}
-                title="Перезапустить pi с сохранённой моделью"
-              >
-                Перезапустить
-              </Button>
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => void restartRpc({ safe: true })}
-                title="Сбросить provider/model и стартовать с дефолтами pi"
-              >
-                Безопасный режим
-              </Button>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                className="text-(--color-danger) hover:text-(--color-fg)"
-              >
-                <X size={12} />
-              </button>
+          {sidebarOpen && <SessionsSidebar onClose={() => setSidebarOpen(false)} />}
+          <main className="flex min-w-0 flex-1 flex-col bg-(--color-bg)">
+            <SessionTabs />
+            {errorBanner && (
+              <div className="flex items-center gap-2 border-b border-(--color-danger)/30 bg-(--color-danger)/15 px-3 py-1.5 text-xs text-(--color-danger)">
+                <AlertCircle size={12} />
+                <span className="flex-1">{errorBanner}</span>
+                <Button variant="subtle" size="sm" onClick={() => void restartRpc()} title="Перезапустить pi с сохранённой моделью">
+                  Перезапустить
+                </Button>
+                <Button variant="subtle" size="sm" onClick={() => void restartRpc({ safe: true })} title="Сбросить provider/model и стартовать с дефолтами pi">
+                  Безопасный режим
+                </Button>
+                <button type="button" onClick={() => setError(null)} className="text-(--color-danger) hover:text-(--color-fg)" aria-label="Закрыть ошибку">
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+            {forkBanner && (
+              <div className="flex items-center gap-2 border-b border-(--color-accent)/30 bg-(--color-accent)/10 px-3 py-1.5 text-xs text-(--color-accent)">
+                <GitFork size={12} />
+                <span className="flex-1">{forkBanner}</span>
+                <button type="button" onClick={clearForkBanner} className="opacity-60 hover:opacity-100" aria-label="Закрыть уведомление">
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+            {!rpcRunning && !errorBanner && (
+              <div className="flex items-center gap-2 border-b border-(--color-warn)/30 bg-(--color-warn)/10 px-3 py-2 text-xs text-(--color-warn)">
+                <span className="flex-1">RPC не запущен</span>
+                <Button variant="subtle" size="sm" onClick={() => void startRpc()}>
+                  Запустить
+                </Button>
+                <Button variant="subtle" size="sm" onClick={() => void restartRpc({ safe: true })} title="Сбросить provider/model и стартовать с дефолтами pi">
+                  Безопасный режим
+                </Button>
+              </div>
+            )}
+            <div className={mainTab === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+              <div className="relative min-h-0 flex-1">
+                {tabOrder.length === 0 ? (
+                  <MessageList active={mainTab === "chat"} onCopy={onCopy} onFork={onFork} onRegenerate={onRegenerate} onEdit={onEdit} />
+                ) : (
+                  renderedChatTabIds.map((tabId) => {
+                    const active = mainTab === "chat" && tabId === activeTabId;
+                    return (
+                      <div key={tabId} className={active ? "absolute inset-0 flex min-h-0 flex-col" : "hidden"} aria-hidden={!active}>
+                        <MessageList tabId={tabId} active={active} onCopy={onCopy} onFork={onFork} onRegenerate={onRegenerate} onEdit={onEdit} />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <Composer onSlash={onSlash} onToggleBash={() => setMainTab("terminal")} onBtw={onBtw} />
             </div>
-          )}
-          {forkBanner && (
-            <div className="px-3 py-1.5 bg-(--color-accent)/10 border-b border-(--color-accent)/30 text-(--color-accent) text-xs flex items-center gap-2">
-              <GitFork size={12} />
-              <span className="flex-1">{forkBanner}</span>
-              <button
-                type="button"
-                onClick={clearForkBanner}
-                className="opacity-60 hover:opacity-100"
-              >
-                <X size={12} />
-              </button>
+            <div className={mainTab === "terminal" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+              <TerminalErrorBoundary onBack={() => setMainTab("chat")}>
+                <TerminalPanel open={mainTab === "terminal"} onClose={() => setMainTab("chat")} />
+              </TerminalErrorBoundary>
             </div>
-          )}
-          {!rpcRunning && !errorBanner && (
-            <div className="px-3 py-2 bg-(--color-warn)/10 border-b border-(--color-warn)/30 text-(--color-warn) text-xs flex items-center gap-2">
-              <span className="flex-1">RPC не запущен</span>
-              <Button variant="subtle" size="sm" onClick={() => void startRpc()}>
-                Запустить
-              </Button>
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => void restartRpc({ safe: true })}
-                title="Сбросить provider/model и стартовать с дефолтами pi"
-              >
-                Безопасный режим
-              </Button>
-            </div>
-          )}
-          <div className="h-9 shrink-0 flex items-center gap-1 border-b border-(--color-border) bg-(--color-bg-soft) px-3">
-            <button
-              type="button"
-              onClick={() => setMainTab("chat")}
-              className={
-                "h-7 px-3 rounded-md text-xs font-medium transition-colors " +
-                (mainTab === "chat"
-                  ? "bg-(--color-bg) text-(--color-fg) border border-(--color-border)"
-                  : "text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)")
-              }
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => setMainTab("terminal")}
-              className={
-                "h-7 px-3 rounded-md text-xs font-medium transition-colors " +
-                (mainTab === "terminal"
-                  ? "bg-(--color-bg) text-(--color-fg) border border-(--color-border)"
-                  : "text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)")
-              }
-            >
-              Terminal
-            </button>
-            <span className="ml-auto text-[10px] text-(--color-fg-dim)">Ctrl+`</span>
-          </div>
-          <div className={mainTab === "chat" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-            <div className="flex-1 min-h-0 relative">
-              {tabOrder.length === 0 ? (
-                <MessageList
-                  active={mainTab === "chat"}
-                  onCopy={onCopy}
-                  onFork={onFork}
-                  onRegenerate={onRegenerate}
-                  onEdit={onEdit}
-                />
-              ) : (
-                renderedChatTabIds.map((tabId) => {
-                  const active = mainTab === "chat" && tabId === activeTabId;
-                  return (
-                    <div
-                      key={tabId}
-                      className={active ? "absolute inset-0 min-h-0 flex flex-col" : "hidden"}
-                      aria-hidden={!active}
-                    >
-                      <MessageList
-                        tabId={tabId}
-                        active={active}
-                        onCopy={onCopy}
-                        onFork={onFork}
-                        onRegenerate={onRegenerate}
-                        onEdit={onEdit}
-                      />
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <Composer onSlash={onSlash} onToggleBash={() => setMainTab("terminal")} onBtw={onBtw} />
-          </div>
-          <div className={mainTab === "terminal" ? "flex-1 min-h-0 flex flex-col" : "hidden"}>
-            <TerminalErrorBoundary onBack={() => setMainTab("chat")}>
-              <TerminalPanel open={mainTab === "terminal"} onClose={() => setMainTab("chat")} />
-            </TerminalErrorBoundary>
-          </div>
-          <PromptSearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
-          <BtwOverlay open={btwOpen} initialQuestion={btwQuestion} onClose={() => setBtwOpen(false)} />
-        </main>
-        {panelOpen && <SidePanel onClose={() => setPanelOpen(false)} />}
+            <PromptSearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+            <BtwOverlay open={btwOpen} initialQuestion={btwQuestion} onClose={() => setBtwOpen(false)} />
+          </main>
+          {panelOpen && <SidePanel activeTab={activePanelTab} onTabChange={setActivePanelTab} onClose={() => setPanelOpen(false)} />}
+          <RightRail
+            activeTab={activePanelTab}
+            panelOpen={panelOpen}
+            mainTab={mainTab}
+            onSelectPanel={selectPanel}
+            onToggleTerminal={() => setMainTab((v) => (v === "terminal" ? "chat" : "terminal"))}
+          />
+        </div>
+        <StatusBar />
       </div>
-      <StatusBar />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <Toasts />
       <DialogQueue />
