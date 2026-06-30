@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X, Layers, Database, Activity, ListTodo, GitBranch, Bot, Command } from "lucide-react";
+import { X } from "@/components/ui/icons/compat";
+import { AppIcon } from "@/components/ui/AppIcon";
 import clsx from "clsx";
 import { motion, type Transition, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/Button";
@@ -21,14 +22,14 @@ const isTab = (value: string | null): value is SidePanelTab =>
   value === "models" || value === "presets" || value === "mcp" || value === "status" || value === "plan" || value === "tree" || value === "subagents" || value === "commands";
 
 const tabMeta: Record<SidePanelTab, { title: string; hint: string; icon: React.ReactNode }> = {
-  models: { title: "Модели", hint: "Выбор provider/model для текущей сессии", icon: <Layers size={15} /> },
-  presets: { title: "Пресеты", hint: "Готовые конфигурации агента", icon: <Bot size={15} /> },
-  mcp: { title: "MCP", hint: "Серверы расширений и их статус", icon: <Database size={15} /> },
-  status: { title: "Статус", hint: "RPC, окружение и служебная диагностика", icon: <Activity size={15} /> },
-  plan: { title: "План", hint: "Plan mode и файл текущего плана", icon: <ListTodo size={15} /> },
-  tree: { title: "Дерево сессии", hint: "Ветки диалога, навигация и restore checkpoints", icon: <GitBranch size={15} /> },
-  subagents: { title: "Agents", hint: "Подагенты и экран выполнения", icon: <Bot size={15} /> },
-  commands: { title: "Команды", hint: "Доступные slash-команды и расширения", icon: <Command size={15} /> },
+  models: { title: "Модели", hint: "Выбор provider/model для текущей сессии", icon: <AppIcon name="model" size={15} /> },
+  presets: { title: "Пресеты", hint: "Готовые конфигурации агента", icon: <AppIcon name="bot" size={15} /> },
+  mcp: { title: "MCP", hint: "Серверы расширений и их статус", icon: <AppIcon name="mcp" size={15} /> },
+  status: { title: "Статус", hint: "RPC, окружение и служебная диагностика", icon: <AppIcon name="activity" size={15} /> },
+  plan: { title: "План", hint: "Plan mode и файл текущего плана", icon: <AppIcon name="plan" size={15} /> },
+  tree: { title: "Дерево сессии", hint: "Ветки диалога, навигация и restore checkpoints", icon: <AppIcon name="gitBranch" size={15} /> },
+  subagents: { title: "Agents", hint: "Подагенты и экран выполнения", icon: <AppIcon name="subagent" size={15} /> },
+  commands: { title: "Команды", hint: "Доступные slash-команды и расширения", icon: <AppIcon name="command" size={15} /> },
 };
 
 interface SidePanelProps {

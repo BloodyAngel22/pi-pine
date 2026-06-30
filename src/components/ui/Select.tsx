@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useState } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, ChevronDown, ChevronUp } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import clsx from "clsx";
 import { popoverContentVariants, softEase } from "@/lib/motionPresets";
@@ -25,18 +25,21 @@ interface SelectProps {
 export function Select({ value, onValueChange, options, placeholder, ariaLabel, className, disabled }: SelectProps) {
   const [open, setOpen] = useState(false);
   const reduceMotion = useReducedMotion();
+  const selected = options.find((option) => option.value === value);
 
   return (
     <SelectPrimitive.Root value={value} onValueChange={onValueChange} disabled={disabled} open={open} onOpenChange={setOpen}>
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
         className={clsx(
-          "inline-flex h-9 min-w-[150px] items-center justify-between gap-2 rounded-lg border border-(--color-border) bg-(--color-bg-soft) px-3 text-sm text-(--color-fg) outline-none transition-colors",
+          "inline-flex h-9 min-w-0 items-center justify-between gap-2 rounded-lg border border-(--color-border) bg-(--color-bg-soft) px-3 text-sm text-(--color-fg) outline-none transition-colors",
           "hover:bg-(--color-bg-mute) focus-visible:ring-2 focus-visible:ring-(--color-accent)/25 disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
       >
-        <SelectPrimitive.Value placeholder={placeholder} />
+        <span className="min-w-0 flex-1 truncate text-left">
+          {selected ? selected.label : <SelectPrimitive.Value placeholder={placeholder} />}
+        </span>
         <SelectPrimitive.Icon asChild>
           <ChevronDown size={14} className="shrink-0 text-(--color-fg-dim)" />
         </SelectPrimitive.Icon>

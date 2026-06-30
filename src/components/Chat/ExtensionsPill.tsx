@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Plug, ChevronUp } from "lucide-react";
+import { Plug, ChevronUp } from "@/components/ui/icons/compat";
+import { Chip } from "@/components/ui/Chip";
 import clsx from "clsx";
 
 /**
@@ -44,27 +45,26 @@ export function ExtensionsPill({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={clsx(
-          "pi-statusbar-pill",
-          open && "pi-statusbar-pill-open",
-        )}
+        className="rounded-full"
         title={items.map(([k, v]) => `${k}: ${v}`).join("\n")}
       >
-        <Plug size={11} />
-        <span
-          className={clsx(
-            "w-1.5 h-1.5 rounded-full",
-            hasError ? "bg-(--color-warn)" : "bg-(--color-accent)",
-          )}
-        />
-        <span>{items.length} ext</span>
-        <ChevronUp
-          size={10}
-          className={clsx(
-            "transition-transform",
-            !open && "rotate-180",
-          )}
-        />
+        <Chip
+          size="xs"
+          tone={hasError ? "warning" : open ? "accent" : "neutral"}
+          variant={open ? "mode" : "health"}
+          icon={<Plug size={11} />}
+          dot={hasError ? "warning" : "accent"}
+          interactive
+        >
+          <span>{items.length} ext</span>
+          <ChevronUp
+            size={10}
+            className={clsx(
+              "transition-transform",
+              !open && "rotate-180",
+            )}
+          />
+        </Chip>
       </button>
       {open && (
         <div className="pi-statusbar-popover">

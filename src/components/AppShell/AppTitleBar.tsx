@@ -1,4 +1,4 @@
-import { PanelTop } from "lucide-react";
+import { PanelTop } from "@/components/ui/icons/compat";
 import { useChat } from "@/store/chat";
 
 export function AppTitleBar() {

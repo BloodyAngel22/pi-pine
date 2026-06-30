@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Send, Square, Paperclip, X, Slash, Sparkles, ListTodo, Play } from "lucide-react";
+import { Send, Square, Paperclip, X, Slash, Sparkles, ListTodo, Play } from "@/components/ui/icons/compat";
+import { AppIcon } from "@/components/ui/AppIcon";
+import { Chip } from "@/components/ui/Chip";
 import clsx from "clsx";
 import { useChat, type UiBlock } from "@/store/chat";
 import { useExt } from "@/store/ext";
@@ -677,10 +679,9 @@ export function Composer({ onSlash, onBtw }: Props) {
         {/* Plan-mode */}
         {planMode && (
           <div className="mb-1 flex items-center gap-1.5 px-1">
-            <span className="inline-flex items-center gap-1 rounded-md border border-(--color-warn)/30 bg-(--color-warn)/15 px-1.5 py-0.5 text-[10px] text-(--color-warn)">
-              <ListTodo size={10} />
+            <Chip size="xs" tone="warning" variant="mode" icon={<AppIcon name="plan" size={10} />}>
               Plan mode
-            </span>
+            </Chip>
           </div>
         )}
 
@@ -707,8 +708,8 @@ export function Composer({ onSlash, onBtw }: Props) {
         )}
 
         {planMode && planFilePath && (planReady || assistantPlanReady) && (
-          <div className="mb-2 rounded-lg border border-(--color-warn)/35 bg-(--color-warn)/10 px-3 py-2 flex items-center gap-2">
-            <ListTodo size={14} className="text-(--color-warn) shrink-0" />
+          <div className="mb-2 rounded-xl border border-(--color-warn)/30 bg-(--color-warn)/9 px-3 py-2 flex items-center gap-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-warn)_16%,white_12%)]">
+            <AppIcon name="plan" size={14} className="text-(--color-warn) shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-(--color-fg)">План готов к реализации</div>
               <div className="text-[10px] text-(--color-fg-dim) truncate" title={planFilePath}>
@@ -727,7 +728,7 @@ export function Composer({ onSlash, onBtw }: Props) {
               )}
               title="Выполнить текущий план (/execute)"
             >
-              <Play size={12} />
+              <AppIcon name="play" size={12} />
               Реализовать
             </button>
           </div>

@@ -818,40 +818,9 @@ select {
   gap: 0.35rem;
   min-height: 22px;
 }
-.pi-statusbar-yolo {
-  padding: 1px 7px 1px 6px;
-  border: 1px solid color-mix(in srgb, var(--color-warn) 38%, var(--color-border));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-warn) 13%, transparent);
-  color: var(--color-warn);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
 .pi-statusbar-sep {
   color: var(--color-fg-dim);
   opacity: 0.5;
-}
-.pi-statusbar-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 1px 7px 1px 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-fg-mute);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.pi-statusbar-pill:hover {
-  background: var(--color-bg-mute);
-  color: var(--color-fg);
-}
-.pi-statusbar-pill-open {
-  background: var(--color-bg-mute);
-  color: var(--color-fg);
-  border-color: color-mix(in oklab, var(--color-accent) 40%, var(--color-border));
 }
 .pi-statusbar-popover {
   position: absolute;

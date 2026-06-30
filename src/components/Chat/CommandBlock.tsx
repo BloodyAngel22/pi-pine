@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
+import { ChevronDown, ChevronRight, Terminal } from "@/components/ui/icons/compat";
 
 /**
  * Сворачиваемый блок для команды/скилла в сообщении пользователя.

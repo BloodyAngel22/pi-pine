@@ -1,8 +1,9 @@
-import { Folder, Hash, DollarSign, Gauge, Monitor, RefreshCw, Pin, ShieldAlert } from "lucide-react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { shortenPath } from "@/utils/path";
+import { AppIcon } from "@/components/ui/AppIcon";
+import { Chip } from "@/components/ui/Chip";
 import { ExtensionsPill } from "./ExtensionsPill";
 import { FastFetchIndicator } from "./FastFetchIndicator";
 import { ContextIndicator } from "./ContextIndicator";
@@ -36,79 +37,81 @@ export function StatusBar() {
   return (
     <div className="pi-statusbar">
       <div className="pi-statusbar-scroll">
-      {/* === LEFT: контекст работы (cwd / model / thinking) === */}
-      <span className="pi-statusbar-item" title={cwd}>
-        <Folder size={11} className="text-(--color-fg-dim)" />
-        <span className="font-mono truncate max-w-[260px]">{cwdShort}</span>
-      </span>
-      {/* === MIDDLE: метрики сессии === */}
-      {totalTokens > 0 && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span
-            className="pi-statusbar-item"
-            title={`tokens in/out/total: ${stats?.tokens?.input ?? 0}/${stats?.tokens?.output ?? 0}/${totalTokens}`}
-          >
-            <Gauge size={11} className="text-(--color-fg-dim)" />
-            <span className="font-mono">{fmtTokens(totalTokens)}</span>
-          </span>
-        </>
-      )}
-      {stats && stats.totalMessages != null && stats.totalMessages > 0 && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span className="pi-statusbar-item" title="Сообщений в сессии">
-            <Hash size={11} className="text-(--color-fg-dim)" />
-            <span className="font-mono">{stats.totalMessages}</span>
-          </span>
-        </>
-      )}
-      {stats && stats.cost != null && stats.cost > 0 && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span
-            className="pi-statusbar-item"
-            title={`Стоимость сессии: $${stats.cost.toFixed(4)}`}
-          >
-            <DollarSign size={11} className="text-(--color-fg-dim)" />
-            <span className="font-mono">{stats.cost.toFixed(2)}</span>
-          </span>
-        </>
-      )}
-      <FastFetchIndicator />
-      {attachedSkills.length > 0 && (
-        <>
-          <span className="pi-statusbar-sep">·</span>
-          <span className="pi-statusbar-item text-(--color-accent)" title={`Закреплённые скиллы: ${attachedSkills.join(", ")}`}>
-            <Pin size={11} />
-            <span>{attachedSkills.length}</span>
-          </span>
-        </>
-      )}
-
+        {/* === LEFT: контекст работы (cwd / model / thinking) === */}
+        <Chip size="xs" icon={<AppIcon name="folder" size={11} />} mono title={cwd}>
+          <span className="truncate max-w-[260px]">{cwdShort}</span>
+        </Chip>
+        {/* === MIDDLE: метрики сессии === */}
+        {totalTokens > 0 && (
+          <>
+            <span className="pi-statusbar-sep">·</span>
+            <Chip
+              size="xs"
+              icon={<AppIcon name="gauge" size={11} />}
+              mono
+              title={`tokens in/out/total: ${stats?.tokens?.input ?? 0}/${stats?.tokens?.output ?? 0}/${totalTokens}`}
+            >
+              {fmtTokens(totalTokens)}
+            </Chip>
+          </>
+        )}
+        {stats && stats.totalMessages != null && stats.totalMessages > 0 && (
+          <>
+            <span className="pi-statusbar-sep">·</span>
+            <Chip size="xs" icon={<AppIcon name="hash" size={11} />} mono title="Сообщений в сессии">
+              {stats.totalMessages}
+            </Chip>
+          </>
+        )}
+        {stats && stats.cost != null && stats.cost > 0 && (
+          <>
+            <span className="pi-statusbar-sep">·</span>
+            <Chip
+              size="xs"
+              icon={<AppIcon name="cost" size={11} />}
+              mono
+              title={`Стоимость сессии: $${stats.cost.toFixed(4)}`}
+            >
+              {stats.cost.toFixed(2)}
+            </Chip>
+          </>
+        )}
+        <FastFetchIndicator />
+        {attachedSkills.length > 0 && (
+          <>
+            <span className="pi-statusbar-sep">·</span>
+            <Chip size="xs" tone="accent" icon={<AppIcon name="pin" size={11} />} title={`Закреплённые скиллы: ${attachedSkills.join(", ")}`}>
+              {attachedSkills.length}
+            </Chip>
+          </>
+        )}
       </div>
 
       {/* === RIGHT: транзитные индикаторы + ext-пилюля.
             Отдельная зона без overflow — иначе absolute popover клипуется. */}
       <div className="pi-statusbar-end">
         {yoloMode && (
-          <span
-            className="pi-statusbar-item pi-statusbar-yolo"
-            title="YOLO permissions включены: разрешения подтверждаются автоматически"
+          <Chip
+            size="xs"
+            tone="danger"
+            variant="mode"
+            icon={<AppIcon name="yolo" size={11} />}
+            title="YOLO permissions / Auto-approve включены: разрешения подтверждаются автоматически"
           >
-            <ShieldAlert size={11} />
-            <span>YOLO</span>
-          </span>
+            YOLO
+          </Chip>
         )}
         <ContextIndicator />
         {(agent?.isRetrying || retryStatus.active) && (
-          <span
-            className="pi-statusbar-item text-(--color-accent)"
+          <Chip
+            size="xs"
+            tone="accent"
+            variant="health"
+            icon={<AppIcon name="retry" size={11} />}
             title={retryStatus.errorMessage ?? "auto retry"}
           >
-            <RefreshCw size={11} />
             retry {retryStatus.attempt || agent?.retryAttempt || 0}
-          </span>
+          </Chip>
         )}
         {extEntries.length > 0 && <ExtensionsPill items={extEntries} />}
         <span className="pi-statusbar-sep">·</span>
@@ -121,7 +124,7 @@ export function StatusBar() {
           onClick={() => useVirtualDisplay.getState().toggleVisible()}
           title="Экран агента"
         >
-          <Monitor size={11} />
+          <AppIcon name="agentScreen" size={11} />
           <span>Экран</span>
         </button>
       </div>

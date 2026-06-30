@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown, Search, X } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useChat } from "@/store/chat";

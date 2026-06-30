@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Search, X, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, X, FileText, ChevronDown, ChevronUp } from "@/components/ui/icons/compat";
+import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 
 export function FastContextIndicator() {
@@ -23,18 +24,24 @@ export function FastContextIndicator() {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className={`pi-statusbar-item cursor-pointer ${isSearching ? "text-(--color-accent)" : isError ? "text-(--color-danger)" : "text-(--color-fg-mute)"}`}
+          className="rounded-full"
           title={isSearching ? "Fast Context: поиск..." : isError ? `Fast Context: ${error}` : `Fast Context: ${fileCount} файлов`}
         >
-          <Search size={11} className={isSearching ? "animate-pulse" : ""} />
-          <span className="font-mono">
+          <Chip
+            size="xs"
+            tone={isError ? "danger" : isSearching || open ? "accent" : "neutral"}
+            variant={open ? "mode" : "health"}
+            icon={<Search size={11} className={isSearching ? "animate-pulse" : ""} />}
+            mono
+            interactive
+          >
             {isSearching ? "fc…" : isError ? "fc!" : fileCount > 0 ? `fc:${fileCount}` : "fc"}
-          </span>
-          {(fileCount > 0 || isError) && (
-            <span className="text-(--color-fg-dim)">
-              {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-            </span>
-          )}
+            {(fileCount > 0 || isError) && (
+              <span className="text-(--color-fg-dim)">
+                {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              </span>
+            )}
+          </Chip>
         </button>
         {open && (fileCount > 0 || isError) && (
           <div className="pi-statusbar-popover">

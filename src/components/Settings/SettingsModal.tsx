@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { ExternalLink, Folder, Search } from "lucide-react";
+import { ExternalLink, Folder, Search } from "@/components/ui/icons/compat";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -260,20 +260,26 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
             <SettingsStack>
               <Section title="OCR">
                 <Switch checked={imgOcrEnabled} onChange={setImgOcrEnabled} label="Распознавать текст" description={imgStatus?.tesseract_installed ? "Tesseract доступен" : "Tesseract не найден, будет использован JS fallback при наличии"} />
-                <Select
-                  value={imgOcrLang}
-                  onValueChange={setImgOcrLang}
-                  ariaLabel="OCR language"
-                  className="mt-3 w-[180px]"
-                  options={[
-                    { value: "eng", label: "eng" },
-                    { value: "eng+rus", label: "eng+rus" },
-                    { value: "rus", label: "rus" },
-                    { value: "deu", label: "deu" },
-                    { value: "fra", label: "fra" },
-                    { value: "spa", label: "spa" },
-                  ]}
-                />
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-(--color-border-muted) bg-(--color-bg-mute)/45 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-(--color-fg)">Язык OCR</div>
+                    <div className="text-[11px] leading-snug text-(--color-fg-dim)">Используется для распознавания текста на изображениях.</div>
+                  </div>
+                  <Select
+                    value={imgOcrLang}
+                    onValueChange={setImgOcrLang}
+                    ariaLabel="OCR language"
+                    className="h-8 w-[132px] shrink-0 text-xs"
+                    options={[
+                      { value: "eng", label: "eng" },
+                      { value: "eng+rus", label: "eng+rus" },
+                      { value: "rus", label: "rus" },
+                      { value: "deu", label: "deu" },
+                      { value: "fra", label: "fra" },
+                      { value: "spa", label: "spa" },
+                    ]}
+                  />
+                </div>
               </Section>
               <Section title="Captioning">
                 <Switch checked={imgCaptioningEnabled} onChange={setImgCaptioningEnabled} label="Описывать изображение" description={imgStatus?.transformers_installed ? "Transformers доступны" : "@huggingface/transformers не найден"} />

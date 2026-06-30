@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { X, Play, Square, Monitor } from "lucide-react";
+import { X, Play, Square, Monitor } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
 import { useVirtualDisplay } from "@/store/virtualDisplay";
 import clsx from "clsx";
 
@@ -43,10 +44,9 @@ export function AgentScreen() {
             <Monitor size={14} className="text-(--color-fg-dim)" />
             <h2 className="text-sm font-semibold">Экран агента</h2>
             {isRunning && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-(--color-accent)/15 text-(--color-accent)">
-                <span className="w-1.5 h-1.5 rounded-full bg-(--color-accent) animate-pulse" />
+              <Chip size="xs" tone="accent" variant="health" dot="accent" pulseDot>
                 active
-              </span>
+              </Chip>
             )}
           </div>
           <Button variant="ghost" size="sm" onClick={toggleVisible} icon={<X size={14} />} />

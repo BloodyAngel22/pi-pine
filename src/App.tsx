@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { AlertCircle, X, GitFork } from "lucide-react";
+import { AlertCircle, X, GitFork } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type StartupProgressEvent, type UiMessage } from "@/store/chat";
 import { useExt } from "@/store/ext";

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Info, Pin, Plus, Search, Sparkles, X } from "lucide-react";
+import { Info, Pin, Plus, Search, Sparkles, X } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat } from "@/store/chat";
 import * as rpc from "@/rpc/bridge";

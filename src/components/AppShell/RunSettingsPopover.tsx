@@ -1,5 +1,5 @@
 import { Popover } from "@mantine/core";
-import { Bot, Check, ChevronDown, ChevronUp, GitFork, Plus, Settings2, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronUp, GitFork, Plus, Settings2 } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
@@ -7,7 +7,9 @@ import { useExt } from "@/store/ext";
 import { useAgentsStore } from "@/store/agents";
 import type { ThinkingLevel } from "@/rpc/types";
 import { Switch } from "@/components/ui/Switch";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
 
 interface RunSettingsPopoverProps {
   open: boolean;
@@ -114,25 +116,27 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
         <button
           type="button"
           onClick={() => onOpenChange(!open)}
-          className={clsx(
-            "inline-flex h-7 max-w-[440px] items-center gap-1.5 rounded-lg border px-2 text-[11px] font-medium transition-colors",
-            open
-              ? "border-(--color-accent)/35 bg-(--color-accent-soft) text-(--color-accent)"
-              : "border-(--color-border) bg-(--color-bg-soft) text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg)",
-            triggerClassName,
-          )}
+          className={clsx("rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)/25", triggerClassName)}
           aria-label="Run settings"
           title={fullRunLabel}
         >
-          <SlidersHorizontal size={12} className="shrink-0" />
-          <span className="max-w-[92px] truncate text-(--color-accent)">{presetLabel}</span>
-          <span className="text-(--color-fg-dim)">·</span>
-          <span className="max-w-[88px] truncate font-mono text-(--color-fg-mute)">{providerLabel}</span>
-          <span className="font-mono text-(--color-fg-dim)">/</span>
-          <span className="max-w-[178px] truncate font-mono text-(--color-fg)">{shortModelLabel}</span>
-          <span className="text-(--color-fg-dim)">·</span>
-          <span className="shrink-0">{thinkingLevel}</span>
-          <ChevronUp size={12} className={clsx("shrink-0 transition-transform", open && "rotate-180")} />
+          <Chip
+            tone={open ? "accent" : "neutral"}
+            variant={open ? "mode" : "context"}
+            icon={<AppIcon name="settings2" size={13} />}
+            interactive
+            mono
+            className="h-7 max-w-[440px] px-2.5 leading-normal"
+          >
+            <span className="max-w-[92px] truncate text-(--color-accent)">{presetLabel}</span>
+            <span className="text-(--color-fg-dim)">·</span>
+            <span className="max-w-[88px] truncate text-(--color-fg-mute)">{providerLabel}</span>
+            <span className="text-(--color-fg-dim)">/</span>
+            <span className="max-w-[178px] truncate text-(--color-fg)">{shortModelLabel}</span>
+            <span className="text-(--color-fg-dim)">·</span>
+            <span className="shrink-0 font-sans">{thinkingLevel}</span>
+            <ChevronUp size={12} className={clsx("shrink-0 transition-transform", open && "rotate-180")} />
+          </Chip>
         </button>
       </Popover.Target>
       <Popover.Dropdown>
@@ -202,9 +206,9 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
                   )}
                   {preset && (
                     <div className="flex flex-wrap gap-1 font-mono text-[10px]">
-                      <span className="rounded bg-(--color-bg-mute) px-1.5 py-0.5">bash: {preset.permissions?.bash ?? "ask"}</span>
-                      <span className="rounded bg-(--color-bg-mute) px-1.5 py-0.5">files: {preset.permissions?.files ?? "ask"}</span>
-                      <span className="rounded bg-(--color-bg-mute) px-1.5 py-0.5">mcp: {preset.mcpPermissions?.mode ?? "ask"}</span>
+                      <Chip size="xs" mono>bash: {preset.permissions?.bash ?? "ask"}</Chip>
+                      <Chip size="xs" mono>files: {preset.permissions?.files ?? "ask"}</Chip>
+                      <Chip size="xs" mono icon={<AppIcon name="mcp" size={10} />}>mcp: {preset.mcpPermissions?.mode ?? "ask"}</Chip>
                     </div>
                   )}
                 </div>
@@ -244,7 +248,7 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
 
           <div className="space-y-2 rounded-xl border border-(--color-border-muted) bg-(--color-bg-soft) p-3">
             <Switch checked={planMode} onChange={() => void togglePlanMode()} label="Plan mode" description="Генерировать и исполнять планы явно." />
-            <Switch checked={yoloMode} onChange={() => toggleYoloMode()} label="YOLO permissions" description="Авто-апрув разрешений. Опасно." />
+            <Switch checked={yoloMode} onChange={() => toggleYoloMode()} label="YOLO permissions / Auto-approve" description="Автоматически подтверждать разрешения. Опасно." />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -256,8 +260,8 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
           )}
           {yoloMode && (
             <div className="flex items-start gap-2 rounded-lg border border-(--color-danger)/20 bg-(--color-danger)/10 px-2.5 py-2 text-[11px] text-(--color-danger)">
-              <ShieldAlert size={13} className="mt-0.5 shrink-0" />
-              YOLO can modify files or run commands without asking.
+              <AppIcon name="yolo" size={13} className="mt-0.5 shrink-0" />
+              YOLO permissions / Auto-approve can modify files or run commands without asking.
             </div>
           )}
         </div>

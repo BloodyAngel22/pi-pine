@@ -1,4 +1,4 @@
-import { MessageSquare, Plus, Search, Settings } from "lucide-react";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { IconRail, RailButton } from "./IconRail";
 
 interface LeftRailProps {
@@ -12,11 +12,11 @@ interface LeftRailProps {
 export function LeftRail({ sessionsOpen, onToggleSessions, onNewSession, onOpenSearch, onOpenSettings }: LeftRailProps) {
   return (
     <IconRail side="left">
-      <RailButton side="left" icon={<MessageSquare size={17} />} label="Все сессии" active={sessionsOpen} onClick={onToggleSessions} />
-      <RailButton side="left" icon={<Plus size={17} />} label="Новая сессия" onClick={onNewSession} />
-      <RailButton side="left" icon={<Search size={17} />} label="Поиск" onClick={onOpenSearch} />
+      <RailButton side="left" icon={<AppIcon name="message" size={17} />} label="Все сессии" active={sessionsOpen} onClick={onToggleSessions} />
+      <RailButton side="left" icon={<AppIcon name="plus" size={17} />} label="Новая сессия" onClick={onNewSession} />
+      <RailButton side="left" icon={<AppIcon name="search" size={17} />} label="Поиск" onClick={onOpenSearch} />
       <div className="flex-1" />
-      <RailButton side="left" icon={<Settings size={17} />} label="Настройки" onClick={onOpenSettings} />
+      <RailButton side="left" icon={<AppIcon name="settings" size={17} />} label="Настройки" onClick={onOpenSettings} />
     </IconRail>
   );
 }

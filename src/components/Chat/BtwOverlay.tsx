@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { HelpCircle, Loader2, Send, X } from "lucide-react";
+import { HelpCircle, Loader2, Send, X } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { askBtw } from "@/rpc/bridge";
 import { Markdown } from "./Markdown";

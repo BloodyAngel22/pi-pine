@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CopyPlus, Plus, X } from "lucide-react";
+import { CopyPlus, Plus, X } from "@/components/ui/icons/compat";
+import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 import { cx as clsx } from "@/lib/cx";
 
@@ -154,17 +155,21 @@ export function SessionTabs() {
               <span className="truncate min-w-0 flex-1">{labelFor(tab.tabId, tab.sessionName)}</span>
             )}
             {tab.pendingUserAction && (
-              <span
-                className="shrink-0 px-1.5 py-0.5 rounded-full bg-yellow-400/15 text-yellow-300 border border-yellow-400/30 text-[10px] font-semibold animate-pulse"
+              <Chip
+                size="xs"
+                tone="warning"
+                variant="mode"
+                dot="warning"
+                pulseDot
                 title={tab.pendingUserAction.kind === "permission" ? "Ждёт permission" : "Ждёт ответ пользователя"}
               >
                 {waitingLabel(tab.pendingUserAction.kind)}{tab.pendingUserAction.count > 1 ? `×${tab.pendingUserAction.count}` : ""}
-              </span>
+              </Chip>
             )}
             {!active && tab.unseenAssistantCount > 0 && (
-              <span className="shrink-0 px-1 py-0.5 rounded-full bg-orange-500/15 text-orange-500 text-[10px] font-bold">
+              <Chip size="xs" tone="warning" variant="health">
                 {tab.unseenAssistantCount}
-              </span>
+              </Chip>
             )}
             <button
               type="button"

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { TreePine, Check, Loader2 } from "lucide-react";
+import { TreePine, Check, Loader2 } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 
 export type BootStage = "init" | "detect" | "starting" | "ready";

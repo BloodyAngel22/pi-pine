@@ -1,5 +1,5 @@
 import * as Tabs from "@radix-ui/react-tabs";
-import { Bot, FolderCog, Image, KeyRound, Palette } from "lucide-react";
+import { Bot, FolderCog, Image, KeyRound, Palette } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 
 export type SettingsSectionId = "environment" | "model" | "interface" | "images" | "auth";

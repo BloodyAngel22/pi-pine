@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, RefreshCw, Trash2, MessageSquare, MoreHorizontal, GitFork, Copy as CopyIcon, Pencil, Download, Search, X } from "lucide-react";
+import { Plus, RefreshCw, Trash2, MessageSquare, MoreHorizontal, GitFork, Copy as CopyIcon, Pencil, Download, Search, X } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { motion, type Transition, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/Button";

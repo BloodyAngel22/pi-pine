@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Brain } from "lucide-react";
+import { ChevronDown, ChevronRight, Brain } from "@/components/ui/icons/compat";
 import { t } from "@/i18n/ru";
 
 export function ThinkingBlock({ text }: { text: string }) {

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { X } from "lucide-react";
+import { X } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { modalCardVariants, modalOverlayVariants, softEase } from "@/lib/motionPresets";
 import { Button } from "./Button";

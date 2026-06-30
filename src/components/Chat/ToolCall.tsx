@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
 import { useExt } from "@/store/ext";

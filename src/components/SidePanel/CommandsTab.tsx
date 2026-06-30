@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pin, Play, RefreshCw, Search, Terminal, Plus } from "lucide-react";
+import { Pin, Play, RefreshCw, Search, Terminal, Plus } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
 import * as rpc from "@/rpc/bridge";
 import { useChat } from "@/store/chat";

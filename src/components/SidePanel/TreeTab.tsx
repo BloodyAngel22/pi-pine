@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, FileWarning, GitBranch, MessageSquare, Navigation, RefreshCw, RotateCcw } from "lucide-react";
+import { Bot, FileWarning, GitBranch, MessageSquare, Navigation, RefreshCw, RotateCcw } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import * as rpc from "@/rpc/bridge";

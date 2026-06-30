@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Globe, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Globe, X, ChevronDown, ChevronUp } from "@/components/ui/icons/compat";
+import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 
 export function FastFetchIndicator() {
@@ -29,16 +30,24 @@ export function FastFetchIndicator() {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className={`pi-statusbar-item cursor-pointer ${isFetching ? "text-(--color-accent)" : isError ? "text-(--color-danger)" : "text-(--color-fg-mute)"}`}
+          className="rounded-full"
           title={title}
         >
-          <Globe size={11} className={isFetching ? "animate-pulse" : ""} />
-          <span className="font-mono">{label}</span>
-          {(result || isError) && (
-            <span className="text-(--color-fg-dim)">
-              {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-            </span>
-          )}
+          <Chip
+            size="xs"
+            tone={isError ? "danger" : isFetching || open ? "accent" : "neutral"}
+            variant={open ? "mode" : "health"}
+            icon={<Globe size={11} className={isFetching ? "animate-pulse" : ""} />}
+            mono
+            interactive
+          >
+            {label}
+            {(result || isError) && (
+              <span className="text-(--color-fg-dim)">
+                {open ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              </span>
+            )}
+          </Chip>
         </button>
         {open && (result || isError) && (
           <div className="pi-statusbar-popover">

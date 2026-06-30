@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CheckCircle2, Circle, ExternalLink, RefreshCw, Save, Play } from "lucide-react";
+import { CheckCircle2, Circle, ExternalLink, RefreshCw, Save, Play } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
 

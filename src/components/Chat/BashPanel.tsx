@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Terminal, X, Play } from "lucide-react";
+import { Terminal, X, Play } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
 

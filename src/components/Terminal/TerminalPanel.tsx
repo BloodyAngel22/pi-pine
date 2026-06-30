@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Columns2, Plus, Square, Terminal as TerminalIcon, X } from "lucide-react";
+import { ChevronDown, Columns2, Plus, Square, Terminal as TerminalIcon, X } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { useChat } from "@/store/chat";
 import { killTerminal, listTerminals, onTerminalExit, spawnTerminal, type TerminalInfo } from "@/terminal";

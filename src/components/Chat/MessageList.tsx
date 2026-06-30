@@ -1,5 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Sparkles, ArrowDown } from "lucide-react";
+import { Sparkles, ArrowDown } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type UiMessage } from "@/store/chat";
 import { useShallow } from "zustand/react/shallow";

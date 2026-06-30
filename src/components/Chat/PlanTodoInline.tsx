@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CheckCircle2, ChevronDown, ChevronRight, Circle, ListTodo } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, Circle, ListTodo } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { useChat, type UiBlock, type UiBlockTool } from "@/store/chat";
 

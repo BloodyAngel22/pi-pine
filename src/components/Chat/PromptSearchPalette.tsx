@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Search, X } from "lucide-react";
+import { Search, X } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type UiBlockText, type UiMessage } from "@/store/chat";
 import { useShallow } from "zustand/react/shallow";

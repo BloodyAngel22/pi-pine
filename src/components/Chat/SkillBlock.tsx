@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, Sparkles } from "@/components/ui/icons/compat";
 
 /**
  * Сворачиваемый блок для `/skill:NAME` токенов в сообщениях.
