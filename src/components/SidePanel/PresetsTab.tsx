@@ -116,9 +116,9 @@ export function PresetsTab() {
 
               <div className="text-[11px] font-mono text-(--color-fg-dim) truncate" title={model}>{model}</div>
               <div className="flex flex-wrap gap-1 text-[11px]">
-                <Badge>bash: {preset.permissions?.bash ?? "allow"}</Badge>
-                <Badge>files: {preset.permissions?.files ?? "allow"}</Badge>
-                <Badge>mcp: {preset.mcpPermissions?.mode ?? "allow-all"}</Badge>
+                <Badge>bash: {preset.permissions?.bash ?? "ask"}</Badge>
+                <Badge>files: {preset.permissions?.files ?? "ask"}</Badge>
+                <Badge>mcp: {preset.mcpPermissions?.mode ?? "ask"}</Badge>
                 {preset.thinkingLevel && <Badge>think: {preset.thinkingLevel}</Badge>}
               </div>
 

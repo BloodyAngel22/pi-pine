@@ -1,7 +1,7 @@
-import { Popover, SegmentedControl as MantineSegmentedControl, Select as MantineSelect } from "@mantine/core";
-import { Bot, ChevronUp, GitFork, Plus, Settings2, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { Popover } from "@mantine/core";
+import { Bot, Check, ChevronDown, ChevronUp, GitFork, Plus, Settings2, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import clsx from "clsx";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useAgentsStore } from "@/store/agents";
@@ -41,28 +41,58 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
   const presets = useAgentsStore((s) => s.presets);
   const activePreset = useAgentsStore((s) => s.activePreset);
   const loadingPresets = useAgentsStore((s) => s.loading);
+  const presetError = useAgentsStore((s) => s.error);
   const ensureDefault = useAgentsStore((s) => s.ensureDefault);
   const selectPreset = useAgentsStore((s) => s.selectPreset);
   const clearPreset = useAgentsStore((s) => s.clearPreset);
   const yoloMode = useExt((s) => s.yoloMode);
   const toggleYoloMode = useExt((s) => s.toggleYoloMode);
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const presetMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     void ensureDefault();
   }, [ensureDefault, open]);
 
+  useEffect(() => {
+    if (!open) setPresetMenuOpen(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!presetMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!presetMenuRef.current?.contains(event.target as Node)) setPresetMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPresetMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [presetMenuOpen]);
+
   const providerLabel = model?.provider ?? "provider";
   const modelLabel = model?.id ?? "model";
   const shortModelLabel = middleTruncate(modelLabel);
   const presetLabel = activePreset || "manual";
   const fullRunLabel = model ? `${presetLabel} · ${model.provider}/${model.id} · ${thinkingLevel}` : `${presetLabel} · model not selected · ${thinkingLevel}`;
+  const presetMenuValue = activePreset ?? "__manual__";
+  const presetMenuItems = [
+    { value: "__manual__", label: "Manual" },
+    ...presets.map((preset) => ({ value: preset.name, label: preset.name })),
+  ];
+  const presetTriggerLabel = activePreset ?? "Manual";
   const applyPreset = async (name: string | null) => {
+    setPresetMenuOpen(false);
     if (!name || name === "__manual__") {
       clearPreset();
       return;
     }
-    await selectPreset(name, { sessionId: activeTabId });
+    await selectPreset(name, { sessionId: activeTabId }).catch(() => undefined);
     await refreshState().catch(() => undefined);
   };
 
@@ -116,31 +146,100 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
               <Bot size={13} className="text-(--color-accent)" />
               Agent preset
             </div>
-            <MantineSelect
-              value={activePreset ?? "__manual__"}
-              onChange={(value) => void applyPreset(value)}
-              data={[{ value: "__manual__", label: "Manual" }, ...presets.map((preset) => ({ value: preset.name, label: preset.name }))]}
-              searchable
-              disabled={loadingPresets}
-              allowDeselect={false}
-              comboboxProps={{ transitionProps: { transition: "pop", duration: 140, timingFunction: "cubic-bezier(0.22,1,0.36,1)" } }}
-              classNames={{ input: "pi-mantine-input", dropdown: "pi-mantine-select-dropdown", option: "pi-mantine-select-option" }}
-            />
-            <div className="mt-1.5 truncate text-[11px] text-(--color-fg-mute)">
-              {activePreset ? presets.find((preset) => preset.name === activePreset)?.description || "Preset applied to this session." : "Manual mode, no preset applied."}
+            <div ref={presetMenuRef} className="relative">
+              <button
+                type="button"
+                disabled={loadingPresets}
+                onClick={() => setPresetMenuOpen((v) => !v)}
+                aria-haspopup="listbox"
+                aria-expanded={presetMenuOpen}
+                className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-(--color-border) bg-(--color-bg-soft) px-3 text-sm text-(--color-fg) outline-none transition-colors hover:bg-(--color-bg-mute) focus-visible:ring-2 focus-visible:ring-(--color-accent)/25 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="truncate">{presetTriggerLabel}</span>
+                <ChevronDown size={14} className={clsx("shrink-0 text-(--color-fg-dim) transition-transform", presetMenuOpen && "rotate-180")} />
+              </button>
+              {presetMenuOpen && (
+                <div
+                  role="listbox"
+                  className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 max-h-[240px] overflow-auto rounded-xl border border-(--color-border) bg-(--color-bg-soft) p-1 shadow-xl"
+                >
+                  {presetMenuItems.map((item) => {
+                    const selected = item.value === presetMenuValue;
+                    return (
+                      <button
+                        key={item.value}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => void applyPreset(item.value)}
+                        className={clsx(
+                          "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors",
+                          selected
+                            ? "bg-(--color-accent-soft) text-(--color-accent)"
+                            : "text-(--color-fg) hover:bg-(--color-bg-mute)",
+                        )}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        {selected && <Check size={13} className="shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+            {(() => {
+              const preset = activePreset ? presets.find((p) => p.name === activePreset) : null;
+              return (
+                <div className="mt-1.5 space-y-1 text-[11px] text-(--color-fg-mute)">
+                  {presetError ? (
+                    <div className="rounded-md border border-(--color-danger)/25 bg-(--color-danger)/10 px-2 py-1.5 text-(--color-danger)">
+                      {presetError}
+                    </div>
+                  ) : (
+                    <div className="truncate">
+                      {preset?.description || (activePreset ? "Preset applied to this session." : "Manual mode, no preset applied.")}
+                    </div>
+                  )}
+                  {preset && (
+                    <div className="flex flex-wrap gap-1 font-mono text-[10px]">
+                      <span className="rounded bg-(--color-bg-mute) px-1.5 py-0.5">bash: {preset.permissions?.bash ?? "ask"}</span>
+                      <span className="rounded bg-(--color-bg-mute) px-1.5 py-0.5">files: {preset.permissions?.files ?? "ask"}</span>
+                      <span className="rounded bg-(--color-bg-mute) px-1.5 py-0.5">mcp: {preset.mcpPermissions?.mode ?? "ask"}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           <div>
             <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-(--color-fg-dim)">Thinking</div>
-            <MantineSegmentedControl
-              value={thinkingLevel}
-              onChange={(value) => void setThinking(value as ThinkingLevel)}
-              data={thinkingOptions}
-              fullWidth
-              size="xs"
-              classNames={{ root: "pi-thinking-control", control: "pi-thinking-control-item", label: "pi-thinking-control-label", indicator: "pi-thinking-control-indicator" }}
-            />
+            <div
+              role="radiogroup"
+              aria-label="Thinking level"
+              className="grid grid-cols-4 gap-0.5 rounded-lg border border-(--color-border) bg-(--color-bg-soft) p-0.5"
+            >
+              {thinkingOptions.map((option) => {
+                const active = option.value === thinkingLevel;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => void setThinking(option.value)}
+                    className={clsx(
+                      "h-7 min-w-0 rounded-md px-2 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)/25",
+                      active
+                        ? "bg-(--color-accent-soft) text-(--color-accent) shadow-sm ring-1 ring-(--color-accent)/20"
+                        : "text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg)",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="space-y-2 rounded-xl border border-(--color-border-muted) bg-(--color-bg-soft) p-3">

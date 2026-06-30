@@ -204,7 +204,7 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-border) bg-(--color-bg-soft)",
@@ -293,7 +293,7 @@ function DeepResearchToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -393,7 +393,7 @@ function FastFetchToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -455,7 +455,7 @@ function FastContextToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -539,7 +539,7 @@ function ScreenshotToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -647,7 +647,7 @@ function InteractToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -767,7 +767,7 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
   return (
     <div
       className={clsx(
-        "my-1 rounded-lg border text-xs overflow-hidden",
+        "pi-chat-scaled my-1 rounded-lg border text-xs overflow-hidden",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-border) bg-(--color-bg-soft)",
@@ -837,7 +837,7 @@ function AskUserToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/25 bg-(--color-accent)/5",
@@ -915,7 +915,7 @@ function TodoToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError || details?.error
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-border) bg-(--color-bg-soft)",
@@ -994,7 +994,7 @@ function TaskToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : isRunning
@@ -1126,7 +1126,7 @@ function PendingToolCallBlock({ block }: { block: UiBlockTool }) {
   const handleDenyOnce = () => resolvePendingPermission(block.toolUseId, { decision: "deny-once" });
 
   return (
-    <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+    <div className="pi-chat-scaled my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
       {/* Header row */}
       <div className="px-3 py-2 flex items-center gap-2">
         <button
@@ -1233,7 +1233,7 @@ function PendingAskUserToolCallBlock({ block }: { block: UiBlockTool }) {
   };
 
   return (
-    <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+    <div className="pi-chat-scaled my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
       <div className="px-3 py-2 flex items-start gap-2">
         <MessageCircleQuestion size={14} className="text-(--color-accent) shrink-0 mt-0.5" />
         <span className="text-[10px] uppercase tracking-wider font-semibold text-(--color-accent) shrink-0 mt-0.5">
@@ -1360,7 +1360,7 @@ function AnalyzeImageToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",

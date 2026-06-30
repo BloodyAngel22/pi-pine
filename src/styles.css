@@ -114,39 +114,6 @@ select {
   color: var(--color-accent) !important;
 }
 
-.pi-thinking-control {
-  height: 32px !important;
-  gap: 2px !important;
-  border: 1px solid var(--color-border) !important;
-  background: var(--color-bg-soft) !important;
-  padding: 2px !important;
-}
-
-.pi-thinking-control-item {
-  border: 0 !important;
-}
-
-.pi-thinking-control-label {
-  position: relative !important;
-  z-index: 2 !important;
-  height: 26px !important;
-  padding-inline: 10px !important;
-  color: var(--color-fg-mute) !important;
-  font-size: 12px !important;
-  line-height: 26px !important;
-}
-
-.pi-thinking-control-indicator {
-  background: var(--color-accent-soft) !important;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent) !important;
-  box-shadow: none !important;
-}
-
-.pi-thinking-control-label[data-active] {
-  color: var(--color-accent) !important;
-  font-weight: 700 !important;
-}
-
 @keyframes pi-popover-in {
   from {
     opacity: 0;
@@ -308,6 +275,21 @@ select {
   margin: 0.4rem 0;
 }
 
+/* Блоки агента внутри чата уважают размер текста чата.
+   Класс .pi-chat-scaled ставится на корневой контейнер блока. Внутри
+   переводим типовые компактные размеры в em, чтобы они наследовались от
+   .pi-stream-content и множителя --chat-font-mult. */
+.pi-chat-scaled,
+.pi-chat-scaled .text-xs,
+.pi-chat-scaled .text-\[11px\],
+.pi-chat-scaled .font-mono {
+  font-size: 0.92em;
+}
+.pi-chat-scaled .text-\[10px\],
+.pi-chat-scaled .text-\[9px\] {
+  font-size: 0.8em;
+}
+
 /* highlight.js (rehype-highlight) — цвета из темы через CSS-переменные */
 .hljs {
   color: var(--color-fg);
@@ -396,6 +378,7 @@ select {
   margin: 0 auto;
   width: 100%;
   padding: 1.25rem 1rem 0;
+  font-size: calc(13px * var(--chat-font-mult, 1));
 }
 
 .pi-stream-item {

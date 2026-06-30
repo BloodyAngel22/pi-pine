@@ -13,7 +13,7 @@ export function SkillBlock({ name, body }: { name: string; body: string }) {
   const preview = hasBody ? body.replace(/\s+/g, " ").slice(0, 80) : "";
 
   return (
-    <div className="my-1 rounded-md border border-(--color-accent)/30 bg-(--color-accent-soft)/15 text-xs">
+    <div className="pi-chat-scaled my-1 rounded-md border border-(--color-accent)/30 bg-(--color-accent-soft)/15 text-xs">
       <button
         type="button"
         onClick={() => hasBody && setOpen((v) => !v)}

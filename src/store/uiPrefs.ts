@@ -1,3 +1,4 @@
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { create } from "zustand";
 
 const KEY_FONT = "pi-pine.fontScale";
@@ -60,23 +61,24 @@ function applyFontScale(scale: number) {
   const root = document.documentElement;
   const rounded = Math.round(scale * 1000) / 1000;
 
-  // Важно: не используем CSS `zoom`. Он визуально масштабирует страницу,
-  // но ломает координаты floating UI (Popover/Tooltip), потому что
-  // библиотеки считают позицию через getBoundingClientRect в layout-space.
+  // Масштаб интерфейса применяется через webview-zoom (как Ctrl+= в браузере).
+  // Он масштабирует ВСЁ равномерно: px, иконки, rem — и при этом не ломает
+  // floating UI, т.к. координатная система внутри webview остаётся согласованной.
+  // Root font-size держим в дефолте, иначе будет двойное масштабирование.
   root.style.removeProperty("zoom");
+  root.style.removeProperty("font-size");
+  root.style.removeProperty("--app-font-size");
 
-  if (Math.abs(scale - 1.0) < 0.001) {
-    root.style.removeProperty("font-size");
-    root.style.removeProperty("--app-font-size");
-  } else {
-    // Tailwind text-xs/text-sm основаны на rem, Mantine тоже использует rem.
-    // Меняя root font-size, мы масштабируем интерфейс через нормальный layout,
-    // поэтому popover/tooltip остаются в той же системе координат.
-    root.style.setProperty("font-size", `${16 * rounded}px`);
-    root.style.setProperty("--app-font-size", `${13 * rounded}px`);
-  }
-
+  // Сохраняем множитель информационно для кастомных стилей и диагностики.
   root.style.setProperty("--app-font-scale", String(rounded));
+
+  // В обычном браузере getCurrentWebview() может быть недоступен, а в Tauri
+  // отказ capability приходит как rejected promise — оба случая безопасно игнорируем.
+  try {
+    void getCurrentWebview().setZoom(rounded).catch(() => {});
+  } catch {
+    // not in tauri context
+  }
 }
 
 function applyChatFontSize(scale: number) {

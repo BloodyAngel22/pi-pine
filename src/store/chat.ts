@@ -1566,6 +1566,9 @@ export const useChat = create<ChatState>((rawSet, get) => {
   async init() {
     if (initOnce) return;
     initOnce = true;
+    // Принудительно инициализируем настройки интерфейса как можно раньше,
+    // чтобы webview-zoom и масштаб текста чата применились до первого рендера.
+    useUiPrefs.getState();
     rpc.onEvent((event) => {
       const explicitSid = typeof event.sessionId === "string" ? event.sessionId : null;
       const sid = explicitSid ?? get().activeTabId;

@@ -8,8 +8,8 @@ import type { AgentPresetConfig, AgentPresetMcpMode, AgentPresetPermissionMode, 
 
 const thinkingLevels: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 const queueModes: QueueMode[] = ["all", "one-at-a-time"];
-const permissionModes: AgentPresetPermissionMode[] = ["allow", "read-only", "deny"];
-const mcpModes: AgentPresetMcpMode[] = ["allow-all", "deny-all"];
+const permissionModes: AgentPresetPermissionMode[] = ["ask", "allow", "read-only", "deny"];
+const mcpModes: AgentPresetMcpMode[] = ["ask", "allow-all", "deny-all"];
 
 function createEmptyPreset(cwd: string): AgentPresetConfig {
   return {
@@ -18,8 +18,8 @@ function createEmptyPreset(cwd: string): AgentPresetConfig {
     model: null,
     thinkingLevel: "medium",
     systemPrompt: "",
-    permissions: { bash: "allow", files: "allow" },
-    mcpPermissions: { mode: "allow-all" },
+    permissions: { bash: "ask", files: "ask" },
+    mcpPermissions: { mode: "ask" },
     autoRetry: true,
     autoCompaction: true,
     steeringMode: "all",
@@ -147,9 +147,9 @@ export function PresetEditorDialog({
           </Field>
 
           <div className="grid grid-cols-3 gap-3">
-            <SelectField label="Bash" value={draft.permissions?.bash ?? "allow"} options={permissionModes} onChange={(value) => setField("permissions", { ...(draft.permissions ?? {}), bash: value as AgentPresetPermissionMode })} />
-            <SelectField label="Files" value={draft.permissions?.files ?? "allow"} options={permissionModes} onChange={(value) => setField("permissions", { ...(draft.permissions ?? {}), files: value as AgentPresetPermissionMode })} />
-            <SelectField label="MCP" value={draft.mcpPermissions?.mode ?? "allow-all"} options={mcpModes} onChange={(value) => setField("mcpPermissions", { mode: value as AgentPresetMcpMode })} />
+            <SelectField label="Bash" value={draft.permissions?.bash ?? "ask"} options={permissionModes} onChange={(value) => setField("permissions", { ...(draft.permissions ?? {}), bash: value as AgentPresetPermissionMode })} />
+            <SelectField label="Files" value={draft.permissions?.files ?? "ask"} options={permissionModes} onChange={(value) => setField("permissions", { ...(draft.permissions ?? {}), files: value as AgentPresetPermissionMode })} />
+            <SelectField label="MCP" value={draft.mcpPermissions?.mode ?? "ask"} options={mcpModes} onChange={(value) => setField("mcpPermissions", { mode: value as AgentPresetMcpMode })} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

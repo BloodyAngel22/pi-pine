@@ -30,8 +30,8 @@ function normalizePreset(config: AgentPresetConfig): AgentPresetConfig {
     ...config,
     description: config.description ?? "",
     model: config.model ?? null,
-    permissions: config.permissions ?? { bash: "allow", files: "allow" },
-    mcpPermissions: config.mcpPermissions ?? { mode: "allow-all" },
+    permissions: config.permissions ?? { bash: "ask", files: "ask" },
+    mcpPermissions: config.mcpPermissions ?? { mode: "ask" },
     autoRetry: config.autoRetry ?? true,
     autoCompaction: config.autoCompaction ?? true,
     steeringMode: config.steeringMode ?? "all",
@@ -67,12 +67,29 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
   },
 
   async selectPreset(name, options) {
-    set({ loading: true, error: null });
+    const previousActivePreset = get().activePreset;
+    const previousManualPresetSelected = get().manualPresetSelected;
+    const nextManualPresetSelected = !options?.auto;
+
+    // Оптимистически обновляем UI: Mantine Select в RunSettings управляется
+    // activePreset, поэтому без этого он визуально остаётся на старом значении
+    // до конца RPC-запроса (или навсегда, если apply упал).
+    set({
+      activePreset: name,
+      manualPresetSelected: nextManualPresetSelected,
+      loading: true,
+      error: null,
+    });
     try {
       await rpc.loadAgentPreset(name, options?.sessionId);
-      set({ activePreset: name, manualPresetSelected: !options?.auto, loading: false });
+      set({ activePreset: name, manualPresetSelected: nextManualPresetSelected, loading: false });
     } catch (e) {
-      set({ error: (e as Error).message, loading: false });
+      set({
+        activePreset: previousActivePreset,
+        manualPresetSelected: previousManualPresetSelected,
+        error: (e as Error).message,
+        loading: false,
+      });
       throw e;
     }
   },
@@ -118,7 +135,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
   },
 
   clearPreset() {
-    set({ activePreset: null, manualPresetSelected: false });
+    set({ activePreset: null, manualPresetSelected: false, error: null });
   },
 
   async checkAutoPreset(cwd, options) {
