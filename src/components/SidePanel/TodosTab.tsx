@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, ListTodo } from "lucide-react";
+import { CheckCircle2, Circle, ListTodo } from "@/components/ui/icons/compat";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { useChat, type UiBlock, type UiBlockTool, type UiMessage } from "@/store/chat";

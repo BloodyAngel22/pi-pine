@@ -1,3 +1,4 @@
+import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 
 function fmtTokens(n: number): string {
@@ -17,11 +18,11 @@ export function ContextIndicator({ variant = "statusbar" }: ContextIndicatorProp
   const contextWindow = contextUsage?.contextWindow ?? agent?.model?.contextWindow ?? 0;
   const contextTokens = contextUsage?.tokens ?? null;
 
-  if (variant === "statusbar" && (!contextUsage || contextUsage.percent == null)) return null;
-
   const pctRaw =
     contextUsage?.percent ??
     (contextTokens != null && contextWindow > 0 ? (contextTokens / contextWindow) * 100 : null);
+
+  if (variant === "statusbar" && pctRaw == null && contextWindow <= 0) return null;
   const pct = Math.min(Math.max(pctRaw ?? 0, 0), 100);
   const pctRounded = pctRaw == null ? null : Math.round(pct);
 
@@ -36,8 +37,8 @@ export function ContextIndicator({ variant = "statusbar" }: ContextIndicatorProp
     color = "var(--color-warn)";
   }
 
-  const size = 14;
-  const strokeWidth = 2.5;
+  const size = variant === "statusbar" ? 18 : 14;
+  const strokeWidth = variant === "statusbar" ? 3 : 2.5;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - pct / 100);
@@ -49,52 +50,54 @@ export function ContextIndicator({ variant = "statusbar" }: ContextIndicatorProp
         ? `context: unknown / ${fmtTokens(contextWindow)}`
         : "context: unknown";
 
-  const indicator = (
-    <span
-      className={
-        variant === "composer"
-          ? "inline-flex items-center gap-1 h-7 px-1.5 rounded-md text-[10px] text-(--color-fg-mute) hover:bg-(--color-bg-mute) transition-colors"
-          : "pi-statusbar-item"
-      }
-      title={tooltip}
+  const ring = (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className={pulse ? "animate-pulse" : ""}
     >
-      <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        className={pulse ? "animate-pulse" : ""}
-      >
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="var(--color-border)"
-          strokeWidth={strokeWidth}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </svg>
-      <span className="font-mono">{pctRounded == null ? "?" : pctRounded}%</span>
-    </span>
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="var(--color-border)"
+        strokeWidth={strokeWidth}
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </svg>
   );
 
-  if (variant === "composer") return indicator;
+  if (variant === "composer") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 h-7 px-1.5 rounded-md text-[10px] text-(--color-fg-mute) hover:bg-(--color-bg-mute) transition-colors"
+        title={tooltip}
+      >
+        {ring}
+        <span className="font-mono">{pctRounded == null ? "?" : pctRounded}%</span>
+      </span>
+    );
+  }
 
   return (
     <>
       <span className="pi-statusbar-sep">·</span>
-      {indicator}
+      <Chip size="xs" tone={pct > 90 ? "danger" : pct > 70 ? "warning" : "success"} variant="health" icon={ring} mono title={tooltip}>
+        {pctRounded == null ? "?" : pctRounded}%
+      </Chip>
     </>
   );
 }

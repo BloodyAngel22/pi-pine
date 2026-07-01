@@ -11,8 +11,8 @@ export type ThinkingLevel =
 
 export type StreamingBehavior = "steer" | "followUp";
 export type QueueMode = "all" | "one-at-a-time";
-export type AgentPresetPermissionMode = "allow" | "read-only" | "deny";
-export type AgentPresetMcpMode = "allow-all" | "deny-all";
+export type AgentPresetPermissionMode = "ask" | "allow" | "read-only" | "deny";
+export type AgentPresetMcpMode = "ask" | "allow-all" | "deny-all";
 
 export interface AgentPresetConfig {
   name: string;

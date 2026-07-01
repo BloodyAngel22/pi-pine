@@ -1,4 +1,4 @@
-import { Bot, CheckCircle2, Circle, AlertCircle, Wrench } from "lucide-react";
+import { Bot, CheckCircle2, Circle, AlertCircle, Wrench } from "@/components/ui/icons/compat";
 import { useChat, type UiBlockTool, type UiMessage } from "@/store/chat";
 import { useShallow } from "zustand/react/shallow";
 import { useExt } from "@/store/ext";

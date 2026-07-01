@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
+import { PopoverSurface } from "@/components/ui/PopoverSurface";
 
 export interface SlashCommand {
   command: string;
@@ -36,7 +37,7 @@ export function SlashMenu({ query, highlight, onPick, onHover }: Props) {
   const items = BUILTIN_SLASH.filter((c) => c.command.toLowerCase().startsWith(q));
   if (items.length === 0) return null;
   return (
-    <div className="absolute left-3 right-3 bottom-full mb-2 max-h-56 overflow-y-auto bg-(--color-bg-soft) border border-(--color-border) rounded-md shadow-2xl text-xs">
+    <PopoverSurface className="bottom-full left-3 right-3 mb-2 max-h-56 overflow-y-auto p-1 text-xs">
       {items.map((it, i) => (
         <button
           key={it.command}
@@ -44,14 +45,14 @@ export function SlashMenu({ query, highlight, onPick, onHover }: Props) {
           onMouseEnter={() => onHover(i)}
           onClick={() => onPick(it.command)}
           className={clsx(
-            "w-full text-left px-3 py-1.5 flex items-center gap-2",
-            i === highlight ? "bg-(--color-bg-mute)" : "hover:bg-(--color-bg-mute)/60",
+            "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left",
+            i === highlight ? "bg-(--color-accent-soft)" : "hover:bg-(--color-bg-mute)/70",
           )}
         >
           <span className="font-mono text-(--color-accent) w-24">{it.command}</span>
           <span className="text-(--color-fg-mute)">{it.description}</span>
         </button>
       ))}
-    </div>
+    </PopoverSurface>
   );
 }

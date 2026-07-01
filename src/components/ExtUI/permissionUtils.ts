@@ -68,6 +68,15 @@ export function filePathFromInput(input: unknown): string {
   return stringField(record, ["path", "file_path", "filePath", "filename"]) ?? "unknown file";
 }
 
+/** Convert an absolute path to a path relative to cwd, if it lives under cwd. Otherwise returns the path as-is. */
+export function toRelativePath(path: string, cwd: string): string {
+  if (!path || !cwd || path === "unknown file") return path;
+  const normalizedCwd = cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
+  if (path === normalizedCwd) return ".";
+  if (path.startsWith(`${normalizedCwd}/`)) return path.slice(normalizedCwd.length + 1);
+  return path;
+}
+
 /** Extract edits[] array from tool input args (works for edit tool) */
 export function editItems(input: unknown): EditItem[] {
   const record = asRecord(input);

@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search, Copy, Check } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
+import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
+import { ActivityIndicator } from "./ActivityIndicator";
 import {
   shortInput,
   pretty,
@@ -16,6 +18,7 @@ import {
   textLineCount,
   buildFileMutationPreviewFromInput,
   buildFileMutationPreviewFromFile,
+  toRelativePath,
   type DiffPreview,
   type EditItem,
 } from "@/components/ExtUI/permissionUtils";
@@ -203,7 +206,7 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-border) bg-(--color-bg-soft)",
@@ -228,7 +231,9 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
           {block.images && block.images.length > 0 && (
             <ImageIcon size={10} />
           )}
-          {isRunning ? "…" : isError ? "ошибка" : ""}
+          {isRunning ? (
+            <ActivityIndicator tone="tool" size="sm" label={`${block.name} выполняется`} />
+          ) : isError ? "ошибка" : ""}
         </span>
       </button>
       {open && (
@@ -290,7 +295,7 @@ function DeepResearchToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -310,7 +315,14 @@ function DeepResearchToolCall({
         <span className="font-mono text-(--color-accent)">deep_research</span>
         <span className="text-(--color-fg) truncate min-w-0" title={question}>{question}</span>
         <span className="ml-auto shrink-0 text-(--color-fg-dim)">
-          {isRunning ? `${phase}${remaining ? ` · ${remaining} left` : ""}` : isError ? "ошибка" : confidence != null ? `${Math.round(confidence * 100)}%` : "готово"}
+          {isRunning ? (
+            <ActivityIndicator
+              tone="research"
+              size="sm"
+              label={`${phase}${remaining ? ` · ${remaining} left` : ""}`}
+              showLabel
+            />
+          ) : isError ? "ошибка" : confidence != null ? `${Math.round(confidence * 100)}%` : "готово"}
         </span>
       </button>
       {open && (
@@ -383,7 +395,7 @@ function FastFetchToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -445,7 +457,7 @@ function FastContextToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -529,7 +541,7 @@ function ScreenshotToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -637,7 +649,7 @@ function InteractToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",
@@ -725,6 +737,34 @@ function InteractToolCall({
   );
 }
 
+function CopyPathButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+  const cwd = useChat((s) => s.cwd);
+  const relativePath = toRelativePath(path, cwd);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(relativePath);
+    } catch {
+      // ignore
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`Копировать относительный путь: ${relativePath}`}
+      className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-(--color-fg-dim) hover:text-(--color-accent) hover:bg-(--color-bg-mute) transition-colors"
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+    </button>
+  );
+}
+
 function FileMutationToolCall({ block }: { block: UiBlockTool }) {
   const [open, setOpen] = useState(true);
   const [fileContent, setFileContent] = useState<string | undefined>(undefined);
@@ -757,27 +797,30 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
   return (
     <div
       className={clsx(
-        "my-1 rounded-lg border text-xs overflow-hidden",
+        "pi-chat-scaled my-1 rounded-lg border text-xs overflow-hidden",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-border) bg-(--color-bg-soft)",
       )}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-2.5 py-2 hover:bg-(--color-bg-mute) text-left"
-      >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {isError ? (
-          <AlertCircle size={12} className="text-(--color-danger)" />
-        ) : (
-          <FileText size={12} className="text-(--color-accent)" />
-        )}
-        <span className="font-mono text-(--color-accent)">{block.name}</span>
-        <span className="font-mono text-(--color-fg) truncate min-w-0" title={preview.path}>
-          {preview.path}
-        </span>
+      <div className="w-full flex items-center gap-2 px-2.5 py-2 hover:bg-(--color-bg-mute)">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {isError ? (
+            <AlertCircle size={12} className="text-(--color-danger)" />
+          ) : (
+            <FileText size={12} className="text-(--color-accent)" />
+          )}
+          <span className="font-mono text-(--color-accent) shrink-0">{block.name}</span>
+          <span className="font-mono text-(--color-fg) truncate min-w-0" title={preview.path}>
+            {preview.path}
+          </span>
+        </button>
+        {preview.path !== "unknown file" && <CopyPathButton path={preview.path} />}
         <span className="ml-auto shrink-0 font-mono text-[10px]">
           {preview.added > 0 && <span className="text-(--color-success)">+{preview.added}</span>}
           {preview.added > 0 && preview.removed > 0 && <span className="text-(--color-fg-dim)"> </span>}
@@ -786,7 +829,7 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
             <span className="text-(--color-fg-dim)">{isRunning ? "…" : isError ? "ошибка" : "done"}</span>
           )}
         </span>
-      </button>
+      </div>
       {open && (
         <div className="border-t border-(--color-border)">
           {lines.length > 0 ? (
@@ -827,7 +870,7 @@ function AskUserToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/25 bg-(--color-accent)/5",
@@ -905,7 +948,7 @@ function TodoToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError || details?.error
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-border) bg-(--color-bg-soft)",
@@ -984,7 +1027,7 @@ function TaskToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : isRunning
@@ -1007,7 +1050,9 @@ function TaskToolCall({
         {agent && <span className="font-mono text-(--color-fg-dim)">{agent}</span>}
         <span className="text-(--color-fg-mute) truncate">{description}</span>
         <span className="ml-auto text-(--color-fg-dim)">
-          {isRunning ? "running" : isError ? "ошибка" : "done"}
+          {isRunning ? (
+            <ActivityIndicator tone="subagent" size="sm" label="sub-agent running" showLabel />
+          ) : isError ? "ошибка" : "done"}
         </span>
       </button>
       {open && (
@@ -1114,7 +1159,7 @@ function PendingToolCallBlock({ block }: { block: UiBlockTool }) {
   const handleDenyOnce = () => resolvePendingPermission(block.toolUseId, { decision: "deny-once" });
 
   return (
-    <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+    <div className="pi-chat-scaled my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
       {/* Header row */}
       <div className="px-3 py-2 flex items-center gap-2">
         <button
@@ -1221,7 +1266,7 @@ function PendingAskUserToolCallBlock({ block }: { block: UiBlockTool }) {
   };
 
   return (
-    <div className="my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
+    <div className="pi-chat-scaled my-1 rounded-lg border border-(--color-accent)/30 bg-(--color-accent)/5 overflow-hidden">
       <div className="px-3 py-2 flex items-start gap-2">
         <MessageCircleQuestion size={14} className="text-(--color-accent) shrink-0 mt-0.5" />
         <span className="text-[10px] uppercase tracking-wider font-semibold text-(--color-accent) shrink-0 mt-0.5">
@@ -1348,7 +1393,7 @@ function AnalyzeImageToolCall({
   return (
     <div
       className={clsx(
-        "my-1 rounded-md border text-xs",
+        "pi-chat-scaled my-1 rounded-md border text-xs",
         isError
           ? "border-(--color-danger)/30 bg-(--color-danger)/5"
           : "border-(--color-accent)/20 bg-(--color-accent)/5",

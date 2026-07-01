@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Brain } from "lucide-react";
+import { ChevronDown, ChevronRight, Brain } from "@/components/ui/icons/compat";
 import { t } from "@/i18n/ru";
 
 export function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="my-1 rounded-md border border-(--color-border) bg-(--color-bg-soft)/60 text-xs italic text-(--color-fg-mute)">
+    <div className="pi-chat-scaled my-1 rounded-md border border-(--color-border) bg-(--color-bg-soft)/60 text-xs italic text-(--color-fg-mute)">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

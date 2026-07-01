@@ -5,6 +5,7 @@ import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { useExt } from "@/store/ext";
 import { useAgentsStore } from "@/store/agents";
 import { useUiPrefs } from "@/store/uiPrefs";
+import { t } from "@/i18n/ru";
 import type {
   AnyContent,
   Model,
@@ -71,6 +72,8 @@ export interface UiMessage {
   error?: string;
   /** Локальный placeholder ассистента до первого реального message/tool event. */
   pendingAssistant?: boolean;
+  /** Структурированные данные для маркера сжатия контекста (см. compaction_end). */
+  compaction?: { tokensBefore?: number; tokensAfter?: number };
 }
 
 export const DEFAULT_TAB_ID = "session-1";
@@ -1155,13 +1158,17 @@ function extractFastFetchResult(
   return text ? { text } : null;
 }
 
-function createSystemMessage(text: string): UiMessage {
+function createSystemMessage(
+  text: string,
+  compaction?: { tokensBefore?: number; tokensAfter?: number },
+): UiMessage {
   return {
     id: newId(),
-    role: "assistant",
+    role: "system",
     blocks: [{ kind: "text", text }],
     streaming: false,
     timestamp: Date.now(),
+    compaction,
   };
 }
 
@@ -1215,21 +1222,23 @@ function formatTokenCount(value: number): string {
   return Math.round(value).toLocaleString("ru-RU");
 }
 
-function formatCompactionMessage(result: unknown): { key: string; text: string } {
+function formatCompactionMessage(
+  result: unknown,
+): { key: string; text: string; tokensBefore?: number; tokensAfter?: number } {
   const r = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
   const before = typeof r.tokensBefore === "number" ? r.tokensBefore : undefined;
   const after = typeof r.tokensAfter === "number" ? r.tokensAfter : undefined;
-  let text = "Контекст сессии сжат.";
+  let text = `${t.chat.compactionTitle}.`;
   if (before !== undefined && after !== undefined && before > 0) {
     const saved = Math.max(0, before - after);
     const percent = Math.round((saved / before) * 100);
-    text = `Контекст сессии сжат: ${formatTokenCount(before)} → ${formatTokenCount(after)} токенов (−${formatTokenCount(saved)}, ${percent}%).`;
+    text = `${t.chat.compactionTitle}: ${formatTokenCount(before)} → ${formatTokenCount(after)} токенов (−${formatTokenCount(saved)}, ${percent}%).`;
   } else if (before !== undefined) {
-    text = `Контекст сессии сжат. До сжатия: ~${formatTokenCount(before)} токенов.`;
+    text = `${t.chat.compactionTitle}. До сжатия: ~${formatTokenCount(before)} токенов.`;
   }
   const keyParts = [before ?? "?", after ?? "?", String(r.firstKeptEntryId ?? "")];
   if (typeof r.summary === "string") keyParts.push(String(r.summary.length));
-  return { key: keyParts.join(":"), text };
+  return { key: keyParts.join(":"), text, tokensBefore: before, tokensAfter: after };
 }
 
 
@@ -1566,6 +1575,9 @@ export const useChat = create<ChatState>((rawSet, get) => {
   async init() {
     if (initOnce) return;
     initOnce = true;
+    // Принудительно инициализируем настройки интерфейса как можно раньше,
+    // чтобы webview-zoom и масштаб текста чата применились до первого рендера.
+    useUiPrefs.getState();
     rpc.onEvent((event) => {
       const explicitSid = typeof event.sessionId === "string" ? event.sessionId : null;
       const sid = explicitSid ?? get().activeTabId;
@@ -2961,7 +2973,15 @@ function handleAgentEvent(
             ? { ...s.agentState, isCompacting: false }
             : s.agentState,
           lastCompactionMessageKey: compaction?.key ?? s.lastCompactionMessageKey,
-          messages: shouldAppend ? [...s.messages, createSystemMessage(compaction!.text)] : s.messages,
+          messages: shouldAppend
+            ? [
+                ...s.messages,
+                createSystemMessage(compaction!.text, {
+                  tokensBefore: compaction!.tokensBefore,
+                  tokensAfter: compaction!.tokensAfter,
+                }),
+              ]
+            : s.messages,
         };
       });
       // после компакции обновляем историю и статистику контекста, но оставляем видимый системный маркер
@@ -2977,7 +2997,15 @@ function handleAgentEvent(
           message.blocks.some((block) => block.kind === "text" && block.text === compaction.text),
         );
         if (!hasMarker) {
-          set((s) => ({ messages: [...s.messages, createSystemMessage(compaction.text)] }));
+          set((s) => ({
+            messages: [
+              ...s.messages,
+              createSystemMessage(compaction.text, {
+                tokensBefore: compaction.tokensBefore,
+                tokensAfter: compaction.tokensAfter,
+              }),
+            ],
+          }));
         }
       });
       break;

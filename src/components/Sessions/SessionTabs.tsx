@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CopyPlus, Plus, X } from "lucide-react";
+import { CopyPlus, Plus, X } from "@/components/ui/icons/compat";
+import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 import { cx as clsx } from "@/lib/cx";
 
@@ -11,7 +12,8 @@ function labelFor(tabId: string, name?: string | null): string {
 function indicatorClass(tab: ReturnType<typeof useChat.getState>["tabs"] extends Map<string, infer T> ? T : never): string {
   const state = tab.agentState;
   if (tab.pendingUserAction) return "bg-yellow-400 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.55)]";
-  if (state?.isStreaming || state?.isRetrying || state?.isCompacting) return "bg-(--color-accent) animate-pulse";
+  if (state?.isCompacting) return "bg-(--color-warn) animate-pulse";
+  if (state?.isStreaming || state?.isRetrying) return "bg-(--color-accent) animate-pulse";
   if (tab.unseenAssistantCount > 0) return "bg-orange-400 animate-pulse";
   return "bg-(--color-fg-dim)";
 }
@@ -82,7 +84,7 @@ export function SessionTabs() {
   if (orderedTabs.length === 0) return null;
 
   return (
-    <div className="h-9 shrink-0 min-w-0 flex items-center border-b border-(--color-border) bg-(--color-bg-soft)">
+    <div className="h-9 shrink-0 min-w-0 flex items-center border-b border-(--color-border-muted) bg-(--color-bg-soft)">
       <div className="min-w-0 flex-1 h-full flex items-center">
         <div
           ref={tabsRef}
@@ -97,9 +99,9 @@ export function SessionTabs() {
             key={tab.tabId}
             draggable={renaming !== tab.tabId}
             className={clsx(
-              "group h-7 w-[220px] shrink-0 flex items-center gap-1.5 rounded-md border px-2 text-xs select-none transition-colors",
+              "group h-7 w-[220px] shrink-0 flex items-center gap-1.5 rounded-lg border px-2 text-xs select-none transition-colors",
               active
-                ? "bg-(--color-bg) border-(--color-border) text-(--color-fg)"
+                ? "bg-(--color-bg) border-(--color-accent)/35 text-(--color-fg) shadow-sm"
                 : "bg-transparent border-transparent text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg)",
               draggingTabId === tab.tabId && "opacity-50",
               dragOverTabId === tab.tabId && "ring-1 ring-(--color-accent) bg-(--color-accent-soft)/20",
@@ -154,17 +156,21 @@ export function SessionTabs() {
               <span className="truncate min-w-0 flex-1">{labelFor(tab.tabId, tab.sessionName)}</span>
             )}
             {tab.pendingUserAction && (
-              <span
-                className="shrink-0 px-1.5 py-0.5 rounded-full bg-yellow-400/15 text-yellow-300 border border-yellow-400/30 text-[10px] font-semibold animate-pulse"
+              <Chip
+                size="xs"
+                tone="warning"
+                variant="mode"
+                dot="warning"
+                pulseDot
                 title={tab.pendingUserAction.kind === "permission" ? "Ждёт permission" : "Ждёт ответ пользователя"}
               >
                 {waitingLabel(tab.pendingUserAction.kind)}{tab.pendingUserAction.count > 1 ? `×${tab.pendingUserAction.count}` : ""}
-              </span>
+              </Chip>
             )}
             {!active && tab.unseenAssistantCount > 0 && (
-              <span className="shrink-0 px-1 py-0.5 rounded-full bg-orange-500/15 text-orange-500 text-[10px] font-bold">
+              <Chip size="xs" tone="warning" variant="health">
                 {tab.unseenAssistantCount}
-              </span>
+              </Chip>
             )}
             <button
               type="button"
@@ -188,7 +194,7 @@ export function SessionTabs() {
         </div>
       </div>
 
-      <div className="h-full shrink-0 flex items-center gap-1 border-l border-(--color-border) bg-(--color-bg-soft) px-2 shadow-[-8px_0_12px_rgba(0,0,0,0.12)]">
+      <div className="h-full shrink-0 flex items-center gap-1 border-l border-(--color-border-muted) bg-(--color-bg-soft) px-2 shadow-[-8px_0_12px_rgba(0,0,0,0.06)]">
         <button
           type="button"
           className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)"

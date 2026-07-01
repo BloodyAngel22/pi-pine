@@ -1,4 +1,4 @@
-import { Info, AlertTriangle, AlertCircle, CheckCircle2, X } from "lucide-react";
+import { Info, AlertTriangle, AlertCircle, CheckCircle2, X } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { useExt, type NotifyKind } from "@/store/ext";
 

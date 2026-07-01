@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, RefreshCw, Folder, Check } from "lucide-react";
+import { Copy, RefreshCw, Folder, Check } from "@/components/ui/icons/compat";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/Button";

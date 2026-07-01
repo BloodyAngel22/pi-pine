@@ -1,45 +1,87 @@
 <p align="center">
-    <img src="assets/logo.png" alt="Pi Pine" width="280" />
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/pi-pine-logo/logo-on-dark-1024.png" />
+        <source media="(prefers-color-scheme: light)" srcset="assets/pi-pine-logo/logo-on-light-1024.png" />
+        <img src="assets/pi-pine-logo/logo-on-light-1024.png" alt="Pi Pine" width="200" />
+    </picture>
 </p>
 
 <h1 align="center">Pi Pine</h1>
 
 <p align="center">
-    Минималистичный десктоп-фронтенд для <a href="https://github.com/BloodyAngel22/pi-mono-x">pi-mono-x</a> — форка AI-кодинг-агента <a href="https://pi.dev/">pi</a>.<br/>
-    Pi запускается как CLI и выводит в консоль огромный поток информации: thinking-блоки, tool-calls,
-    статусы MCP — всё это смешивается в сплошной поток текста, которым неудобно пользоваться.
-    Pi Pine решает именно эту проблему: это тонкая обёртка вокруг <code>pi --mode rpc</code>,
-    которая убирает шум CLI и даёт чистый однооконный диалог с агентом.
+    Минималистичный десктоп-клиент для <a href="https://github.com/BloodyAngel22/pi-mono-x">pi-mono-x</a> — форка AI-кодинг-агента <a href="https://pi.dev/">pi</a>.<br/>
+    Убирает шум CLI, добавляет удобный UI, превращая работу с агентом в управляемый процесс.
 </p>
 
 > **Стек**: Tauri 2 · Rust · React 18 · TypeScript · Vite · Tailwind CSS 4 · Zustand · xterm.js  
-> **Статус**: alpha / MVP
+> **Статус**: alpha / MVP (только Linux amd64)
 
 ---
+
+## Скриншоты
 
 <table>
 <tr>
 <td width="50%">
 
-**Чат · tool-calls**
+**Чат с tool-calls**
 
-![Чат с tool-calls](assets/screenshots/chat.png)
+![Чат с tool-calls](assets/screenshots/chat-tool-calls.png)
 
 </td>
 <td width="50%">
 
-**Встроенный терминал**
+**Терминал**
 
-![Встроенный терминал](assets/screenshots/terminal.png)
+![Терминал](assets/screenshots/terminal.png)
 
 </td>
 </tr>
 <tr>
-<td colspan="2">
+<td width="50%">
 
-**`/cd` с Tab-автодополнением директорий**
+**Модели — правая панель**
 
-![Автодополнение /cd](assets/screenshots/cd-autocomplete.png)
+![Модели](assets/screenshots/panel-models.png)
+
+</td>
+<td width="50%">
+
+**Пресеты агентов**
+
+![Пресеты](assets/screenshots/panel-presets.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Дерево сессии**
+
+![Дерево сессии](assets/screenshots/panel-tree.png)
+
+</td>
+<td width="50%">
+
+**Sub-agents dashboard**
+
+![Sub-agents](assets/screenshots/panel-agents.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Команды и скиллы**
+
+![Команды](assets/screenshots/panel-commands.png)
+
+</td>
+<td width="50%">
+
+**Настройки**
+
+![Настройки](assets/screenshots/settings.png)
 
 </td>
 </tr>
@@ -51,207 +93,385 @@
 
 | | pi CLI | Pi Pine |
 |---|---|---|
-| Интерфейс | Терминал | Нативный десктоп (Tauri, ~6 МБ) |
+| Интерфейс | Терминал | Нативный десктоп (Tauri 2, бинарь ~10 МБ) |
 | Вывод thinking / tool-calls | Сырой поток в консоль | Компактные сворачиваемые блоки |
-| Навигация по сессиям | Флаги и файлы вручную | Сайдбар, переименование, удаление |
+| Сессии | Флаги и файлы вручную | Вкладки, сайдбар, переименование, перетаскивание |
 | Форк / регенерация / редактура | Нет | Встроено в UI каждого сообщения |
-| MCP-статусы | Смешаны с выводом агента | Отдельная статус-строка |
-| Терминал | Отдельное окно | Встроенный таб с xterm.js |
-| Управление cwd | `cd` в оболочке | `/cd` с Tab-автодополнением |
+| Multi-session | Только последовательно | Параллельные вкладки с drag-and-drop |
+| Терминал | Отдельное окно | Встроенный таб с xterm.js + split |
+| Модель / Thinking | Флаги в CLI | Выбор из списка, поиск, пресеты |
+| MCP-статусы | Смешаны с выводом | Отдельная панель, inline-статусы |
+| План-режим | Нет | Plan mode с файлом плана и кнопкой «Реализуй» |
+| Пресеты | Нет | Полноценная система: автозагрузка, permissions, model, thinking |
+| Дерево сессии | Нет | Tree view: ветки, навигация, checkpoint restore |
+| Sub-agents | Всё в консоль | Выделенный дашборд с метриками и логами |
+| Deep Research | Не настраивается | Выбор режима (quick/balanced/deep) + прогресс |
+| Управление cwd | `cd` в оболочке | `/cd` с Tab-автодополнением, кнопка выбора директории |
+| Изображения | Нет | Вставка из буфера, OCR, captioning |
+| Виртуальный дисплей | Нет | Изолированный Xvfb-экран для GUI-действий агента |
 
-## Возможности
+---
+
+## Основные возможности
 
 ### Чат
 
-- Потоковый чат с автосклейкой `message_update`-дельт.
-- **Thinking-блоки** и **tool-calls** — свёрнуты по умолчанию, разворачиваются по клику.
-- **Регенерировать** — откатывает сессию до родительского запроса и повторяет его.
-- **Форк** — создаёт новую ветку сессии от выбранного сообщения.
-- **Редактировать** — откатывает до выбранного запроса и подставляет текст в поле ввода.
-- **Режим очереди** — направляет или добавляет запрос пока агент ещё отвечает.
-- Markdown с подсветкой кода, нормализация вывода модели (плотные списки, emoji-секции).
+- **Потоковый рендеринг** с автосклейкой `message_update`-дельт.
+- **Thinking-блоки** — свёрнуты по умолчанию, разворачиваются по клику.
+- **Tool-calls** — сворачиваемые блоки с diff-превью для edit/write, подкраской строк.
+- **Fast Context** — индикатор в статус-баре с popover-просмотром найденных файлов.
+- **Fast Fetch** — индикатор результатов веб-поиска/загрузки с превью контента.
+- **Compaction** — визуализация сжатия контекста (токенов до/после).
+- **Регенерация** — откат до родительского запроса с повторным запуском.
+- **Форк** — создание отдельной ветки сессии от выбранного сообщения.
+- **Редактура** — откат до выбранного запроса с подстановкой текста в поле ввода.
+- **Ask User / Permission** — inline-карточки в чате (вместо модалок).
+- **BTW (by the way)** — оверлей для попутных вопросов вне основного диалога.
+- **Markdown** с подсветкой кода, нормализация вывода модели.
+- **Undo/Redo** текста композера (по словам + таймер 300 мс).
+- **Вставка изображений и файлов** из буфера обмена (Ctrl+V / Cmd+V).
+- **Автосохранение** текста композера на уровне таба.
 
 ### Модель и мышление
 
-- **Выбор модели и провайдера** из `get_available_models` с поиском.
+- **Выбор модели** из `get_available_models` с поиском по provider/model.
 - **Thinking level**: off → minimal → low → medium → high → xhigh.
+- **Steering mode**: all / one-at-a-time.
+- **Follow-up mode**: all / one-at-a-time.
+- **Auto compaction / auto retry** с индикацией в статус-баре.
 
-### Сессии
+### Multi-session табы
 
-- **Сайдбар сессий** — переключение, переименование, удаление сессий из `~/.pi/agent/sessions/`.
-- **Поиск по истории** — поиск промптов в текущей сессии.
+- **Параллельные сессии** — каждая в своей вкладке.
+- **Fork-таб** — новая вкладка, копирующая контекст текущей сессии.
+- **Drag-and-drop** — перетаскивание вкладок для изменения порядка.
+- **Переименование** — F2 / двойной клик / контекстное меню.
+- **Индикаторы** — стриминг, ожидание permission/askUser, непрочитанные сообщения.
+- **Персистентность** — содержимое табов сохраняется между переключениями.
 
 ### Slash-команды
 
-| Команда | Описание |
-|---|---|
-| `/new` | Новая сессия |
-| `/sessions` | Открыть сайдбар сессий |
-| `/model` | Сменить модель |
-| `/compact` | Сжать контекст |
-| `/settings` | Настройки |
-| `/cd <path>` | Сменить рабочую директорию агента (с Tab-автодополнением) |
-| `/pwd` | Показать текущую рабочую директорию |
-| `/ls [path]` | Показать файлы в директории |
-| `/search` | Поиск по prompt истории |
-| `/execute` | Выполнить текущий план |
-| `/btw <вопрос>` | Попутный вопрос в текущем контексте |
-| `/abort` | Прервать стриминг |
+| Команда | Действие | Запуск |
+|---|---|---|
+| `/new` | Новая сессия | Ctrl+N |
+| `/forktab` | Форк-таб текущей сессии | — |
+| `/sessions` | Сайдбар сессий | Ctrl+B |
+| `/model` | Панель выбора модели | Ctrl+Shift+B |
+| `/settings` | Настройки | Ctrl+, |
+| `/compact` | Сжать контекст текущей сессии | — |
+| `/search` | Поиск по истории промптов | Ctrl+F |
+| `/execute` | Выполнить текущий план | — |
+| `/abort` | Прервать стриминг | Esc |
+| `/cd <path>` | Сменить cwd (с Tab-автодополнением) | — |
+| `/pwd` | Показать текущую cwd | — |
+| `/ls [path]` | Листинг файлов в директории | — |
 
-`/cd` поддерживает автодополнение директорий через `Tab` — как в терминале.  
-Поддерживаются абсолютные (`/home/...`), относительные (`src/`) и `~/` пути.
+`/cd` поддерживает автодополнение через Tab как в терминале: абсолютные (`/home/...`), относительные (`src/`), `~/` пути.
+
+Также поддерживаются команды из установленных расширений и скиллов pi (напр. `/skill:name`).
+
+### Палитра скиллов
+
+- **Skills Palette** (`Ctrl+/`) — поиск и выбор `/skill:name` среди установленных скиллов pi.
+- **Per-session pin** — закрепление скиллов за текущей сессией (кнопка в панели команд).
+- **Автоподбор** — pi может автоматически предлагать скиллы под задачу.
+- **Категории** — скиллы группируются по категориям в палитре.
+
+### Панель команд (Commands Tab)
+
+- Полный список всех доступных slash-команд, скиллов и MCP-расширений.
+- **Поиск** по названию, описанию, источнику.
+- **Pin-кнопка** для закрепления скилла за сессией.
+- **Запуск** команды напрямую из панели.
+- Группировка по источнику (builtin, skill, extension, template).
 
 ### Терминал
 
 - **Встроенный терминал** на базе xterm.js + portable-pty (Rust).
-- Переключение между чатом и терминалом: отдельный таб или `Ctrl+\``.
-- Split (вертикальный) — два терминала одновременно.
-- Буфер и состояние терминала сохраняются при переключении табов.
-- Поддержка Nerd Fonts (Unicode 11) для ZSH-иконок и powerline-шрифтов.
-- Адаптивный resize для tmux и split panes.
+- Переключение чат / терминал: таб или `Ctrl+\``.
+- **Split** (вертикальный) — два терминала одновременно.
+- **Nerd Fonts** (Unicode 11) — ZSH-иконки, powerline-шрифты.
+- **Adaptive resize** — коррекция размеров для tmux и split panes.
+- Буфер и состояние сохраняются при переключении табов.
+
+### Сессии
+
+- **Сайдбар сессий** (`Ctrl+B`) — список `.jsonl`-файлов, переключение, переименование, удаление, обрезка.
+- **Дерево сессии** (Tree Tab) — визуализация ветвления с compact/raw режимами.
+    - Навигация к любому узлу, восстановление файлового checkpoint.
+- **Поиск по истории** (`Ctrl+F`) — поиск промптов в текущей сессии.
+- **Last session** — автоматическое восстановление последней сессии при старте.
 
 ### План и скиллы
 
-- **Режим плана** — ограничивает агента markdown-файлом плана, запускается кнопкой «Реализуй».
-- **Палитра скиллов** (`Ctrl+/`) — выбор `/skill:name` из установленных скиллов pi.
+- **Plan Mode** — кнопка Plan в заголовке: pi пишет план в `/tmp/.pi/plans/<id>.md`, не редактируя код.
+- **«Реализуй»** — запуск выполнения текущего плана (кнопка `▶` или `/execute`).
+- **Счётчик задач** — визуализация количества задач в плане.
+- **Plan Tab** — просмотр и редактирование файла плана в side panel.
+
+### Пресеты агентов
+
+- **Создание / редактирование / удаление** пресетов (хранятся в `~/.pi/agent/agents/*.json`).
+- **Автозагрузка** по `projectCwd` — автоматический выбор пресета при входе в каталог проекта.
+- **Apply** — одним кликом применить пресет к текущей сессии.
+- **Параметры пресета**:
+    - Модель (provider/model)
+    - Thinking level
+    - Permissions: bash (ask/allow/read-only/deny), files (ask/allow/read-only/deny)
+    - MCP permissions (ask/allow-all/deny-all)
+    - System prompt
+    - Auto retry / auto compaction
+    - Steering / follow-up modes
+- **Clear Preset** — возврат к ручному управлению.
+
+### Side panel (правая панель)
+
+| Вкладка | Назначение |
+|---|---|
+| **Models** | Выбор provider/model с поиском, указание thinking level |
+| **Presets** | CRUD пресетов агентов, Apply/Clear |
+| **MCP** | Список серверов расширений, включение/отключение, статусы |
+| **Status** | RPC-статус, окружение, диагностика |
+| **Plan** | Просмотр/редактирование файла текущего плана |
+| **Tree** | Дерево сессии, навигация по сообщениям, restore checkpoint |
+| **Agents** | Sub-agents: активные задачи, метрики (in/out/saved токены), лог активности |
+| **Commands** | Все slash-команды и скиллы, поиск, пины, запуск |
+
+Открывается кнопкой в правом rail или `Ctrl+Shift+B`.
+
+### Sub-agents
+
+- **Dashboard** в панели Agents: список всех task-вызовов, статусы, описание, агент.
+- **Метрики**: input tokens, output tokens, saved tokens.
+- **Лог активности** — список действий субагента (tools, fetch, search).
+- Индикация running и общего числа сэкономленных токенов.
+
+### Deep Research
+
+- **Прогресс UI** — визуализация хода deep_research в чате.
+- **Настройка режима** по умолчанию (quick / balanced / deep) в настройках.
+- Быстрый ≈5 мин / сбалансированный ≈10 мин / глубокий ≈20 мин.
+
+### Изображения и файлы
+
+- **Вставка из буфера** — Ctrl+V из браузера / файлового менеджера.
+- **Анализ изображений**:
+    - **OCR** (Tesseract) — распознавание текста на картинках.
+    - **Captioning** (transformers.js / vit-gpt2) — генерация описания.
+- Настройка языков OCR, выбор бэкенда captioning.
+- Индикатор кеша моделей в настройках.
+- **Копирование пути файла** в блоке tool call — клик по пути копирует.
+
+### Статус-бар
+
+Компактная строка внизу окна:
+
+- **cwd** — текущая рабочая директория (усечённая, с тултипом).
+- **Токены** — total tokens сессии.
+- **Сообщения** — количество сообщений в сессии.
+- **Стоимость** — стоимость API-запросов.
+- **Fast Fetch** / **Fast Context** — индикаторы и popover-просмотр.
+- **Context usage** — круговой индикатор заполнения контекстного окна.
+- **Compacting / Retry** — индикаторы активных процессов.
+- **YOLO mode** — статус автоматического одобрения.
+- **Extensions** — пилюля статусов MCP-расширений.
+- **Экран агента** — кнопка открытия виртуального дисплея.
+
+### Виртуальный дисплей
+
+- **Изолированный Xvfb-дисплей** (`:99`) для GUI-действий агента.
+- **Openbox** — оконный менеджер для корректной работы оконных приложений.
+- **x11vnc** (порт 5900) — просмотр в реальном времени.
+- **Скриншоты** — автоматический захват каждые 1.5 с при открытом окне просмотра.
+- **Старт/стоп** — из интерфейса, с индикацией статуса.
+- Кнопка «Экран» в статус-баре — открывает просмотр экрана агента.
 
 ### Настройки
 
-- **Управление MCP** — вкладка ⚙ → MCP: список серверов, включение/отключение.
-- **Темы** — выбор цветовой схемы из встроенных тем.
-- **Избранное** — закреплённые настройки провайдеров и моделей.
-- **Отслеживание** `auth.json` — автообновление при входе/выходе из pi без перезапуска.
-- **Запуск с cwd-аргументом**: `pi-pine .` / `pi-pine ~/myproject`.
-- Карточка первого запуска, если `pi` не найден; ручное указание пути в настройках.
+- **Окружение** — путь к pi, cwd, deep research mode.
+- **Модель** — выбор провайдера и модели, thinking level.
+- **Интерфейс** — масштаб UI (zoom) и отдельно размер шрифта чата.
+- **Темы** — выбор из встроенных (тёмная / светлая) и пользовательских (из `~/.pi/agent/themes/`).
+- **Изображения** — OCR и captioning для анализируемых изображений.
+- **Авторизация** — просмотр `auth.json`, список провайдеров.
+- **MCP** — управление серверами расширений (вкл/выкл).
 
-### Прочее
+### Горячие клавиши
 
-- Компактный **статус-бар**: cwd · модель · токены · стоимость · расширения.
-- **Панель команд** — запуск shell-команд из интерфейса.
-- **Yolo mode** — автоматическое одобрение запросов агента.
+| Клавиша | Действие |
+|---|---|
+| `Ctrl+B` | Сайдбар сессий |
+| `Ctrl+Shift+B` | Правая панель (Models / MCP / Status / …) |
+| `Ctrl+,` | Настройки |
+| `Ctrl+N` | Новая сессия (вкладка) |
+| `Ctrl+W` | Закрыть текущую вкладку |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Следующая / предыдущая вкладка |
+| `Ctrl+\`` | Переключение чат / терминал |
+| `Ctrl+/` | Палитра скиллов |
+| `Ctrl+F` | Поиск по истории промптов |
+| `Enter` | Отправить сообщение |
+| `Shift+Enter` | Перенос строки |
+| `↑` / `↓` | История ввода (когда поле пустое) |
+| `Esc` | Прервать стриминг / закрыть оверлей |
+| `Tab` | Автодополнение slash-команд и директорий (`/cd`) |
+| `F2` | Переименовать текущую вкладку |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / Redo текста композера |
 
-## Известные ограничения
+### Splash screen и загрузка
 
-- Только Linux (webkit2gtk). macOS/Windows — в планах.
-- Protocol Extension UI (`ctx.ui.notify/select/confirm/...`) — частичная поддержка.
-- Дерево файлов и просмотр diff — не реализованы.
-- Несколько панелей сессий одновременно — не реализовано.
+- **Splash** отображает пошаговую загрузку: инициализация → детект окружения → запуск pi.
+- **Boot-логи** — реальные события прогресса, ограниченные по количеству строк.
+- **Pi Missing Card** — если бинарник pi не найден: поиск, ручной ввод пути, кнопка повтора.
+- **Диагностика** в панели Status: версия, пути, auth, MCP.
 
-## Требования
+---
 
-- **[pi-mono-x](https://github.com/BloodyAngel22/pi-mono-x/tree/feature/pi-pine-rpc-integration)** — форк pi с расширенным RPC-протоколом.  
-  Pi Pine **не совместим** с оригинальным [pi](https://pi.dev/) — требуется именно pi-mono-x,
-  ветка `feature/pi-pine-rpc-integration`, в которой добавлены RPC-команды `cd`, `pwd`, `ls`
-  и другие расширения протокола.
+## Сборка и запуск
 
+```bash
+# dev-сервер с горячей перезагрузкой
+npm run tauri:dev
+
+# production-сборка
+npm run tauri:build
+
+# быстрая сборка без бандлов
+npx tauri build --no-bundle
+
+# запуск готового бинаря
+./src-tauri/target/release/pi-pine .
+
+# с явным cwd
+./src-tauri/target/release/pi-pine ~/projects/myapp
+```
+
+### Требования
+
+- **[pi-mono-x](https://github.com/BloodyAngel22/pi-mono-x)** — форк pi с расширенным RPC-протоколом.  
+  Pi Pine **не совместим** с оригинальным [pi](https://pi.dev/).
   ```bash
   git clone --branch feature/pi-pine-rpc-integration https://github.com/BloodyAngel22/pi-mono-x
   cd pi-mono-x
   npm install
   npm run build
-  # бинарь: packages/coding-agent/dist/cli.js
   ```
 
-  Pi Pine ищет бинарь `pi` в `PATH`, `~/.nvm/`, `~/.volta/`, `~/.local/share/fnm/`.
-  Если не нашёл — укажите путь вручную в настройках (⚙).
-- **Node.js ≥ 22** и **Rust** (stable) — для сборки из исходников.
-- **Linux**: `libwebkit2gtk-4.1-0`, `librsvg2-2`.
+- **Node.js ≥ 22**, **Rust** (stable), **libwebkit2gtk-4.1-dev**, **librsvg2-dev**.
 
-```bash
-# Ubuntu/Debian
-sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev
-```
+  ```bash
+  sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev
+  ```
 
-## Запуск из исходников
+Pi Pine ищет бинарник `pi` в `PATH`, `~/.nvm/`, `~/.volta/`, `~/.local/share/fnm/`.  
+Если не нашёл — укажите путь вручную в настройках (⚙ → Путь к pi).
 
-```bash
-git clone <repo> pi-pine
-cd pi-pine
-npm install
-npm run tauri:dev          # dev-сервер с горячей перезагрузкой
-```
+---
 
-### Запуск в конкретном проекте
-
-```bash
-# открыть в текущей директории
-./src-tauri/target/debug/pi-pine .
-
-# или передать путь явно
-./src-tauri/target/debug/pi-pine ~/projects/myapp
-```
-
-## Сборка
-
-```bash
-npm run tauri:build
-# Артефакты:
-#   src-tauri/target/release/pi-pine                     — ELF-бинарь
-#   src-tauri/target/release/bundle/deb/*.deb             — .deb (Debian/Ubuntu)
-#   src-tauri/target/release/bundle/appimage/*.AppImage   — AppImage
-```
-
-Без бандлов (быстрее):
-
-```bash
-npx tauri build --no-bundle
-./src-tauri/target/release/pi-pine
-```
-
-## Горячие клавиши
-
-| Клавиша | Действие |
-|---|---|
-| `Ctrl+B` | Сайдбар сессий |
-| `Ctrl+,` | Настройки |
-| `Ctrl+N` | Новая сессия |
-| `Ctrl+\`` | Переключение чат / терминал |
-| `Ctrl+/` | Палитра скиллов |
-| `Enter` | Отправить сообщение |
-| `Shift+Enter` | Перенос строки |
-| `↑` / `↓` | История ввода (когда поле пустое) |
-| `Esc` | Прервать стриминг |
-| `Tab` | Автодополнение: slash-команды или директории (`/cd`) |
+---
 
 ## Архитектура
 
 ```
 React UI (Vite + Tailwind + Zustand + xterm.js)
-  ↕  invoke / listen   (@tauri-apps/api)
-Tauri (Rust): rpc.rs · terminal.rs · paths.rs · sessions.rs · plans.rs · mcp.rs · themes.rs · favorites.rs
-  ↕  stdin/stdout (JSONL, LF only)           ↕  portable-pty (PTY)
-pi --mode rpc  (pi-mono-x)                            shell (bash/zsh)
+  ↕  invoke / listen  (@tauri-apps/api)
+Tauri (Rust): rpc.rs · terminal.rs · paths.rs · sessions.rs · plans.rs · mcp.rs · themes.rs · agents.rs · favorites.rs · analyze_image.rs · virtual_display.rs · clipboard.rs
+  ↕  stdin/stdout JSONL           ↕  portable-pty
+pi --mode rpc  (pi-mono-x)                 shell (bash/zsh)
   ↕
-~/.pi/agent/{auth,settings,sessions,extensions,mcp-config}.*
+~/.pi/agent/{auth,settings,sessions,extensions,mcp-config,agents,themes,favorites}.*
 ```
 
-- **`src-tauri/src/rpc.rs`** — спавн `pi --mode rpc`, JSONL-парсер, очистка ANSI, события `rpc://line/stderr/closed`.
-- **`src-tauri/src/terminal.rs`** — встроенный терминал: спавн PTY через `portable-pty`, ввод/вывод, resize, kill.
-- **`src-tauri/src/paths.rs`** — поиск бинарника `pi`, автодополнение директорий, чтение `auth.json`, watcher.
-- **`src-tauri/src/sessions.rs`** — список, переименование, удаление, обрезка `*.jsonl`-файлов сессий.
-- **`src-tauri/src/plans.rs`** — режим плана: markdown-файлы в `<cwd>/.pi/plans/`.
-- **`src-tauri/src/mcp.rs`** — чтение и редактирование `mcp-config.json`: список серверов, включение/отключение.
-- **`src-tauri/src/themes.rs`** — загрузка и выбор цветовых тем.
-- **`src-tauri/src/favorites.rs`** — избранные настройки провайдеров и моделей.
-- **`src/rpc/bridge.ts`** — типизированный RPC с сопоставлением запрос/ответ по `id`.
-- **`src/store/chat.ts`** — Zustand: события pi → UI-блоки, форк/регенерация/редактирование через `navigate_tree`, cwd-команды.
+### Rust-модули (`src-tauri/src/`)
 
-## Где хранятся данные pi
+| Модуль | Назначение |
+|---|---|
+| `lib.rs` | Точка входа, регистрация всех Tauri-команд |
+| `rpc.rs` | Спавн `pi --mode rpc`, JSONL-парсер, очистка ANSI, события `rpc://line/stderr/closed` |
+| `terminal.rs` | PTY-терминал через portable-pty: spawn, write, resize, kill, list |
+| `paths.rs` | Поиск `pi`, автодополнение директорий, auth.json watcher, detect_environment |
+| `sessions.rs` | Список, переименование, удаление, обрезка `.jsonl`-файлов, last-session persistence |
+| `plans.rs` | Режим плана: CRUD markdown-файлов в `/tmp/.pi/plans/` |
+| `mcp.rs` | Чтение/редактирование `mcp-config.json`, включение/отключение серверов |
+| `themes.rs` | Встроенные (dark/light) и пользовательские темы из `~/.pi/agent/themes/` |
+| `agents.rs` | Пресеты агентов: CRUD, автозагрузка по cwd, RPC-load |
+| `favorites.rs` | Избранные модели/провайдеры, чтение/запись pi settings |
+| `analyze_image.rs` | OCR (Tesseract), captioning (transformers.js), поиск моделей |
+| `virtual_display.rs` | Xvfb :99 + openbox + x11vnc: управление, скриншоты |
+| `clipboard.rs` | Чтение `text/uri-list` из буфера обмена |
 
-- `~/.pi/agent/auth.json` — токены провайдеров (чтение + отслеживание).
-- `~/.pi/agent/settings.json` — настройки CLI (чтение/запись через настройки).
-- `~/.pi/agent/sessions/<encoded-cwd>/*.jsonl` — сессии (чтение/запись/удаление).
-- `~/.pi/agent/mcp-config.json` — конфигурация MCP-серверов (чтение/запись через ⚙ → MCP).
-- `~/.pi/agent/extensions/mcp/` — расширение pi, реализующее подключение MCP-серверов.
-- `<cwd>/.pi/plans/` — файлы планов (чтение/запись).
+### Frontend-модули (`src/`)
+
+| Модуль | Назначение |
+|---|---|
+| `rpc/bridge.ts` | Типизированный JSONL-RPC мост с сопоставлением запрос/ответ по id |
+| `rpc/types.ts` | Все типы протокола `pi --mode rpc` |
+| `store/chat.ts` | Zustand: стриминг, табы, форк, регенерация, cwd-команды, fast context/fetch, plan |
+| `store/ext.ts` | Zustand: Extension UI (permissions, toasts, statuses, диалоги) |
+| `store/models.ts` | Zustand: список доступных моделей/провайдеров |
+| `store/theme.ts` | Zustand: загрузка и применение тем |
+| `store/agents.ts` | Zustand: пресеты агентов (CRUD, select, автозагрузка) |
+| `store/virtualDisplay.ts` | Zustand: виртуальный дисплей (старт/стоп/скриншот/polling) |
+| `store/uiPrefs.ts` | Zustand: настройки UI (масштаб, размер чата, ширина панелей, deep-research mode) |
+| `components/` | React-компоненты (см. структуру ниже) |
+| `terminal.ts` | xterm.js с Tauri invoke-мостом |
+| `themes/loader.ts` | Загрузчик CSS-переменных из toml-тем |
+
+### Ключевые компоненты
+
+| Компонент | Назначение |
+|---|---|
+| `App.tsx` | Корневой компонент: загрузка, сплэш, layout, клавиатурные шорткаты |
+| `MessageList.tsx` | Список сообщений с lazy-рендером, автоскроллом |
+| `Message.tsx` | Рендер одного сообщения: разбор сегментов text/skill/tool |
+| `Composer.tsx` | Поле ввода: slash-меню, cd-autocomplete, undo/redo, attachements, plan-кнопка |
+| `ToolCall.tsx` | Блок tool-call: diff-превью, статусы, иконки по типу инструмента, изображения |
+| `ThinkingBlock.tsx` | Сворачиваемые размышления агента |
+| `SessionTabs.tsx` | Табы сессий: drag-and-drop, rename, индикаторы, контекстное меню |
+| `SessionsSidebar.tsx` | Сайдбар сессий слева: список, поиск, rename, delete, truncate |
+| `SidePanel.tsx` | Правая панель с переключаемыми вкладками |
+| `StatusBar.tsx` | Статус-бар: cwd, токены, стоимость, контекст, fast-context/fetch, расширения |
+| `TerminalPanel.tsx` | Панель терминала: xterm.js, split, resize |
+| `SettingsModal.tsx` | Модалка настроек с табами: окружение, модель, интерфейс, темы, изображения, auth |
+| `AgentScreen.tsx` | Просмотр виртуального дисплея агента |
+| `BtwOverlay.tsx` | Оверлей попутных вопросов |
+| `DialogQueue.tsx` | Очередь Extension UI диалогов |
+| `ExtensionsPill.tsx` | Пилюля статусов MCP-расширений в статус-баре |
+
+---
+
+## Где хранятся данные
+
+| Путь | Назначение |
+|---|---|
+| `~/.pi/agent/auth.json` | Токены провайдеров (чтение + автоотслеживание) |
+| `~/.pi/agent/settings.json` | Настройки CLI (чтение/запись) |
+| `~/.pi/agent/sessions/<encoded-cwd>/*.jsonl` | Файлы сессий |
+| `~/.pi/agent/mcp-config.json` | Конфигурация MCP-серверов |
+| `~/.pi/agent/extensions/mcp/` | MCP-расширения pi |
+| `~/.pi/agent/agents/*.json` | Пресеты агентов |
+| `~/.pi/agent/themes/*.toml` | Пользовательские темы |
+| `~/.pi/agent/favorites.json` | Избранные модели и провайдеры |
+| `/tmp/.pi/plans/` | Файлы планов |
 
 Кодирование cwd: `/home/user/foo` → `--home-user-foo--` (совместимо с pi CLI).
+
+---
+
+## Известные ограничения
+
+- Только Linux (webkit2gtk). macOS/Windows — в планах.
+- Protocol Extension UI (`ctx.ui.notify/select/confirm/input/editor`) — частичная поддержка.
+- Дерево файлов и просмотр diff — не реализованы.
+- Полноценная темизация плагинов — не реализована.
+
+---
 
 ## Устранение проблем
 
 **`pi` не найден при запуске**  
 → Соберите [pi-mono-x](https://github.com/BloodyAngel22/pi-mono-x) и добавьте бинарь в `PATH`.  
-→ Или укажите путь вручную в настройках (⚙ → «Путь к pi»).
+→ Или укажите путь в настройках (⚙ → «Путь к pi»).  
+→ Используйте кнопку «Поиск» — Pi Pine проверит `PATH`, nvm, volta, fnm.
 
 **Ошибка webkit/librsvg при сборке**  
 → `sudo apt install libwebkit2gtk-4.1-dev librsvg2-dev`
@@ -262,10 +482,15 @@ pi --mode rpc  (pi-mono-x)                            shell (bash/zsh)
 
 **MCP не инициализируется / зависает**  
 → Проверьте конфиг MCP в настройках (⚙ → MCP).  
-→ Попробуйте «Безопасный режим» (кнопка в баннере ошибки).
+→ Попробуйте «Безопасный режим» (кнопка в баннере ошибки — сброс provider/model).
 
 **Терминал: иконки ZSH/powerline не отображаются**  
-→ Установите шрифт с Nerd Fonts, например MesloLGS NF или JetBrainsMono NF.
+→ Установите шрифт с Nerd Fonts (MesloLGS NF, JetBrainsMono NF).
+
+**Терминал не открывается**  
+→ Проверьте `$SHELL` — используется оболочка по умолчанию.
+
+---
 
 ## Лицензия
 

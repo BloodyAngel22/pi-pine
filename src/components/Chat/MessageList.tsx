@@ -1,12 +1,15 @@
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Sparkles, ArrowDown } from "lucide-react";
+import { Sparkles, ArrowDown } from "@/components/ui/icons/compat";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type UiMessage } from "@/store/chat";
 import { useShallow } from "zustand/react/shallow";
 import { useThrottledValue } from "@/lib/useThrottledValue";
 import { useChunkedRender } from "@/lib/useChunkedRender";
 import { Message } from "./Message";
 import { PlanTodoInline } from "./PlanTodoInline";
+import { ActivityIndicator } from "./ActivityIndicator";
 import { t } from "@/i18n/ru";
+import { floatingControlVariants, messageItemVariants, softEase } from "@/lib/motionPresets";
 
 interface Props {
   tabId?: string | null;
@@ -33,8 +36,25 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
   const [atBottomUI, setAtBottomUI] = useState(true);
   const atBottomRef = useRef(true);
   const [lastSeenIdx, setLastSeenIdx] = useState(0);
+  const reduceMotion = useReducedMotion();
+  const animatedMessageIdsRef = useRef<Set<string>>(new Set());
+  const previousMessageCountRef = useRef(messages.length);
+  const appendedMessageIdsRef = useRef<Set<string>>(new Set());
 
   messagesRef.current = messages;
+
+  useEffect(() => {
+    const previousCount = previousMessageCountRef.current;
+    previousMessageCountRef.current = messages.length;
+
+    if (!active || !chunked.done || messages.length <= previousCount) {
+      appendedMessageIdsRef.current = new Set();
+      return;
+    }
+
+    const appended = messages.slice(previousCount).map((message) => message.id);
+    appendedMessageIdsRef.current = new Set(appended);
+  }, [active, chunked.done, messages]);
 
   // ─── Scroll tracking ──────────────────────────────────────────────
   //
@@ -250,41 +270,79 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
             </div>
           )}
 
-          {chunked.items.map((message) => (
-            <div key={message.id} className="pi-stream-item">
-              <Message
-                message={message}
-                onCopy={onCopy}
-                onFork={onFork}
-                onRegenerate={onRegenerate}
-                onEdit={onEdit}
-              />
+          {chunked.items.map((message) => {
+            const shouldAnimate =
+              active &&
+              chunked.done &&
+              appendedMessageIdsRef.current.has(message.id) &&
+              !animatedMessageIdsRef.current.has(message.id);
+
+            if (shouldAnimate) {
+              animatedMessageIdsRef.current.add(message.id);
+            }
+
+            return (
+              <motion.div
+                key={message.id}
+                className="pi-stream-item"
+                initial={shouldAnimate ? "hidden" : false}
+                animate="visible"
+                variants={messageItemVariants(Boolean(reduceMotion))}
+                transition={softEase}
+              >
+                <Message
+                  message={message}
+                  onCopy={onCopy}
+                  onFork={onFork}
+                  onRegenerate={onRegenerate}
+                  onEdit={onEdit}
+                />
+              </motion.div>
+            );
+          })}
+
+          {agentState?.isCompacting && (
+            <div className="pi-stream-item">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-(--color-warn)/25 bg-(--color-warn)/8 px-3 py-2 text-(--color-fg-mute)">
+                <ActivityIndicator tone="compact" size="sm" label={t.chat.compacting} />
+                <span className="text-xs">{t.chat.compacting}</span>
+              </div>
             </div>
-          ))}
+          )}
 
           {/* Extra space for visual comfort at the bottom. */}
           <div style={{ height: 40 }} aria-hidden="true" />
         </div>
       </div>
 
-      {active && !atBottomUI && (
-        <div className="absolute bottom-6 right-6 z-30 pointer-events-none">
-          <button
-            type="button"
-            onClick={scrollToEnd}
-            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-(--color-accent) text-white shadow-lg hover:brightness-110 transition-all duration-200"
-            title="Прокрутить вниз"
+      <AnimatePresence initial={false}>
+        {active && !atBottomUI && (
+          <motion.div
+            key="scroll-to-bottom"
+            className="absolute bottom-6 right-6 z-30 pointer-events-none"
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={floatingControlVariants(Boolean(reduceMotion))}
+            transition={softEase}
           >
-            <ArrowDown size={12} />
-            <span>Вниз</span>
-            {unreadCount > 0 && (
-              <span className="ml-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/20 text-[10px] font-bold">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={scrollToEnd}
+              className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-(--color-accent) text-white shadow-lg hover:brightness-110 transition-all duration-200"
+              title="Прокрутить вниз"
+            >
+              <ArrowDown size={12} />
+              <span>Вниз</span>
+              {unreadCount > 0 && (
+                <span className="ml-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white/20 text-[10px] font-bold">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

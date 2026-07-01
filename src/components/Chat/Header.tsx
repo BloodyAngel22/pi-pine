@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Menu, Settings as SettingsIcon, Plus, Cpu, Brain, Layers, Terminal, Folder, Bot } from "lucide-react";
+import { Menu, Settings as SettingsIcon, Plus, Cpu, Brain, Layers, Terminal, Folder, Bot } from "@/components/ui/icons/compat";
+import { AppIcon } from "@/components/ui/AppIcon";
 import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 import { useAgentsStore } from "@/store/agents";
 import { shortenPath } from "@/utils/path";
@@ -88,16 +90,18 @@ export function Header({ onToggleSidebar, onToggleSidePanel, onOpenSettings, onN
         <button
           type="button"
           onClick={() => togglePlanMode()}
-          className={
-            "text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors " +
-            (planMode
-              ? "bg-(--color-warn)/20 text-(--color-warn) border border-(--color-warn)/40"
-              : "text-(--color-fg-mute) hover:text-(--color-fg) hover:bg-(--color-bg-mute)")
-          }
+          className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-warn)/25"
           title="Режим планирования: pi пишет план в .pi/plans/<sessionId>.md и не редактирует код"
         >
-          <span className="font-medium">Plan</span>
-          <span className={"w-1.5 h-1.5 rounded-full " + (planMode ? "bg-(--color-warn)" : "bg-(--color-fg-dim)")} />
+          <Chip
+            tone={planMode ? "warning" : "neutral"}
+            variant={planMode ? "mode" : "context"}
+            icon={<AppIcon name="plan" size={12} />}
+            dot={planMode ? "warning" : false}
+            interactive
+          >
+            Plan
+          </Chip>
         </button>
         {activePreset && (
           <button

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink, RefreshCw, Server, Cloud } from "lucide-react";
+import { ExternalLink, RefreshCw, Server, Cloud } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
 import { useExt } from "@/store/ext";

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, RefreshCw, Trash2, MessageSquare, MoreHorizontal, GitFork, Copy as CopyIcon, Pencil, Download } from "lucide-react";
+import { Plus, RefreshCw, Trash2, MessageSquare, MoreHorizontal, GitFork, Copy as CopyIcon, Pencil, Download, Search, X } from "@/components/ui/icons/compat";
 import clsx from "clsx";
+import { motion, type Transition, type Variants } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
 import { useUiPrefs } from "@/store/uiPrefs";
@@ -40,7 +41,23 @@ function bucketOf(unixSec: number): Bucket {
   return "Раньше";
 }
 
-export function SessionsSidebar({ onClose }: { onClose: () => void }) {
+interface SessionsSidebarProps {
+  onClose: () => void;
+  motionInitial?: string;
+  motionAnimate?: string;
+  motionExit?: string;
+  motionVariants?: Variants;
+  motionTransition?: Transition;
+}
+
+export function SessionsSidebar({
+  onClose,
+  motionInitial,
+  motionAnimate,
+  motionExit,
+  motionVariants,
+  motionTransition,
+}: SessionsSidebarProps) {
   const cwd = useChat((s) => s.cwd);
   const switchSession = useChat((s) => s.switchSession);
   const newSession = useChat((s) => s.newSession);
@@ -54,6 +71,7 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const reload = async () => {
     setLoading(true);
@@ -84,6 +102,14 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
     window.addEventListener("click", onDoc);
     return () => window.removeEventListener("click", onDoc);
   }, [menuFor]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const remove = async (file: string) => {
     if (!confirm(t.sessions.confirmDelete)) return;
@@ -149,9 +175,17 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
       "Эта неделя": [],
       Раньше: [],
     };
-    for (const s of sessions) m[bucketOf(s.last_modified_secs)].push(s);
+    const needle = query.trim().toLowerCase();
+    const filtered = needle
+      ? sessions.filter((s) =>
+          [s.name, s.first_user_text, s.cwd, s.session_id]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(needle)),
+        )
+      : sessions;
+    for (const s of filtered) m[bucketOf(s.last_modified_secs)].push(s);
     return m;
-  }, [sessions]);
+  }, [sessions, query]);
 
   const sessionsWidth = useUiPrefs((s) => s.sessionsWidth);
   const setSessionsWidth = useUiPrefs((s) => s.setSessionsWidth);
@@ -164,19 +198,37 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
   });
 
   return (
-    <aside
-      className="shrink-0 border-r border-(--color-border) bg-(--color-bg-soft) flex flex-col relative"
+    <motion.aside
+      initial={motionInitial}
+      animate={motionAnimate}
+      exit={motionExit}
+      variants={motionVariants}
+      transition={motionTransition}
+      className="absolute bottom-0 left-[50px] top-[38px] z-30 flex flex-col border-r border-(--color-border) bg-(--color-bg-soft) shadow-[18px_0_50px_-34px_rgba(0,0,0,0.45)]"
       style={{ width: sessionsWidth }}
     >
       <div
         className={clsx("pi-resizer pi-resizer-right", resize.active && "pi-resizer-active")}
         onMouseDown={resize.onMouseDown}
       />
-      <div className="px-3 py-2 border-b border-(--color-border) flex items-center gap-1.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-(--color-fg-mute) flex-1">
-          {t.sessions.title}
-        </span>
-        <Button variant="ghost" size="sm" onClick={() => void reload()} icon={<RefreshCw size={12} />} />
+      <div className="border-b border-(--color-border-muted) px-3 py-3">
+        <div className="mb-3 flex items-center gap-1.5">
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-(--color-fg-dim) flex-1">
+            {t.sessions.title}
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => void reload()} icon={<RefreshCw size={12} />} aria-label="Обновить" />
+          <Button variant="ghost" size="sm" onClick={onClose} icon={<X size={12} />} aria-label="Закрыть" />
+        </div>
+        <label className="relative block">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-(--color-fg-dim)" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sessions"
+            className="h-9 w-full rounded-lg border border-(--color-border) bg-(--color-bg) pl-8 pr-3 text-sm outline-none focus:border-(--color-accent)/55 focus:ring-2 focus:ring-(--color-accent)/15"
+          />
+        </label>
+        <div className="mt-2 flex items-center gap-1.5">
         <Button
           variant="ghost"
           size="sm"
@@ -199,6 +251,7 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
         >
           Fork tab
         </Button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="px-3 py-2 text-xs text-(--color-fg-dim)">…</div>}
@@ -338,7 +391,7 @@ export function SessionsSidebar({ onClose }: { onClose: () => void }) {
           );
         })}
       </div>
-    </aside>
+    </motion.aside>
   );
 }
 

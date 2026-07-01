@@ -1,4 +1,6 @@
-import { TreePine, Check, Loader2 } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Check, Loader2 } from "@/components/ui/icons/compat";
+import { PiPineLogoMark } from "@/components/ui/icons/custom";
 import clsx from "clsx";
 
 export type BootStage = "init" | "detect" | "starting" | "ready";
@@ -60,13 +62,21 @@ export function SplashScreen({
   const cur = ORDER[stage];
   const hasDetails = details.length > 0;
   const hasLogs = logs.length > 0;
+  const logStreamRef = useRef<HTMLDivElement | null>(null);
+  const lastLog = logs.length > 0 ? logs[logs.length - 1] : undefined;
+
+  useEffect(() => {
+    const el = logStreamRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [logs.length, lastLog?.id, lastLog?.text]);
 
   return (
     <div className="h-full w-full flex items-center justify-center p-6 bg-(--color-bg)">
       <div className="splash-card w-full max-w-2xl max-h-full overflow-hidden rounded-xl border border-(--color-border) bg-(--color-bg-soft)/80 backdrop-blur-md shadow-2xl px-8 py-7 space-y-5">
         <div className="flex items-center gap-3">
           <div className="splash-logo">
-            <TreePine size={28} className="text-(--color-accent)" />
+            <PiPineLogoMark size={28} className="text-(--color-accent)" />
           </div>
           <div>
             <div className="text-base font-semibold tracking-tight">pi-pine</div>
@@ -140,11 +150,15 @@ export function SplashScreen({
             <div className="mb-1.5 text-[10px] uppercase tracking-wide text-(--color-fg-dim)">
               Последние события
             </div>
-            <div className="space-y-1 max-h-28 overflow-hidden">
-              {logs.map((entry) => (
+            <div ref={logStreamRef} className="splash-log-stream space-y-1 max-h-28 overflow-y-auto pr-1">
+              {logs.map((entry, index) => (
                 <div
                   key={entry.id}
-                  className={clsx("text-[11px] leading-snug truncate", toneClass[entry.tone ?? "muted"])}
+                  className={clsx(
+                    "text-[11px] leading-snug truncate",
+                    toneClass[entry.tone ?? "muted"],
+                    index === logs.length - 1 && "splash-log-newest",
+                  )}
                   title={entry.text}
                 >
                   {entry.text}

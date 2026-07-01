@@ -53,11 +53,11 @@ impl Default for AgentPreset {
             thinking_level: Some("medium".to_string()),
             system_prompt: Some(String::new()),
             permissions: Some(AgentPresetPermissions {
-                bash: Some("allow".to_string()),
-                files: Some("allow".to_string()),
+                bash: Some("ask".to_string()),
+                files: Some("ask".to_string()),
             }),
             mcp_permissions: Some(AgentPresetMcpPermissions {
-                mode: Some("allow-all".to_string()),
+                mode: Some("ask".to_string()),
             }),
             auto_retry: Some(true),
             auto_compaction: Some(true),

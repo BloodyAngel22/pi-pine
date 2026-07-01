@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Send, Square, Paperclip, X, Terminal, Slash, Brain, Sparkles, ListTodo, Play } from "lucide-react";
+import { Send, Square, Paperclip, X, Slash, Sparkles, ListTodo, Play } from "@/components/ui/icons/compat";
+import { AppIcon } from "@/components/ui/AppIcon";
+import { Chip } from "@/components/ui/Chip";
 import clsx from "clsx";
 import { useChat, type UiBlock } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useUiPrefs } from "@/store/uiPrefs";
 import { t } from "@/i18n/ru";
 import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
-import { ContextIndicator } from "./ContextIndicator";
 import { SkillsPalette } from "./SkillsPalette";
-import type { AttachmentContent, FileContent, ImageContent, ThinkingLevel } from "@/rpc/types";
+import { RunSettingsPopover } from "@/components/AppShell/RunSettingsPopover";
+import type { AttachmentContent, FileContent, ImageContent } from "@/rpc/types";
 
 interface DirectoryCompletion {
   value: string;
@@ -22,8 +24,6 @@ interface Props {
   onToggleBash?(): void;
   onBtw?(question?: string): void;
 }
-
-const THINKING_CYCLE: ThinkingLevel[] = ["off", "low", "medium", "high"];
 
 /** Snapshot текста в композере для undo/redo */
 interface ComposerSnapshot {
@@ -91,21 +91,15 @@ const FileIcon = () => (
   </svg>
 );
 
-export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
+export function Composer({ onSlash, onBtw }: Props) {
   const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
-  const isCompacting = useChat((s) => s.agentState?.isCompacting ?? false);
   const mcpLoading = useChat((s) => s.mcpLoading);
   const pending = useChat((s) => s.pendingMessageCount);
   const cwd = useChat((s) => s.cwd);
-  const streamingBehavior = useChat((s) => s.streamingBehavior);
-  const setStreamingBehavior = useChat((s) => s.setStreamingBehavior);
   const send = useChat((s) => s.send);
   const abortStreaming = useChat((s) => s.abortStreaming);
   const composerInjection = useChat((s) => s.composerInjection);
   const clearInjection = useChat((s) => s.clearComposerInjection);
-  const model = useChat((s) => s.agentState?.model);
-  const thinkingLevel = useChat((s) => s.agentState?.thinkingLevel);
-  const setThinking = useChat((s) => s.setThinking);
   const planMode = useChat((s) => s.planMode);
   const planFilePath = useChat((s) => s.planFilePath);
   const assistantPlanSource = useChat((s) => {
@@ -119,11 +113,8 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const togglePlanMode = useChat((s) => s.togglePlanMode);
   const commitPlan = useChat((s) => s.commitPlan);
   const attachedSkills = useChat((s) => s.attachedSkills);
-  const toggleAttachedSkill = useChat((s) => s.toggleAttachedSkill);
   const suggestSkills = useChat((s) => s.suggestSkills);
   const autoAttachSkills = useChat((s) => s.autoAttachSkills);
-  const yoloMode = useExt((s) => s.yoloMode);
-  const toggleYoloMode = useExt((s) => s.toggleYoloMode);
   const activeTabId = useChat((s) => s.activeTabId);
   const updateTab = useChat((s) => s.updateTab);
 
@@ -160,6 +151,7 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
   const [cdCompletions, setCdCompletions] = useState<DirectoryCompletion[]>([]);
   const [cdHighlight, setCdHighlight] = useState(0);
   const [skillsOpen, setSkillsOpen] = useState(false);
+  const [runSettingsOpen, setRunSettingsOpen] = useState(false);
   const [skillSuggestions, setSkillSuggestions] = useState<import("@/rpc/types").SkillSuggestion[]>([]);
   const [planReady, setPlanReady] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -404,13 +396,6 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
       setCdCompletions([]);
       return true;
     }
-  };
-
-  const cycleThinking = () => {
-    const cur = thinkingLevel ?? "off";
-    const idx = THINKING_CYCLE.indexOf(cur);
-    const next = THINKING_CYCLE[(idx + 1) % THINKING_CYCLE.length];
-    void setThinking(next);
   };
 
   const insertSlash = () => {
@@ -673,87 +658,30 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
 
   return (
     <div className="bg-(--color-bg) px-3 pb-3 pt-1 relative">
-      <SkillsPalette
-        open={skillsOpen}
-        onClose={() => setSkillsOpen(false)}
-        onInsert={(text) => {
-          const cur = composerCurrentSnapshot.current.value;
-          setComposerValue(cur ? `${cur}\n\n${text}` : text, true);
-          setTimeout(() => ref.current?.focus(), 0);
-        }}
-      />
-      <div className="max-w-[850px] mx-auto">
-        {/* Тонкая полоса-статус сверху композера, как в Windsurf */}
-        {(isStreaming || isCompacting || pending > 0) && (
+      <div className="mx-auto w-full max-w-[1040px]">
+        <SkillsPalette
+          open={skillsOpen}
+          onClose={() => setSkillsOpen(false)}
+          onInsert={(text) => {
+            const cur = composerCurrentSnapshot.current.value;
+            setComposerValue(cur ? `${cur}\n\n${text}` : text, true);
+            setTimeout(() => ref.current?.focus(), 0);
+          }}
+        />
+        {pending > 0 && (
           <div className="px-2 mb-1 text-[11px] text-(--color-fg-mute) flex items-center gap-2">
-            {isStreaming && (
-              <span className="inline-flex items-center gap-1 text-(--color-accent)">
-                <span className="w-1.5 h-1.5 rounded-full bg-(--color-accent) animate-pulse" />
-                {t.chat.streaming}
-              </span>
-            )}
-            {isCompacting && <span>◌ {t.chat.compacting}</span>}
-            {pending > 0 && (
-              <span>
-                {pending} {t.chat.queued}
-              </span>
-            )}
-            {isStreaming && (
-              <div className="ml-auto flex items-center gap-1">
-                <span className="text-(--color-fg-dim)">режим:</span>
-                <button
-                  type="button"
-                  onClick={() => setStreamingBehavior("steer")}
-                  className={clsx(
-                    "px-1.5 py-0.5 rounded transition-colors",
-                    streamingBehavior === "steer"
-                      ? "bg-(--color-accent-soft) text-(--color-accent)"
-                      : "hover:bg-(--color-bg-mute) text-(--color-fg-mute)",
-                  )}
-                >
-                  {t.chat.streamingBehavior.steer}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStreamingBehavior("followUp")}
-                  className={clsx(
-                    "px-1.5 py-0.5 rounded transition-colors",
-                    streamingBehavior === "followUp"
-                      ? "bg-(--color-accent-soft) text-(--color-accent)"
-                      : "hover:bg-(--color-bg-mute) text-(--color-fg-mute)",
-                  )}
-                >
-                  {t.chat.streamingBehavior.followUp}
-                </button>
-              </div>
-            )}
+            <span>
+              {pending} {t.chat.queued}
+            </span>
           </div>
         )}
 
-        {/* Plan-mode и закреплённые скиллы */}
-        {(planMode || attachedSkills.length > 0) && (
-          <div className="flex items-center gap-1.5 px-1 mb-1 flex-wrap">
-            {planMode && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-(--color-warn)/15 text-(--color-warn) border border-(--color-warn)/30">
-                <ListTodo size={10} />
-                Plan mode
-              </span>
-            )}
-            {attachedSkills.map((name) => (
-              <span
-                key={name}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-(--color-accent-soft)/40 text-(--color-accent) border border-(--color-accent)/30 font-mono"
-              >
-                /skill:{name}
-                <button
-                  type="button"
-                  onClick={() => toggleAttachedSkill(name)}
-                  className="hover:text-(--color-fg)"
-                >
-                  <X size={9} />
-                </button>
-              </span>
-            ))}
+        {/* Plan-mode */}
+        {planMode && (
+          <div className="mb-1 flex items-center gap-1.5 px-1">
+            <Chip size="xs" tone="warning" variant="mode" icon={<AppIcon name="plan" size={10} />}>
+              Plan mode
+            </Chip>
           </div>
         )}
 
@@ -780,8 +708,8 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
         )}
 
         {planMode && planFilePath && (planReady || assistantPlanReady) && (
-          <div className="mb-2 rounded-lg border border-(--color-warn)/35 bg-(--color-warn)/10 px-3 py-2 flex items-center gap-2">
-            <ListTodo size={14} className="text-(--color-warn) shrink-0" />
+          <div className="mb-2 rounded-xl border border-(--color-warn)/30 bg-(--color-warn)/9 px-3 py-2 flex items-center gap-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-warn)_16%,white_12%)]">
+            <AppIcon name="plan" size={14} className="text-(--color-warn) shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-medium text-(--color-fg)">План готов к реализации</div>
               <div className="text-[10px] text-(--color-fg-dim) truncate" title={planFilePath}>
@@ -800,19 +728,13 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               )}
               title="Выполнить текущий план (/execute)"
             >
-              <Play size={12} />
+              <AppIcon name="play" size={12} />
               Реализовать
             </button>
           </div>
         )}
 
-        {attachedSkills.length > 0 && (
-          <div className="mb-1 px-1 text-[10px] text-(--color-fg-dim)">
-            Закреплено скиллов: {attachedSkills.length}
-          </div>
-        )}
-
-        {/* Карточка композера в стиле Windsurf */}
+        {/* Карточка композера */}
         <div className={clsx("relative pi-composer-card group/composer", planMode && "!border-(--color-warn)/40")}>
           {isCdCommand && cdCompletions.length > 0 && (
             <div className="absolute left-3 right-3 bottom-full mb-2 max-h-56 overflow-y-auto bg-(--color-bg-soft) border border-(--color-border) rounded-md shadow-2xl text-xs">
@@ -1060,11 +982,11 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               isStreaming ? t.chat.placeholderStreaming : t.chat.placeholder
             }
             rows={1}
-            className="block w-full bg-transparent border-0 outline-none resize-none px-3 pt-2.5 pb-1 text-sm text-(--color-fg) placeholder:text-(--color-fg-dim)"
+            className="block w-full bg-transparent border-0 outline-none resize-none px-4 pt-4 pb-2 text-sm text-(--color-fg) placeholder:text-(--color-fg-dim)"
           />
 
           {/* Footer toolbar внутри карточки */}
-          <div className="flex items-center gap-0.5 px-1.5 pb-1.5 pt-0.5">
+          <div className="flex items-center gap-1 px-4 pb-3 pt-1">
             <ToolBtn
               icon={<Paperclip size={13} />}
               onClick={onPickFile}
@@ -1075,63 +997,22 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
               onClick={insertSlash}
               title="Slash-команда"
             />
-            <ToolBtn
-              icon={<Sparkles size={13} />}
-              onClick={() => setSkillsOpen((v) => !v)}
-              title="Палитра скиллов (Ctrl+/)"
-            />
-            <ToolBtn
-              icon={<ListTodo size={13} />}
-              onClick={() => void togglePlanMode()}
-              title={planMode ? "Выключить Plan mode" : "Включить Plan mode"}
-            />
             <button
               type="button"
-              onClick={toggleYoloMode}
+              onClick={() => setSkillsOpen((v) => !v)}
+              title="Палитра скиллов (Ctrl+/)"
               className={clsx(
-                "h-6 px-1.5 rounded text-[10px] font-semibold transition-colors",
-                yoloMode
-                  ? "bg-(--color-danger)/15 text-(--color-danger) border border-(--color-danger)/30"
-                  : "text-(--color-fg-dim) hover:text-(--color-fg-mute) hover:bg-(--color-bg-mute)",
+                "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs transition-colors",
+                skillsOpen || attachedSkills.length > 0
+                  ? "bg-(--color-accent-soft) text-(--color-accent)"
+                  : "text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg)",
               )}
-              title={yoloMode ? "YOLO включён: разрешения подтверждаются автоматически" : "YOLO: автоматически разрешать команды и доступы"}
             >
-              YOLO
+              <Sparkles size={13} />
+              Skills · {attachedSkills.length}
             </button>
-            {onToggleBash && (
-              <ToolBtn
-                icon={<Terminal size={13} />}
-                onClick={onToggleBash}
-                title="Bash (Ctrl+`)"
-              />
-            )}
-            <div className="h-4 w-px bg-(--color-border) mx-1" />
-            {model && (
-              <span
-                className="px-1.5 py-0.5 text-[11px] text-(--color-fg-mute) font-mono truncate max-w-[180px]"
-                title={`${model.provider}/${model.id}`}
-              >
-                {model.id}
-              </span>
-            )}
-            {thinkingLevel && (
-              <button
-                type="button"
-                onClick={cycleThinking}
-                className={clsx(
-                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] transition-colors",
-                  thinkingLevel === "off"
-                    ? "text-(--color-fg-dim) hover:text-(--color-fg-mute) hover:bg-(--color-bg-mute)"
-                    : "text-(--color-accent) hover:bg-(--color-accent-soft)",
-                )}
-                title="Переключить уровень thinking"
-              >
-                <Brain size={11} />
-                {thinkingLevel}
-              </button>
-            )}
             <div className="flex-1" />
-            <ContextIndicator variant="composer" />
+            <RunSettingsPopover open={runSettingsOpen} onOpenChange={setRunSettingsOpen} />
             {isStreaming ? (
               <button
                 type="button"
@@ -1147,14 +1028,14 @@ export function Composer({ onSlash, onToggleBash, onBtw }: Props) {
                 onClick={() => void submit()}
                 disabled={!trimmed && attachments.length === 0}
                 className={clsx(
-                  "inline-flex items-center justify-center h-7 w-7 rounded-md transition-colors",
+                  "inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors shadow-[0_10px_22px_-12px_var(--color-accent)]",
                   !trimmed && attachments.length === 0
-                    ? "bg-(--color-bg-mute) text-(--color-fg-dim) cursor-not-allowed"
-                    : "bg-(--color-accent) text-(--color-bg) hover:opacity-90",
+                    ? "bg-(--color-bg-mute) text-(--color-fg-dim) cursor-not-allowed shadow-none"
+                    : "bg-(--color-accent) text-white hover:opacity-90",
                 )}
                 title={`${t.composer.send} (Enter)`}
               >
-                <Send size={13} />
+                <Send size={15} />
               </button>
             )}
           </div>

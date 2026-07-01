@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Star, Pin, Search } from "lucide-react";
+import { Star, Pin, Search } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";

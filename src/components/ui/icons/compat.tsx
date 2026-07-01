@@ -1,0 +1,87 @@
+import type { SVGProps } from "react";
+import { AppIcon, type AppIconName } from "../AppIcon";
+
+export type CompatIconProps = SVGProps<SVGSVGElement> & {
+  size?: number | string;
+  strokeWidth?: number | string;
+};
+
+function makeIcon(name: AppIconName) {
+  return function CompatIcon(props: CompatIconProps) {
+    return <AppIcon {...props} name={name} />;
+  };
+}
+
+export const Activity = makeIcon("activity");
+export const AlertCircle = makeIcon("alert");
+export const AlertTriangle = makeIcon("alertTriangle");
+export const ArrowDown = makeIcon("arrowDown");
+export const Bot = makeIcon("bot");
+export const Brain = makeIcon("brain");
+export const Camera = makeIcon("camera");
+export const Check = makeIcon("check");
+export const CheckCircle2 = makeIcon("checkCircle");
+export const ChevronDown = makeIcon("chevronDown");
+export const ChevronRight = makeIcon("chevronRight");
+export const ChevronUp = makeIcon("chevronUp");
+export const Circle = makeIcon("circle");
+export const Clock = makeIcon("clock");
+export const Cloud = makeIcon("cloud");
+export const Columns2 = makeIcon("columns");
+export const Command = makeIcon("command");
+export const Copy = makeIcon("copy");
+export const CopyPlus = makeIcon("copyPlus");
+export const Cpu = makeIcon("cpu");
+export const Database = makeIcon("database");
+export const Download = makeIcon("download");
+export const ExternalLink = makeIcon("externalLink");
+export const FileText = makeIcon("fileText");
+export const FileWarning = makeIcon("fileAlert");
+export const Folder = makeIcon("folder");
+export const FolderCog = makeIcon("folderCog");
+export const GitBranch = makeIcon("gitBranch");
+export const GitFork = makeIcon("gitFork");
+export const Globe = makeIcon("web");
+export const HelpCircle = makeIcon("help");
+export const Image = makeIcon("photo");
+export const Info = makeIcon("info");
+export const KeyRound = makeIcon("key");
+export const Layers = makeIcon("layers");
+export const ListTodo = makeIcon("plan");
+export const Loader2 = makeIcon("loader");
+export const Menu = makeIcon("menu");
+export const MessageCircleQuestion = makeIcon("messageQuestion");
+export const MessageSquare = makeIcon("message");
+export const Monitor = makeIcon("agentScreen");
+export const MoreHorizontal = makeIcon("more");
+export const MousePointer2 = makeIcon("pointer");
+export const Navigation = makeIcon("navigation");
+export const Palette = makeIcon("palette");
+export const PanelTop = makeIcon("layoutTop");
+export const Paperclip = makeIcon("paperclip");
+export const Pencil = makeIcon("pencil");
+export const Pin = makeIcon("pin");
+export const Play = makeIcon("play");
+export const Plug = makeIcon("plug");
+export const Plus = makeIcon("plus");
+export const RefreshCcw = makeIcon("rotate");
+export const RefreshCw = makeIcon("refresh");
+export const RotateCcw = makeIcon("rotateBack");
+export const RotateCw = makeIcon("rotate");
+export const Save = makeIcon("save");
+export const Search = makeIcon("search");
+export const Send = makeIcon("send");
+export const Server = makeIcon("server");
+export const Settings = makeIcon("settings");
+export const Settings2 = makeIcon("settings2");
+export const ShieldAlert = makeIcon("yolo");
+export const Slash = makeIcon("slash");
+export const SlidersHorizontal = makeIcon("settings2");
+export const Sparkles = makeIcon("sparkles");
+export const Square = makeIcon("stop");
+export const Star = makeIcon("star");
+export const Terminal = makeIcon("terminal");
+export const Trash2 = makeIcon("trash");
+export const Wand2 = makeIcon("wand");
+export const Wrench = makeIcon("tool");
+export const X = makeIcon("x");

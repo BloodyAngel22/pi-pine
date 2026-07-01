@@ -1,3 +1,4 @@
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { create } from "zustand";
 
 const KEY_FONT = "pi-pine.fontScale";
@@ -57,23 +58,27 @@ function readDeepResearchMode(): DeepResearchMode {
 }
 
 function applyFontScale(scale: number) {
-  // Используем CSS `zoom` на корневом элементе — это масштабирует ВСЁ
-  // (включая Tailwind utility text-xs/text-sm и pixel-defined text-[11px]),
-  // тогда как `font-size` влияет только на em/rem-зависимые размеры.
-  // Поддерживается во всех Chromium/WebKit-движках, что использует Tauri.
   const root = document.documentElement;
-  // 1.0 — без зума; убираем атрибут, чтобы не мешать дев-инструментам.
-  if (Math.abs(scale - 1.0) < 0.001) {
-    root.style.removeProperty("zoom");
-  } else {
-    root.style.setProperty("zoom", String(scale));
+  const rounded = Math.round(scale * 1000) / 1000;
+
+  // Масштаб интерфейса применяется через webview-zoom (как Ctrl+= в браузере).
+  // Он масштабирует ВСЁ равномерно: px, иконки, rem — и при этом не ломает
+  // floating UI, т.к. координатная система внутри webview остаётся согласованной.
+  // Root font-size держим в дефолте, иначе будет двойное масштабирование.
+  root.style.removeProperty("zoom");
+  root.style.removeProperty("font-size");
+  root.style.removeProperty("--app-font-size");
+
+  // Сохраняем множитель информационно для кастомных стилей и диагностики.
+  root.style.setProperty("--app-font-scale", String(rounded));
+
+  // В обычном браузере getCurrentWebview() может быть недоступен, а в Tauri
+  // отказ capability приходит как rejected promise — оба случая безопасно игнорируем.
+  try {
+    void getCurrentWebview().setZoom(rounded).catch(() => {});
+  } catch {
+    // not in tauri context
   }
-  // Дополнительно сохраняем CSS-переменную (на случай, если кто-то будет
-  // её использовать в кастомных стилях).
-  root.style.setProperty(
-    "--app-font-scale",
-    String(Math.round(scale * 1000) / 1000),
-  );
 }
 
 function applyChatFontSize(scale: number) {

@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check } from "@/components/ui/icons/compat";
 import { open } from "@tauri-apps/plugin-shell";
 
 interface Props {

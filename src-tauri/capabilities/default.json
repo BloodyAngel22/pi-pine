@@ -9,6 +9,7 @@
     "core:default",
     "core:window:default",
     "core:webview:default",
+    "core:webview:allow-set-webview-zoom",
     "core:event:default",
     "core:path:default",
     "shell:default",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Copy, GitFork, RotateCw, Pencil, Check } from "lucide-react";
+import { Copy, GitFork, RotateCw, Pencil, Check } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
 import type { UiMessage } from "@/store/chat";

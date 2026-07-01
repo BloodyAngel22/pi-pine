@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Search, X, Plus, Pin, Info } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { Info, Pin, Plus, Search, Sparkles, X } from "@/components/ui/icons/compat";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat } from "@/store/chat";
 import * as rpc from "@/rpc/bridge";
+import { bottomSheetVariants, popoverContentVariants, softEase } from "@/lib/motionPresets";
 
 interface PiCommand {
   name: string;
@@ -31,15 +32,14 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
   const toggleAttached = useChat((s) => s.toggleAttachedSkill);
   const [items, setItems] = useState<PiCommand[]>([]);
   const [query, setQuery] = useState("");
-  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [previewFor, setPreviewFor] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    setPicked(new Set());
     rpc
       .getCommands()
       .then((res) => {
@@ -47,8 +47,6 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
           .filter((c) => c.source === "skill")
           .map((c) => ({
             ...c,
-            // pi отдаёт name="skill:caveman"; убираем префикс,
-            // чтобы хранить и отображать чистое имя.
             name: c.name.startsWith("skill:") ? c.name.slice(6) : c.name,
           }));
         setItems(skills as PiCommand[]);
@@ -69,187 +67,172 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
     );
   }, [items, query]);
 
-  const grouped = useMemo(() => {
-    const groups = new Map<string, PiCommand[]>();
-    for (const item of filtered) {
-      const cats = item.categories && item.categories.length > 0 ? item.categories : ["uncategorized"];
-      for (const cat of cats) {
-        const bucket = groups.get(cat) ?? [];
-        bucket.push(item);
-        groups.set(cat, bucket);
-      }
-    }
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
+  const pinnedItems = filtered.filter((item) => attached.includes(item.name));
+  const availableItems = filtered.filter((item) => !attached.includes(item.name));
+  const hiddenAvailable = Math.max(0, items.length - attached.length - availableItems.length);
 
   const loadPreview = async (name: string) => {
     setPreviewFor(name);
     setPreview("…");
     try {
       const detail = await rpc.getSkillDetail(name);
-      setPreview(detail.content.slice(0, 1200));
+      setPreview(detail.content.slice(0, 900));
     } catch (e) {
       setPreview((e as Error).message);
     }
   };
 
-  if (!open) return null;
-
-  const insertSelected = () => {
-    const names = Array.from(picked);
-    if (names.length === 0) return onClose();
-    const text = names.map((n) => `/skill:${n}`).join(" ");
-    onInsert(text);
+  const insertPinned = () => {
+    if (attached.length === 0) return;
+    onInsert(attached.map((n) => `/skill:${n}`).join(" "));
     onClose();
   };
 
   return (
-    <div className="absolute inset-0 z-30 flex items-end justify-center pb-2">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative w-full max-w-[680px] mx-2 bg-(--color-bg-soft) border border-(--color-border) rounded-lg shadow-2xl flex flex-col max-h-[70vh] overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-(--color-border) px-2 py-1.5">
-          <Search size={12} className="text-(--color-fg-dim)" />
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск скиллов…"
-            className="flex-1 bg-transparent outline-none text-sm placeholder:text-(--color-fg-dim)"
-          />
-          <span className="text-[10px] text-(--color-fg-dim)">
-            {filtered.length}/{items.length}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-(--color-fg-dim) hover:text-(--color-fg)"
-          >
-            <X size={12} />
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          className="pi-skills-panel mb-0 overflow-hidden rounded-t-2xl border border-(--color-border) border-b-0 bg-(--color-bg-soft) shadow-[0_18px_70px_-38px_rgba(0,0,0,0.55)]"
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+          variants={bottomSheetVariants(Boolean(reduceMotion))}
+          transition={softEase}
+        >
+      <div className="flex h-11 items-center gap-2 border-b border-(--color-border-muted) px-4">
+        <Sparkles size={13} className="text-(--color-accent)" />
+        <div className="text-sm font-semibold text-(--color-fg)">Скиллы</div>
+        <div className="text-xs text-(--color-fg-dim)">закреплено {attached.length} · доступно {items.length}</div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="hidden h-7 items-center gap-1.5 rounded-lg border border-(--color-border-muted) bg-(--color-bg) px-2 sm:flex">
+            <Search size={11} className="text-(--color-fg-dim)" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="поиск"
+              className="w-32 bg-transparent text-xs outline-none placeholder:text-(--color-fg-dim)"
+            />
+          </div>
+          {attached.length > 0 && (
+            <button type="button" onClick={insertPinned} className="rounded-md px-2 py-1 text-[11px] text-(--color-accent) hover:bg-(--color-accent-soft)">
+              insert pinned
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-(--color-fg-dim) hover:bg-(--color-bg-mute) hover:text-(--color-fg)" aria-label="Закрыть">
+            <X size={14} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="px-3 py-4 text-xs text-(--color-fg-dim)">…</div>
-          )}
-          {!loading && filtered.length === 0 && (
-            <div className="px-3 py-4 text-xs text-(--color-fg-dim)">
-              Скиллы не найдены. Установи их в pi (например, через /skill).
-            </div>
-          )}
-          {grouped.map(([category, skills]) => (
-            <div key={category}>
-              <div className="sticky top-0 z-10 px-3 py-1 text-[10px] uppercase tracking-wide text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)/50">
-                {category} · {skills.length}
-              </div>
-              {skills.map((s) => {
-                const isPicked = picked.has(s.name);
-                const isPinned = attached.includes(s.name);
-                const sourcePath = s.path ?? s.sourceInfo?.path ?? s.sourceInfo?.baseDir;
-                return (
-                  <div
-                    key={`${category}:${s.name}`}
-                    onClick={() => {
-                      setPicked((p) => {
-                        const next = new Set(p);
-                        if (next.has(s.name)) next.delete(s.name);
-                        else next.add(s.name);
-                        return next;
-                      });
-                    }}
-                    className={clsx(
-                      "px-3 py-1.5 border-b border-(--color-border)/40 cursor-pointer flex items-start gap-2",
-                      isPicked
-                        ? "bg-(--color-accent-soft)/40"
-                        : "hover:bg-(--color-bg-mute)",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isPicked}
-                      readOnly
-                      className="mt-0.5 accent-(--color-accent)"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="font-mono text-xs truncate">{s.name}</span>
-                        {(s.categories ?? []).map((cat) => (
-                          <span key={cat} className="text-[9px] px-1 rounded bg-(--color-bg-mute) text-(--color-fg-dim)">{cat}</span>
-                        ))}
-                      </div>
-                      {s.description && (
-                        <div className="text-[11px] text-(--color-fg-dim) line-clamp-2">
-                          {s.description}
-                        </div>
-                      )}
-                      {sourcePath && (
-                        <div className="mt-0.5 text-[10px] text-(--color-fg-mute) font-mono truncate" title={sourcePath}>
-                          {s.location ?? s.sourceInfo?.scope ?? "path"}: {sourcePath}
-                        </div>
-                      )}
-                      {previewFor === s.name && preview && (
-                        <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-(--color-bg)/70 border border-(--color-border)/50 p-1.5 text-[10px] text-(--color-fg-dim)">{preview}</pre>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      title="Preview SKILL.md"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (previewFor === s.name) {
-                          setPreviewFor(null);
-                          setPreview(null);
-                        } else {
-                          void loadPreview(s.name);
-                        }
-                      }}
-                      className="p-1 rounded text-(--color-fg-dim) hover:text-(--color-fg) hover:bg-(--color-bg-mute)"
-                    >
-                      <Info size={10} />
-                    </button>
-                    <button
-                      type="button"
-                      title={isPinned ? "Открепить" : "Закрепить (добавлять ко всем сообщениям сессии)"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleAttached(s.name);
-                      }}
-                      className={clsx(
-                        "p-1 rounded transition-colors",
-                        isPinned
-                          ? "text-(--color-accent) bg-(--color-accent-soft)/30"
-                          : "text-(--color-fg-dim) hover:text-(--color-fg) hover:bg-(--color-bg-mute)",
-                      )}
-                    >
-                      <Pin size={10} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        <div className="border-t border-(--color-border) px-2 py-1.5 flex items-center gap-2">
-          <span className="text-[11px] text-(--color-fg-dim) flex-1 truncate">
-            {picked.size > 0
-              ? `Выбрано: ${Array.from(picked).join(", ")}`
-              : attached.length > 0
-                ? `Закреплено: ${attached.join(", ")}`
-                : "Чекбокс — добавить в сообщение, булавка — закрепить за сессией"}
-          </span>
-          <Button variant="subtle" size="sm" onClick={onClose}>
-            Отмена
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<Plus size={12} />}
-            onClick={insertSelected}
-            disabled={picked.size === 0}
-          >
-            Добавить в сообщение
-          </Button>
-        </div>
       </div>
+
+      <div className="grid max-h-[235px] grid-cols-1 overflow-hidden md:grid-cols-[1fr_1fr]">
+        <section className="min-w-0 border-b border-(--color-border-muted) md:border-b-0 md:border-r">
+          <ColumnHeader title="Закреплённые" />
+          <div className="max-h-[190px] overflow-y-auto p-3 pt-2">
+            {loading && <Empty>Загрузка…</Empty>}
+            {!loading && pinnedItems.length === 0 && <Empty>Закрепи скиллы, чтобы они применялись к сообщениям в этой сессии.</Empty>}
+            <div className="space-y-1">
+              {pinnedItems.map((skill) => (
+                <SkillRow
+                  key={skill.name}
+                  skill={skill}
+                  pinned
+                  preview={previewFor === skill.name ? preview : null}
+                  onPreview={() => previewFor === skill.name ? (setPreviewFor(null), setPreview(null)) : void loadPreview(skill.name)}
+                  onToggle={() => toggleAttached(skill.name)}
+                />
+              ))}
+            </div>
+            {attached.length > pinnedItems.length && query && <div className="mt-2 px-1 text-[11px] text-(--color-fg-dim)">ещё закреплено: {attached.length - pinnedItems.length}</div>}
+          </div>
+        </section>
+
+        <section className="min-w-0">
+          <ColumnHeader title="Доступные" />
+          <div className="max-h-[190px] overflow-y-auto p-3 pt-2">
+            {loading && <Empty>Загрузка…</Empty>}
+            {!loading && availableItems.length === 0 && <Empty>Скиллы не найдены.</Empty>}
+            <div className="space-y-1">
+              {availableItems.map((skill) => (
+                <SkillRow
+                  key={skill.name}
+                  skill={skill}
+                  pinned={false}
+                  preview={previewFor === skill.name ? preview : null}
+                  onPreview={() => previewFor === skill.name ? (setPreviewFor(null), setPreview(null)) : void loadPreview(skill.name)}
+                  onToggle={() => toggleAttached(skill.name)}
+                />
+              ))}
+            </div>
+            {(availableItems.length > 0 || hiddenAvailable > 0) && (
+              <div className="mt-2 px-1 text-[11px] text-(--color-fg-dim)">
+                {hiddenAvailable > 0 ? `скрыто фильтром: ${hiddenAvailable}` : `всего доступно: ${availableItems.length}`}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function ColumnHeader({ title }: { title: string }) {
+  return <div className="px-4 pt-3 text-[11px] font-medium uppercase tracking-[0.12em] text-(--color-fg-dim)">{title}</div>;
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-xl border border-dashed border-(--color-border-muted) p-3 text-xs text-(--color-fg-dim)">{children}</div>;
+}
+
+function SkillRow({
+  skill,
+  pinned,
+  preview,
+  onPreview,
+  onToggle,
+}: {
+  skill: PiCommand;
+  pinned: boolean;
+  preview: string | null;
+  onPreview(): void;
+  onToggle(): void;
+}) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div
+      className={clsx(
+        "rounded-lg transition-colors",
+        pinned ? "bg-(--color-accent-soft)" : "hover:bg-(--color-bg-mute)",
+      )}
+    >
+      <div className="flex h-7 items-center gap-2 px-2">
+        <span className={clsx("h-1.5 w-1.5 shrink-0 rounded-full", pinned ? "bg-(--color-accent)" : "bg-(--color-fg-dim)")} />
+        <button type="button" onDoubleClick={() => onPreview()} className="min-w-0 flex-1 truncate text-left font-mono text-xs text-(--color-fg)" title={skill.description || skill.name}>
+          {skill.name}
+        </button>
+        <button type="button" title="Preview SKILL.md" onClick={onPreview} className="rounded p-1 text-(--color-fg-dim) hover:bg-(--color-bg-soft) hover:text-(--color-fg)">
+          <Info size={11} />
+        </button>
+        <button type="button" title={pinned ? "Открепить" : "Закрепить"} onClick={onToggle} className={clsx("rounded p-1 transition-colors", pinned ? "text-(--color-accent) hover:bg-(--color-bg-soft)" : "text-(--color-fg-dim) hover:bg-(--color-accent-soft) hover:text-(--color-accent)")}>
+          {pinned ? <Pin size={11} /> : <Plus size={12} />}
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {preview && (
+          <motion.pre
+            className="mx-2 mb-2 max-h-24 overflow-auto whitespace-pre-wrap rounded-lg border border-(--color-border-muted) bg-(--color-bg-soft) p-2 text-[10px] text-(--color-fg-dim)"
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            variants={popoverContentVariants(Boolean(reduceMotion))}
+            transition={softEase}
+          >
+            {preview}
+          </motion.pre>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

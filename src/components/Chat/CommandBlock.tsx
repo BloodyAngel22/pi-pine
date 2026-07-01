@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
+import { ChevronDown, ChevronRight, Terminal } from "@/components/ui/icons/compat";
 
 /**
  * Сворачиваемый блок для команды/скилла в сообщении пользователя.
@@ -16,7 +16,7 @@ export function CommandBlock({ name, content }: { name: string; content: string 
   const displayName = name.startsWith("skill:") ? name.slice(6) : name;
 
   return (
-    <div className="my-1 rounded-md border border-(--color-warn)/40 bg-(--color-warn)/10 text-xs">
+    <div className="pi-chat-scaled my-1 rounded-md border border-(--color-warn)/40 bg-(--color-warn)/10 text-xs">
       <button
         type="button"
         onClick={() => hasContent && setOpen((v) => !v)}

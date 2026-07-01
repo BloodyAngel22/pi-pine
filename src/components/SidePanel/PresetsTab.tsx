@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Bot, CheckCircle2, Pencil, Plus, RefreshCcw, Trash2, Wand2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bot, CheckCircle2, Pencil, Plus, RefreshCcw, Trash2, Wand2 } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import { Button } from "@/components/ui/Button";
+import { Chip } from "@/components/ui/Chip";
 import { useAgentsStore } from "@/store/agents";
 import { useChat } from "@/store/chat";
 import type { AgentPresetConfig } from "@/rpc/types";
@@ -106,8 +107,8 @@ export function PresetsTab() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="font-semibold text-sm truncate">{preset.name}</span>
-                    {isActive && <Badge className="text-(--color-accent) bg-(--color-accent-soft)">Active</Badge>}
-                    {isAuto && <Badge className="text-(--color-warn) bg-(--color-warn)/10">Auto</Badge>}
+                    {isActive && <Chip size="xs" tone="accent">Active</Chip>}
+                    {isAuto && <Chip size="xs" tone="warning">Auto</Chip>}
                   </div>
                   {preset.description && <div className="text-xs text-(--color-fg-mute) truncate mt-0.5">{preset.description}</div>}
                 </div>
@@ -116,10 +117,10 @@ export function PresetsTab() {
 
               <div className="text-[11px] font-mono text-(--color-fg-dim) truncate" title={model}>{model}</div>
               <div className="flex flex-wrap gap-1 text-[11px]">
-                <Badge>bash: {preset.permissions?.bash ?? "allow"}</Badge>
-                <Badge>files: {preset.permissions?.files ?? "allow"}</Badge>
-                <Badge>mcp: {preset.mcpPermissions?.mode ?? "allow-all"}</Badge>
-                {preset.thinkingLevel && <Badge>think: {preset.thinkingLevel}</Badge>}
+                <Chip size="xs" mono>bash: {preset.permissions?.bash ?? "ask"}</Chip>
+                <Chip size="xs" mono>files: {preset.permissions?.files ?? "ask"}</Chip>
+                <Chip size="xs" mono>mcp: {preset.mcpPermissions?.mode ?? "ask"}</Chip>
+                {preset.thinkingLevel && <Chip size="xs" mono>think: {preset.thinkingLevel}</Chip>}
               </div>
 
               <div className="flex items-center justify-end gap-1">
@@ -157,8 +158,4 @@ export function PresetsTab() {
       />
     </div>
   );
-}
-
-function Badge({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={clsx("px-1.5 py-0.5 rounded bg-(--color-bg-mute) text-(--color-fg-mute)", className)}>{children}</span>;
 }
