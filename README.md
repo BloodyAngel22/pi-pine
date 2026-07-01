@@ -1,5 +1,9 @@
 <p align="center">
-    <img src="assets/logo.png" alt="Pi Pine" width="280" />
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/pi-pine-logo/logo-on-dark-1024.png" />
+        <source media="(prefers-color-scheme: light)" srcset="assets/pi-pine-logo/logo-on-light-1024.png" />
+        <img src="assets/pi-pine-logo/logo-on-light-1024.png" alt="Pi Pine" width="200" />
+    </picture>
 </p>
 
 <h1 align="center">Pi Pine</h1>

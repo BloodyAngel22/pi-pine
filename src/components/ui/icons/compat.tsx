@@ -82,7 +82,6 @@ export const Square = makeIcon("stop");
 export const Star = makeIcon("star");
 export const Terminal = makeIcon("terminal");
 export const Trash2 = makeIcon("trash");
-export const TreePine = makeIcon("pi");
 export const Wand2 = makeIcon("wand");
 export const Wrench = makeIcon("tool");
 export const X = makeIcon("x");

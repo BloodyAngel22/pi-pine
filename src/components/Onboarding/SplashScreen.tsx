@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { TreePine, Check, Loader2 } from "@/components/ui/icons/compat";
+import { Check, Loader2 } from "@/components/ui/icons/compat";
+import { PiPineLogoMark } from "@/components/ui/icons/custom";
 import clsx from "clsx";
 
 export type BootStage = "init" | "detect" | "starting" | "ready";
@@ -75,7 +76,7 @@ export function SplashScreen({
       <div className="splash-card w-full max-w-2xl max-h-full overflow-hidden rounded-xl border border-(--color-border) bg-(--color-bg-soft)/80 backdrop-blur-md shadow-2xl px-8 py-7 space-y-5">
         <div className="flex items-center gap-3">
           <div className="splash-logo">
-            <TreePine size={28} className="text-(--color-accent)" />
+            <PiPineLogoMark size={28} className="text-(--color-accent)" />
           </div>
           <div>
             <div className="text-base font-semibold tracking-tight">pi-pine</div>
