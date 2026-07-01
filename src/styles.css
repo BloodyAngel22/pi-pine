@@ -512,11 +512,13 @@ select {
 }
 
 /* Shared glyph geometry: marks are positioned by top/left in the glyph box.
-   Keyframes avoid calc multiplication so WebView renders every size reliably. */
-.pi-activity[data-pattern] .pi-activity-mark {
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-}
+   Keyframes avoid calc multiplication so WebView renders every size reliably.
+   Не промотируем эти элементы в отдельный composited-слой (will-change /
+   backface-visibility): на WebKitGTK при webview-zoom != 100% (Settings →
+   Масштаб интерфейса) такой закэшированный слой растягивается растрово и
+   тонкие повёрнутые полоски (braid/hinge/cursor-fold/aperture) выглядят
+   "криво"/рваными. Обычный paint-проход на каждый кадр корректно учитывает
+   текущий zoom и рисует линии ровно. */
 
 /* Orbit: three thoughts around one quiet center. */
 .pi-activity[data-pattern="orbit"] .pi-activity-mark {
@@ -542,6 +544,25 @@ select {
 }
 .pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-glyph {
   animation: pi-activity-orbit 1.8s linear infinite;
+}
+/* Comet sweep: soft trailing arc, rotates together with the glyph for free. */
+.pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-glyph::before {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  border-radius: 999px;
+  background: conic-gradient(from 90deg, currentColor 0deg, transparent 70deg, transparent 360deg);
+  opacity: 0.16;
+  pointer-events: none;
+}
+.pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-mark-a {
+  animation: pi-activity-orbit-blink-a 1.2s ease-in-out infinite;
+}
+.pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-mark-b {
+  animation: pi-activity-orbit-blink-b 1.2s ease-in-out 0.3s infinite;
+}
+.pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-mark-c {
+  animation: pi-activity-orbit-blink-c 1.2s ease-in-out 0.6s infinite;
 }
 
 /* Braid: a stable stack of strokes, animated by weight instead of drift. */
@@ -714,8 +735,14 @@ select {
   top: 34%;
   left: 41%;
 }
-.pi-activity[data-active="true"][data-pattern="aperture"] .pi-activity-mark {
+.pi-activity[data-active="true"][data-pattern="aperture"] .pi-activity-mark-a {
   animation: pi-activity-aperture 1.65s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.pi-activity[data-active="true"][data-pattern="aperture"] .pi-activity-mark-b {
+  animation: pi-activity-aperture 1.65s cubic-bezier(0.22, 1, 0.36, 1) 0.18s infinite;
+}
+.pi-activity[data-active="true"][data-pattern="aperture"] .pi-activity-mark-c {
+  animation: pi-activity-aperture 1.65s cubic-bezier(0.22, 1, 0.36, 1) 0.36s infinite;
 }
 
 .pi-activity[data-active="false"] {
@@ -725,45 +752,57 @@ select {
 @keyframes pi-activity-orbit {
   to { transform: rotate(360deg); }
 }
+@keyframes pi-activity-orbit-blink-a {
+  0%, 100% { opacity: 0.95; transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 3px currentColor; }
+  50% { opacity: 0.22; transform: translate(-50%, -50%) scale(0.6); box-shadow: 0 0 0 transparent; }
+}
+@keyframes pi-activity-orbit-blink-b {
+  0%, 100% { opacity: 0.62; transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 2px currentColor; }
+  50% { opacity: 0.14; transform: translate(-50%, -50%) scale(0.6); box-shadow: 0 0 0 transparent; }
+}
+@keyframes pi-activity-orbit-blink-c {
+  0%, 100% { opacity: 0.42; transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 2px currentColor; }
+  50% { opacity: 0.12; transform: translate(-50%, -50%) scale(0.6); box-shadow: 0 0 0 transparent; }
+}
 @keyframes pi-activity-braid {
-  0%, 100% { opacity: 0.34; transform: translate(-50%, -50%) rotate(var(--pi-tilt)) scaleX(0.66); }
-  48% { opacity: 0.92; transform: translate(-50%, -50%) rotate(var(--pi-tilt)) scaleX(1); }
+  0%, 100% { opacity: 0.34; transform: translate(-50%, -50%) rotate(var(--pi-tilt)) scaleX(0.66); box-shadow: 0 0 0 transparent; }
+  48% { opacity: 0.92; transform: translate(-50%, -50%) rotate(var(--pi-tilt)) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-cursor-a {
-  0%, 100% { opacity: 0.42; transform: translate(-52%, -50%) rotate(48deg) scaleX(0.86); }
-  45%, 72% { opacity: 0.92; transform: translate(-48%, -50%) rotate(34deg) scaleX(1); }
+  0%, 100% { opacity: 0.42; transform: translate(-52%, -50%) rotate(48deg) scaleX(0.86); box-shadow: 0 0 0 transparent; }
+  45%, 72% { opacity: 0.92; transform: translate(-48%, -50%) rotate(34deg) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-cursor-b {
-  0%, 100% { opacity: 0.42; transform: translate(-52%, -50%) rotate(-48deg) scaleX(0.86); }
-  45%, 72% { opacity: 0.92; transform: translate(-48%, -50%) rotate(-34deg) scaleX(1); }
+  0%, 100% { opacity: 0.42; transform: translate(-52%, -50%) rotate(-48deg) scaleX(0.86); box-shadow: 0 0 0 transparent; }
+  45%, 72% { opacity: 0.92; transform: translate(-48%, -50%) rotate(-34deg) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-cursor-c {
-  0%, 42%, 100% { opacity: 0.22; transform: translate(-18%, -50%) scaleX(0.42); }
-  70% { opacity: 0.78; transform: translate(-18%, -50%) scaleX(1); }
+  0%, 42%, 100% { opacity: 0.22; transform: translate(-18%, -50%) scaleX(0.42); box-shadow: 0 0 0 transparent; }
+  70% { opacity: 0.78; transform: translate(-18%, -50%) scaleX(1); box-shadow: 0 0 2px currentColor; }
 }
 @keyframes pi-activity-weave {
-  0%, 100% { opacity: 0.34; transform: translate(-50%, -38%) scale(0.78); }
-  45% { opacity: 0.95; transform: translate(-50%, -72%) scale(1); }
+  0%, 100% { opacity: 0.34; transform: translate(-50%, -38%) scale(0.78); border-radius: 999px; box-shadow: 0 0 0 transparent; }
+  45% { opacity: 0.95; transform: translate(-50%, -72%) scale(1); border-radius: 40% 60% 55% 45%; box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-hinge-a {
-  0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) rotate(0deg) scaleX(0.92); }
-  45%, 68% { opacity: 0.9; transform: translate(-50%, -50%) rotate(-28deg) scaleX(1); }
+  0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) rotate(0deg) scaleX(0.92); box-shadow: 0 0 0 transparent; }
+  45%, 68% { opacity: 0.9; transform: translate(-50%, -50%) rotate(-28deg) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-hinge-b {
-  0%, 100% { opacity: 0.32; transform: translate(-50%, -50%) scaleX(0.62); }
-  45%, 68% { opacity: 0.72; transform: translate(-50%, -50%) scaleX(0.42); }
+  0%, 100% { opacity: 0.32; transform: translate(-50%, -50%) scaleX(0.62); box-shadow: 0 0 0 transparent; }
+  45%, 68% { opacity: 0.72; transform: translate(-50%, -50%) scaleX(0.42); box-shadow: 0 0 2px currentColor; }
 }
 @keyframes pi-activity-hinge-c {
-  0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) rotate(0deg) scaleX(0.92); }
-  45%, 68% { opacity: 0.9; transform: translate(-50%, -50%) rotate(28deg) scaleX(1); }
+  0%, 100% { opacity: 0.4; transform: translate(-50%, -50%) rotate(0deg) scaleX(0.92); box-shadow: 0 0 0 transparent; }
+  45%, 68% { opacity: 0.9; transform: translate(-50%, -50%) rotate(28deg) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-ledger {
-  0%, 100% { opacity: 0.28; transform: translate(-50%, -50%) scaleX(0.64); }
-  44% { opacity: 0.92; transform: translate(-50%, -50%) scaleX(1); }
+  0%, 100% { opacity: 0.28; transform: translate(-50%, -50%) scaleX(0.64); box-shadow: 0 0 0 transparent; }
+  44% { opacity: 0.92; transform: translate(-50%, -50%) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-aperture {
-  0%, 100% { opacity: 0.34; transform: translate(-50%, -50%) rotate(var(--pi-aperture-angle)) scaleX(0.62); }
-  48%, 70% { opacity: 0.9; transform: translate(-50%, -50%) rotate(var(--pi-aperture-angle)) scaleX(1); }
+  0%, 100% { opacity: 0.34; transform: translate(-50%, -50%) rotate(var(--pi-aperture-angle)) scaleX(0.62); box-shadow: 0 0 0 transparent; }
+  48%, 70% { opacity: 0.9; transform: translate(-50%, -50%) rotate(var(--pi-aperture-angle)) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
 @keyframes pi-activity-reduced-pulse {
   0%, 100% { opacity: 0.38; }
