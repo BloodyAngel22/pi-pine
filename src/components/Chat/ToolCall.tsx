@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search } from "@/components/ui/icons/compat";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search, Copy, Check } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
+import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { ActivityIndicator } from "./ActivityIndicator";
 import {
@@ -17,6 +18,7 @@ import {
   textLineCount,
   buildFileMutationPreviewFromInput,
   buildFileMutationPreviewFromFile,
+  toRelativePath,
   type DiffPreview,
   type EditItem,
 } from "@/components/ExtUI/permissionUtils";
@@ -735,6 +737,34 @@ function InteractToolCall({
   );
 }
 
+function CopyPathButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+  const cwd = useChat((s) => s.cwd);
+  const relativePath = toRelativePath(path, cwd);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(relativePath);
+    } catch {
+      // ignore
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`Копировать относительный путь: ${relativePath}`}
+      className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded text-(--color-fg-dim) hover:text-(--color-accent) hover:bg-(--color-bg-mute) transition-colors"
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+    </button>
+  );
+}
+
 function FileMutationToolCall({ block }: { block: UiBlockTool }) {
   const [open, setOpen] = useState(true);
   const [fileContent, setFileContent] = useState<string | undefined>(undefined);
@@ -773,21 +803,24 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
           : "border-(--color-border) bg-(--color-bg-soft)",
       )}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-2.5 py-2 hover:bg-(--color-bg-mute) text-left"
-      >
-        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        {isError ? (
-          <AlertCircle size={12} className="text-(--color-danger)" />
-        ) : (
-          <FileText size={12} className="text-(--color-accent)" />
-        )}
-        <span className="font-mono text-(--color-accent)">{block.name}</span>
-        <span className="font-mono text-(--color-fg) truncate min-w-0" title={preview.path}>
-          {preview.path}
-        </span>
+      <div className="w-full flex items-center gap-2 px-2.5 py-2 hover:bg-(--color-bg-mute)">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {isError ? (
+            <AlertCircle size={12} className="text-(--color-danger)" />
+          ) : (
+            <FileText size={12} className="text-(--color-accent)" />
+          )}
+          <span className="font-mono text-(--color-accent) shrink-0">{block.name}</span>
+          <span className="font-mono text-(--color-fg) truncate min-w-0" title={preview.path}>
+            {preview.path}
+          </span>
+        </button>
+        {preview.path !== "unknown file" && <CopyPathButton path={preview.path} />}
         <span className="ml-auto shrink-0 font-mono text-[10px]">
           {preview.added > 0 && <span className="text-(--color-success)">+{preview.added}</span>}
           {preview.added > 0 && preview.removed > 0 && <span className="text-(--color-fg-dim)"> </span>}
@@ -796,7 +829,7 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
             <span className="text-(--color-fg-dim)">{isRunning ? "…" : isError ? "ошибка" : "done"}</span>
           )}
         </span>
-      </button>
+      </div>
       {open && (
         <div className="border-t border-(--color-border)">
           {lines.length > 0 ? (
