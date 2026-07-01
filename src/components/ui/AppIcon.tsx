@@ -5,6 +5,7 @@ import {
   IconAlertCircle,
   IconAlertTriangle,
   IconArrowDown,
+  IconArrowsMinimize,
   IconBolt,
   IconBrain,
   IconCamera,
@@ -112,6 +113,7 @@ export type AppIconName =
   | "cloud"
   | "columns"
   | "command"
+  | "compact"
   | "copy"
   | "copyPlus"
   | "cost"
@@ -209,6 +211,7 @@ const iconMap: Record<AppIconName, IconComponent> = {
   cloud: IconCloud,
   columns: IconColumns2,
   command: IconCommand,
+  compact: IconArrowsMinimize,
   copy: IconCopy,
   copyPlus: IconCopyPlus,
   cost: IconCurrencyDollar,

@@ -22,6 +22,7 @@ export const t = {
     abort: "Прервать",
     streaming: "стримит…",
     compacting: "сжимает контекст…",
+    compactionTitle: "Контекст сессии сжат",
     queued: "в очереди",
     empty: {
       title: "Готов к работе",

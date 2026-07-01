@@ -7,6 +7,7 @@ import { useThrottledValue } from "@/lib/useThrottledValue";
 import { useChunkedRender } from "@/lib/useChunkedRender";
 import { Message } from "./Message";
 import { PlanTodoInline } from "./PlanTodoInline";
+import { ActivityIndicator } from "./ActivityIndicator";
 import { t } from "@/i18n/ru";
 import { floatingControlVariants, messageItemVariants, softEase } from "@/lib/motionPresets";
 
@@ -299,6 +300,15 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
               </motion.div>
             );
           })}
+
+          {agentState?.isCompacting && (
+            <div className="pi-stream-item">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-(--color-warn)/25 bg-(--color-warn)/8 px-3 py-2 text-(--color-fg-mute)">
+                <ActivityIndicator tone="compact" size="sm" label={t.chat.compacting} />
+                <span className="text-xs">{t.chat.compacting}</span>
+              </div>
+            </div>
+          )}
 
           {/* Extra space for visual comfort at the bottom. */}
           <div style={{ height: 40 }} aria-hidden="true" />

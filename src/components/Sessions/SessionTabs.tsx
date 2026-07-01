@@ -12,7 +12,8 @@ function labelFor(tabId: string, name?: string | null): string {
 function indicatorClass(tab: ReturnType<typeof useChat.getState>["tabs"] extends Map<string, infer T> ? T : never): string {
   const state = tab.agentState;
   if (tab.pendingUserAction) return "bg-yellow-400 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.55)]";
-  if (state?.isStreaming || state?.isRetrying || state?.isCompacting) return "bg-(--color-accent) animate-pulse";
+  if (state?.isCompacting) return "bg-(--color-warn) animate-pulse";
+  if (state?.isStreaming || state?.isRetrying) return "bg-(--color-accent) animate-pulse";
   if (tab.unseenAssistantCount > 0) return "bg-orange-400 animate-pulse";
   return "bg-(--color-fg-dim)";
 }

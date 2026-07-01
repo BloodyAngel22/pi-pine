@@ -7,6 +7,7 @@ import { Chip } from "@/components/ui/Chip";
 import { ExtensionsPill } from "./ExtensionsPill";
 import { FastFetchIndicator } from "./FastFetchIndicator";
 import { ContextIndicator } from "./ContextIndicator";
+import { t } from "@/i18n/ru";
 
 /** Форматирует число токенов как 137k, 12.5k, 980 */
 function fmtTokens(n: number): string {
@@ -102,6 +103,17 @@ export function StatusBar() {
           </Chip>
         )}
         <ContextIndicator />
+        {agent?.isCompacting && (
+          <Chip
+            size="xs"
+            tone="warning"
+            variant="health"
+            icon={<AppIcon name="compact" size={11} />}
+            title={t.chat.compacting}
+          >
+            {t.chat.compacting}
+          </Chip>
+        )}
         {(agent?.isRetrying || retryStatus.active) && (
           <Chip
             size="xs"

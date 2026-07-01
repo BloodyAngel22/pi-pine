@@ -8,6 +8,7 @@ import { SkillBlock } from "./SkillBlock";
 import { CommandBlock } from "./CommandBlock";
 import { ActionBar } from "./ActionBar";
 import { ActivityIndicator } from "./ActivityIndicator";
+import { CompactionSummary } from "./CompactionSummary";
 
 interface Props {
   message: UiMessage;
@@ -143,6 +144,7 @@ function shouldHideRunningToolBehindPermission(block: UiBlock, allBlocks: UiBloc
 function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Props) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
+  const isCompactionEvent = isSystem && Boolean(message.compaction);
 
   const visibleBlocks = message.blocks.filter((b) => !shouldHideRunningToolBehindPermission(b, message.blocks));
   const blocks = visibleBlocks.map((b, i) => {
@@ -191,6 +193,11 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
 
       {isUser ? (
         <div className="pi-bubble-user space-y-1">{blocks}</div>
+      ) : isCompactionEvent ? (
+        <CompactionSummary
+          tokensBefore={message.compaction?.tokensBefore}
+          tokensAfter={message.compaction?.tokensAfter}
+        />
       ) : (
         <div className={clsx("pi-assistant-divider space-y-2", isSystem && "italic text-(--color-fg-mute)")}>
           {blocks}
@@ -205,8 +212,8 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
       <ActionBar
         message={message}
         onCopy={onCopy}
-        onFork={onFork ? () => onFork(message) : undefined}
-        onRegenerate={onRegenerate && !isUser ? () => onRegenerate(message) : undefined}
+        onFork={onFork && !isCompactionEvent ? () => onFork(message) : undefined}
+        onRegenerate={onRegenerate && !isUser && !isCompactionEvent ? () => onRegenerate(message) : undefined}
         onEdit={onEdit && isUser ? (text) => onEdit(message, text) : undefined}
       />
     </div>
