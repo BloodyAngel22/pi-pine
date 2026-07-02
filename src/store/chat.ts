@@ -50,12 +50,19 @@ export interface UiBlockCommand {
   name: string;
   content: string;
 }
+/** Сводка, сохранённая pi при авто-сжатии контекста прошлой сессии (см. reloadHistory). */
+export interface UiBlockCompactionSummary {
+  kind: "compactionSummary";
+  text: string;
+  tokensBefore?: number;
+}
 export type UiBlock =
   | UiBlockText
   | UiBlockThinking
   | UiBlockTool
   | UiBlockImage
-  | UiBlockCommand;
+  | UiBlockCommand
+  | UiBlockCompactionSummary;
 
 export interface UiMessage {
   id: string;
@@ -2071,6 +2078,21 @@ export const useChat = create<ChatState>((rawSet, get) => {
         const m = raw as Record<string, unknown>;
         if (isHiddenCwdChangeMessage(m)) continue;
         const rawRole = String(m.role ?? "assistant");
+        // compactionSummary — не имеет поля content (текст лежит в summary),
+        // поэтому обрабатывается отдельно до общей ветки agentContentToBlocks.
+        if (rawRole === "compactionSummary") {
+          const summaryText = typeof m.summary === "string" ? m.summary.trim() : "";
+          if (!summaryText) continue;
+          const tokensBefore = typeof m.tokensBefore === "number" ? m.tokensBefore : undefined;
+          ui.push({
+            id: newId(),
+            role: "system",
+            blocks: [{ kind: "compactionSummary", text: summaryText, tokensBefore }],
+            streaming: false,
+            timestamp: typeof m.timestamp === "number" ? (m.timestamp as number) : Date.now(),
+          });
+          continue;
+        }
         // toolResult — не отдельное сообщение, мерджим output в предыдущий toolCall
         if (rawRole === "toolResult") {
           const toolCallId = String(m.toolCallId ?? "");

@@ -9,6 +9,7 @@ import { CommandBlock } from "./CommandBlock";
 import { ActionBar } from "./ActionBar";
 import { ActivityIndicator } from "./ActivityIndicator";
 import { CompactionSummary } from "./CompactionSummary";
+import { CompactionSummaryBlock } from "./CompactionSummaryBlock";
 
 interface Props {
   message: UiMessage;
@@ -155,6 +156,9 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
     if (b.kind === "tool") return <ToolCall key={i} block={b} />;
     if (b.kind === "command") {
       return <CommandBlock key={i} name={b.name} content={b.content} />;
+    }
+    if (b.kind === "compactionSummary") {
+      return <CompactionSummaryBlock key={i} text={b.text} tokensBefore={b.tokensBefore} />;
     }
     if (b.kind === "image") {
       return (

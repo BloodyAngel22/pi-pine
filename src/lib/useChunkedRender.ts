@@ -40,13 +40,22 @@ export function useChunkedRender<T>(items: readonly T[], options: Options = {}):
     setRenderedCount((current) => {
       if (items.length <= enabledThreshold) return items.length;
 
-      // Appends during streaming should not hide already rendered content.
-      if (items.length >= previousItems.length && current >= previousItems.length) {
-        return Math.min(items.length, current + chunkSize);
+      // A shorter history means a genuinely different list (session switch,
+      // compaction) — restart the progressive ramp from a small chunk.
+      if (items.length < previousItems.length) {
+        return Math.min(items.length, chunkSize);
       }
 
-      // A different history/tab starts from a small chunk.
-      return Math.min(items.length, chunkSize);
+      // Same-or-larger history: never regress progress already made.
+      // The array reference can change without the tail actually growing
+      // (e.g. an existing message mutating in place while streaming, or a
+      // background reloadHistory() that re-creates every message id) — in
+      // that case just keep `current` as-is. Only fold in the newly
+      // appended tail once we'd already caught up with the previous list,
+      // so an in-progress chunk ramp isn't skipped ahead of unloaded
+      // older messages.
+      const delta = current >= previousItems.length ? items.length - previousItems.length : 0;
+      return Math.min(items.length, current + delta);
     });
   }, [chunkSize, enabledThreshold, items]);
 

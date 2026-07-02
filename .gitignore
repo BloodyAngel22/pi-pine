@@ -21,3 +21,4 @@ src-tauri/gen
 
 graphify-out/
 graphify-out/**
+tsconfig.tsbuildinfo
