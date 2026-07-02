@@ -2943,7 +2943,14 @@ function handleAgentEvent(
     case "message_start":
     case "message_update":
     case "message_end": {
-      const piMsg = (event.message ?? {}) as Record<string, unknown>;
+      // pi-mono-x вырезает `message` из message_update ради экономии RPC-трафика
+      // (см. sanitizeRpcEvent в rpc-mode.ts) — без этого события шли пустыми и
+      // текст/thinking появлялись одним куском только на message_end. Реальный
+      // накопленный контент лежит в assistantMessageEvent.partial (тот же формат
+      // AssistantMessage), используем его как фолбэк.
+      const assistantEvent = event.assistantMessageEvent as Record<string, unknown> | undefined;
+      const partialMsg = assistantEvent?.partial as Record<string, unknown> | undefined;
+      const piMsg = (event.message ?? partialMsg ?? {}) as Record<string, unknown>;
       if (isHiddenCwdChangeMessage(piMsg)) break;
       const rawRole = String(piMsg.role ?? event.role ?? "assistant");
       // toolResult-сообщения мерджим в предыдущий ассистент по toolCallId
