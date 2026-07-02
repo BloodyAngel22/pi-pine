@@ -112,6 +112,7 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
   // visible immediately.
 
   const [followKey, setFollowKey] = useState(0);
+  const forcedTurnIdRef = useRef<string | null>(null);
 
   useLayoutEffect(() => {
     if (!active) return;
@@ -121,6 +122,12 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
       (last.role === "user" && (last.localEcho || last.optimistic)) ||
       (last.role === "assistant" && last.pendingAssistant);
     if (!isNewTurn) return;
+    // Force-follow only once per placeholder message: `messages` gets a new
+    // array reference on every RPC update (including no-op ticks while the
+    // agent is "thinking"), so without this guard the effect would refire
+    // continuously and yank the user back to the bottom mid-scroll.
+    if (forcedTurnIdRef.current === last.id) return;
+    forcedTurnIdRef.current = last.id;
 
     atBottomRef.current = true;
     setAtBottomUI(true);
@@ -187,6 +194,7 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
       atBottomRef.current = true;
       setAtBottomUI(true);
       setLastSeenIdx(0);
+      forcedTurnIdRef.current = null;
       initialScrollDone.current = false;
     }
   }, [messages.length]);
