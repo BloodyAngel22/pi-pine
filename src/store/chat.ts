@@ -327,6 +327,16 @@ interface ChatState {
   tabs: Map<string, SessionTabState>;
   tabOrder: string[];
   activeTabId: string | null;
+  /**
+   * Вкладки, восстановленные из localStorage при старте, но ещё не
+   * материализованные в реальную backend-сессию (create_session ещё не
+   * вызывался). Ключ — сам путь к файлу сессии, используемый как временный
+   * tabId в tabOrder до первой активации. Это предотвращает eager-запуск
+   * MCP/extensions для всех вкладок сразу при старте приложения.
+   */
+  pendingRestoreTabs: Map<string, { file: string; label: string }>;
+  /** Переименовать ещё не материализованную (холодную) вкладку — пишет имя прямо в файл сессии, без RPC. */
+  renamePendingTab(placeholderId: string, name: string): Promise<void>;
   activateTab(tabId: string): Promise<void>;
   createSessionTab(name?: string, options?: { mode?: "empty" | "copy"; sourceSessionId?: string | null; sessionPath?: string | null }): Promise<string | null>;
   createForkTab(): Promise<string | null>;
@@ -379,7 +389,7 @@ interface ChatState {
   reloadHistory(): Promise<void>;
   newSession(): Promise<void>;
   switchSession(file: string): Promise<void>;
-  setSessionName(name: string): Promise<void>;
+  setSessionName(name: string, tabId?: string | null): Promise<void>;
   forkAt(uiMessageId: string): Promise<void>;
   regenerateAt(uiMessageId: string): Promise<void>;
   editUserMessage(uiMessageId: string, text: string): Promise<void>;
@@ -691,7 +701,7 @@ async function rememberCurrentSession(cwd: string, sessionFile?: string) {
 
 function collectOpenSessionFiles(state: ChatState): string[] {
   return state.tabOrder
-    .map((tabId) => state.tabs.get(tabId)?.agentState?.sessionFile)
+    .map((tabId) => state.tabs.get(tabId)?.agentState?.sessionFile ?? state.pendingRestoreTabs.get(tabId)?.file)
     .filter((file): file is string => typeof file === "string" && file.length > 0);
 }
 
@@ -1382,6 +1392,26 @@ export const useChat = create<ChatState>((rawSet, get) => {
   tabs: new Map(),
   tabOrder: [],
   activeTabId: null,
+  pendingRestoreTabs: new Map(),
+
+  async renamePendingTab(placeholderId, name) {
+    const pending = get().pendingRestoreTabs.get(placeholderId);
+    if (!pending) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    // Оптимистично обновляем лейбл локально, файл пишем в фоне — сессия не
+    // загружена в pi, поэтому это чистая файловая операция без RPC.
+    set((s) => {
+      const pendingRestoreTabs = new Map(s.pendingRestoreTabs);
+      pendingRestoreTabs.set(placeholderId, { ...pending, label: trimmed });
+      return { pendingRestoreTabs };
+    });
+    try {
+      await invoke("rename_session_file", { file: pending.file, name: trimmed });
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
 
   ensureTab(tabId, initial) {
     closedTabIds.delete(tabId);
@@ -1424,6 +1454,31 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   async activateTab(tabId) {
+    const pending = get().pendingRestoreTabs.get(tabId);
+    if (pending) {
+      // Холодный плейсхолдер: реальная backend-сессия для него ещё не
+      // создавалась (см. startRpc). Материализуем её только сейчас, по
+      // факту клика — иначе пришлось бы поднимать MCP/extensions для
+      // вкладки, которую пользователь мог вообще не открыть в этот раз.
+      const placeholderIdx = get().tabOrder.indexOf(tabId);
+      const newTabId = await get().createSessionTab(pending.label, { mode: "empty", sessionPath: pending.file }).catch((e) => {
+        get().setError((e as Error).message);
+        return null;
+      });
+      set((s) => {
+        const pendingRestoreTabs = new Map(s.pendingRestoreTabs);
+        pendingRestoreTabs.delete(tabId);
+        let tabOrder = s.tabOrder.filter((id) => id !== tabId);
+        if (newTabId) {
+          tabOrder = tabOrder.filter((id) => id !== newTabId);
+          const insertAt = placeholderIdx === -1 ? tabOrder.length : Math.min(placeholderIdx, tabOrder.length);
+          tabOrder.splice(insertAt, 0, newTabId);
+        }
+        return { pendingRestoreTabs, tabOrder };
+      });
+      rememberOpenTabsSnapshot(get());
+      return;
+    }
     const initial = get();
     const existing = initial.tabs.get(tabId);
     if (!existing) return;
@@ -1517,6 +1572,19 @@ export const useChat = create<ChatState>((rawSet, get) => {
       if (activate) await get().activateTab(existing.tabId);
       return existing.tabId;
     }
+    // Файл уже открыт как холодный (ещё не материализованный) плейсхолдер —
+    // просто активируем его вместо создания дубликата вкладки.
+    const pendingEntry = Array.from(get().pendingRestoreTabs.entries()).find(([, p]) => p.file === file);
+    if (pendingEntry) {
+      const [placeholderId] = pendingEntry;
+      if (activate) {
+        // activateTab материализует плейсхолдер и сама делает его активной
+        // вкладкой — реальный tabId после этого доступен как activeTabId.
+        await get().activateTab(placeholderId);
+        return get().activeTabId;
+      }
+      return placeholderId;
+    }
     const previousActive = get().activeTabId;
     const tabId = await get().createSessionTab(name ?? undefined, { mode: "empty", sessionPath: file });
     if (tabId && !activate && previousActive && previousActive !== tabId) {
@@ -1529,6 +1597,17 @@ export const useChat = create<ChatState>((rawSet, get) => {
     const st = get();
     if (st.tabOrder.length <= 1) {
       get().setError("Нельзя закрыть последнюю сессию");
+      return;
+    }
+    if (st.pendingRestoreTabs.has(tabId)) {
+      // Холодный плейсхолдер никогда не создавал backend-сессию — закрывать
+      // на стороне pi нечего, просто убираем локально.
+      set((s) => {
+        const pendingRestoreTabs = new Map(s.pendingRestoreTabs);
+        pendingRestoreTabs.delete(tabId);
+        return { pendingRestoreTabs, tabOrder: s.tabOrder.filter((id) => id !== tabId) };
+      });
+      rememberOpenTabsSnapshot(get());
       return;
     }
     const idx = st.tabOrder.indexOf(tabId);
@@ -1710,6 +1789,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
           tabs: new Map(),
           tabOrder: [],
           activeTabId: null,
+          pendingRestoreTabs: new Map(),
         });
         // даем pi пару миллисекунд на инициализацию stdout
         await new Promise((r) => setTimeout(r, 50));
@@ -1722,35 +1802,60 @@ export const useChat = create<ChatState>((rawSet, get) => {
         const activeFile = get().agentState?.sessionFile;
         const rememberedOpenTabs = startupRemembered.files
           .filter((file) => file && file !== activeFile);
+        const targetActiveFile = startupRemembered.activeFile || activeFile;
         progress({
           id: "tabs:restore",
           label: rememberedOpenTabs.length > 0 ? `Восстанавливаем вкладки (${rememberedOpenTabs.length})…` : "Дополнительных вкладок для восстановления нет",
           tone: rememberedOpenTabs.length > 0 ? "normal" : "muted",
         });
-        for (const file of rememberedOpenTabs) {
-          progress({ id: `tabs:restore:${file}`, label: "Открываем сохранённую вкладку…", detail: file });
-          await get().openSessionTab(file, null, false).catch(() => null);
+        // Мы НЕ вызываем create_session для каждой сохранённой вкладки сразу —
+        // это заставляет pi заново грузить extensions/MCP-серверы для каждой
+        // вкладки при каждом старте приложения (см. AGENTS.md/memory: 6
+        // вкладок → 6 независимых наборов MCP-процессов → рост RAM). Вместо
+        // этого материализуем сразу только ту вкладку, что была активна в
+        // прошлый раз, а остальные оставляем "холодными" плейсхолдерами —
+        // они превращаются в реальную сессию лениво, при первом клике
+        // (см. activateTab).
+        const eagerFile = targetActiveFile && rememberedOpenTabs.includes(targetActiveFile) ? targetActiveFile : null;
+        const coldFiles = rememberedOpenTabs.filter((file) => file !== eagerFile);
+        if (eagerFile) {
+          progress({ id: `tabs:restore:${eagerFile}`, label: "Открываем последнюю активную вкладку…", detail: eagerFile });
+          await get().openSessionTab(eagerFile, null, true).catch(() => null);
+        }
+        if (coldFiles.length > 0) {
+          const namesByFile = await invoke<Array<{ file: string; name?: string; first_user_text?: string }>>("list_project_sessions", { cwd })
+            .then((list) => new Map(list.map((s) => [s.file, { name: s.name?.trim() || null, firstUserText: s.first_user_text?.trim() || null }] as const)))
+            .catch(() => new Map<string, { name: string | null; firstUserText: string | null }>());
+          const labelForFile = (file: string): string => {
+            const info = namesByFile.get(file);
+            if (info?.name) return info.name;
+            // Без явного имени — берём начало первого сообщения пользователя
+            // (как в SessionsSidebar), иначе холодная вкладка показывает
+            // просто дату из имени файла, что не информативно.
+            if (info?.firstUserText) {
+              const firstLine = info.firstUserText.split("\n")[0].trim();
+              if (firstLine) return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
+            }
+            const base = file.replace(/\\/g, "/").split("/").pop() ?? file;
+            return base.replace(/\.jsonl$/i, "");
+          };
+          set((s) => {
+            const pendingRestoreTabs = new Map(s.pendingRestoreTabs);
+            for (const file of coldFiles) pendingRestoreTabs.set(file, { file, label: labelForFile(file) });
+            return { pendingRestoreTabs };
+          });
         }
         const orderedFiles = startupRemembered.files;
         if (orderedFiles.length > 0) {
-          const tabsByFile = new Map(
-            Array.from(get().tabs.values())
-              .map((tab) => [tab.agentState?.sessionFile, tab.tabId] as const)
-              .filter((entry): entry is readonly [string, string] => Boolean(entry[0])),
-          );
+          const idByFile = new Map<string, string>();
+          for (const tab of get().tabs.values()) {
+            if (tab.agentState?.sessionFile) idByFile.set(tab.agentState.sessionFile, tab.tabId);
+          }
           const orderedTabIds = orderedFiles
-            .map((file) => tabsByFile.get(file))
+            .map((file) => idByFile.get(file) ?? (get().pendingRestoreTabs.has(file) ? file : undefined))
             .filter((tabId): tabId is string => Boolean(tabId));
           const leftovers = get().tabOrder.filter((tabId) => !orderedTabIds.includes(tabId));
           set({ tabOrder: [...orderedTabIds, ...leftovers] });
-        }
-        const targetActiveFile = startupRemembered.activeFile || activeFile;
-        if (get().activeTabId && targetActiveFile) {
-          const activeTab = Array.from(get().tabs.values()).find((tab) => tab.agentState?.sessionFile === targetActiveFile);
-          if (activeTab && get().activeTabId !== activeTab.tabId) {
-            progress({ id: "tabs:activate", label: "Активируем последнюю вкладку…", detail: targetActiveFile });
-            await get().activateTab(activeTab.tabId).catch(() => undefined);
-          }
         }
         rememberOpenTabsSnapshot(get());
         progress({ id: "models:load", label: "Загружаем список доступных моделей…" });
@@ -2404,10 +2509,21 @@ export const useChat = create<ChatState>((rawSet, get) => {
     get().setAttachedSkills([...current, ...names]);
   },
 
-  async setSessionName(name) {
+  async setSessionName(name, tabId) {
+    const targetId = tabId ?? get().activeTabId;
     try {
-      await rpc.setSessionName(name, get().activeTabId);
-      await get().refreshState();
+      await rpc.setSessionName(name, targetId);
+      // rpc.setSessionName со scoped sessionId временно двигает
+      // backend-active-session на targetId (см. rpc-mode.ts) — но т.к. мы
+      // всегда явно передаём sessionId во все команды, это безопасно.
+      // refreshState() тянет состояние ИМЕННО активной (UI) вкладки, так
+      // что для фоновой (не активной) вкладки достаточно точечно обновить
+      // её локальный sessionName.
+      if (targetId === get().activeTabId) {
+        await get().refreshState();
+      } else if (targetId) {
+        get().updateTab(targetId, { sessionName: name });
+      }
     } catch (e) {
       get().setError((e as Error).message);
     }
