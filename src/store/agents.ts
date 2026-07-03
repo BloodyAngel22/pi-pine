@@ -6,6 +6,27 @@ import type { AgentPresetConfig } from "@/rpc/types";
 interface SelectOptions {
   sessionId?: string | null;
   auto?: boolean;
+  cwd?: string | null;
+}
+
+const STORAGE_KEY_LAST_PRESET_PREFIX = "pi-pine.lastPreset.";
+
+function lastPresetStorageKey(cwd: string): string {
+  return `${STORAGE_KEY_LAST_PRESET_PREFIX}${cwd}`;
+}
+
+function rememberLastPreset(cwd: string | null | undefined, name: string): void {
+  if (!cwd) return;
+  localStorage.setItem(lastPresetStorageKey(cwd), name);
+}
+
+function forgetLastPreset(cwd: string | null | undefined): void {
+  if (!cwd) return;
+  localStorage.removeItem(lastPresetStorageKey(cwd));
+}
+
+function getLastPreset(cwd: string): string | null {
+  return localStorage.getItem(lastPresetStorageKey(cwd));
 }
 
 interface AgentsState {
@@ -21,7 +42,7 @@ interface AgentsState {
   createPreset(config: AgentPresetConfig): Promise<void>;
   updatePreset(config: AgentPresetConfig, sessionId?: string | null): Promise<void>;
   deletePreset(name: string): Promise<void>;
-  clearPreset(): void;
+  clearPreset(cwd?: string | null): void;
   checkAutoPreset(cwd: string, options?: { sessionId?: string | null; force?: boolean }): Promise<string | null>;
 }
 
@@ -83,6 +104,10 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     try {
       await rpc.loadAgentPreset(name, options?.sessionId);
       set({ activePreset: name, manualPresetSelected: nextManualPresetSelected, loading: false });
+      // Запоминаем ручной выбор пресета per-cwd, чтобы восстановить его при
+      // следующем запуске приложения (см. checkAutoPreset) — без этого
+      // старт всегда откатывался на project_cwd-маппинг или "default".
+      if (nextManualPresetSelected) rememberLastPreset(options?.cwd, name);
     } catch (e) {
       set({
         activePreset: previousActivePreset,
@@ -134,7 +159,8 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     }
   },
 
-  clearPreset() {
+  clearPreset(cwd) {
+    forgetLastPreset(cwd);
     set({ activePreset: null, manualPresetSelected: false, error: null });
   },
 
@@ -142,8 +168,13 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     if (!options?.force && get().manualPresetSelected) return null;
     try {
       const mappedName = await invoke<string | null>("get_preset_for_cwd", { cwd });
+      const remembered = getLastPreset(cwd);
+      const rememberedName =
+        remembered && get().presets.some((preset) => preset.name === remembered) ? remembered : null;
       const fallbackName = get().presets.some((preset) => preset.name === "default") ? "default" : null;
-      const name = mappedName ?? fallbackName;
+      // Приоритет: явный project_cwd-маппинг пресета > последний вручную
+      // выбранный пресет для этой директории > "default".
+      const name = mappedName ?? rememberedName ?? fallbackName;
       if (name && name !== get().activePreset) {
         await get().selectPreset(name, { sessionId: options?.sessionId, auto: true });
       } else if (!name) {

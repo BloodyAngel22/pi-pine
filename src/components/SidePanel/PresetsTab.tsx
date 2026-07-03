@@ -31,7 +31,7 @@ export function PresetsTab() {
   }, [ensureDefault]);
 
   const apply = async (name: string) => {
-    await selectPreset(name, { sessionId: activeTabId });
+    await selectPreset(name, { sessionId: activeTabId, cwd });
     await refreshState().catch(() => undefined);
   };
 
@@ -144,7 +144,7 @@ export function PresetsTab() {
       </div>
 
       {activePreset && (
-        <Button variant="ghost" size="sm" onClick={() => clearPreset()}>
+        <Button variant="ghost" size="sm" onClick={() => clearPreset(cwd)}>
           Clear Preset (ручной режим)
         </Button>
       )}

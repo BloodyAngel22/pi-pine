@@ -33,6 +33,7 @@ function middleTruncate(value: string, head = 16, tail = 14): string {
 export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, triggerClassName }: RunSettingsPopoverProps) {
   const model = useChat((s) => s.agentState?.model);
   const activeTabId = useChat((s) => s.activeTabId);
+  const cwd = useChat((s) => s.cwd);
   const refreshState = useChat((s) => s.refreshState);
   const thinkingLevel = useChat((s) => s.agentState?.thinkingLevel ?? "off");
   const setThinking = useChat((s) => s.setThinking);
@@ -91,10 +92,10 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
   const applyPreset = async (name: string | null) => {
     setPresetMenuOpen(false);
     if (!name || name === "__manual__") {
-      clearPreset();
+      clearPreset(cwd);
       return;
     }
-    await selectPreset(name, { sessionId: activeTabId }).catch(() => undefined);
+    await selectPreset(name, { sessionId: activeTabId, cwd }).catch(() => undefined);
     await refreshState().catch(() => undefined);
   };
 
