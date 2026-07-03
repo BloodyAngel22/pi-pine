@@ -19,6 +19,7 @@
   --color-user-fg: #24231f;
   --color-thinking: #68645b;
   --chat-font-mult: 1;
+  --diff-font-mult: 1;
 
   /* highlight.js — маппятся из темы через loader.ts */
   --hljs-comment:  #8b8679;
@@ -379,6 +380,11 @@ select {
   width: 100%;
   padding: 1.25rem 1rem 0;
   font-size: calc(13px * var(--chat-font-mult, 1));
+}
+
+.pi-diff-content {
+  font-size: calc(11px * var(--diff-font-mult, 1));
+  line-height: 1.6;
 }
 
 .pi-stream-item {

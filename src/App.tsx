@@ -5,6 +5,7 @@ import { AlertCircle, X, GitFork } from "@/components/ui/icons/compat";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useChat, type StartupProgressEvent, type UiMessage } from "@/store/chat";
 import { useExt } from "@/store/ext";
+import { useDiff } from "@/store/diff";
 import { useTheme } from "@/store/theme";
 import { compact as rpcCompact, sendPrompt } from "@/rpc/bridge";
 import { LeftRail } from "@/components/AppShell/LeftRail";
@@ -16,6 +17,7 @@ import { BtwOverlay } from "@/components/Chat/BtwOverlay";
 import { StatusBar } from "@/components/Chat/StatusBar";
 import { AgentScreen } from "@/components/VirtualDisplay";
 import { TerminalPanel } from "@/components/Terminal/TerminalPanel";
+import { DiffPanel } from "@/components/Diff/DiffPanel";
 import { TerminalErrorBoundary } from "@/components/Terminal/TerminalErrorBoundary";
 import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
 import { SessionTabs } from "@/components/Sessions/SessionTabs";
@@ -75,6 +77,8 @@ export default function App() {
   const activeTabId = useChat((s) => s.activeTabId);
   const loadAvailableModels = useChat((s) => s.loadAvailableModels);
   const initExt = useExt((s) => s.init);
+  const initDiff = useDiff((s) => s.init);
+  const refreshDiff = useDiff((s) => s.refresh);
   const loadTheme = useTheme((s) => s.load);
   const reduceMotion = useReducedMotion();
 
@@ -95,7 +99,7 @@ export default function App() {
       : "tree";
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [mainTab, setMainTab] = useState<"chat" | "terminal">("chat");
+  const [mainTab, setMainTab] = useState<"chat" | "terminal" | "diff">("chat");
   const [keptChatTabIds, setKeptChatTabIds] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [btwOpen, setBtwOpen] = useState(false);
@@ -139,6 +143,7 @@ export default function App() {
 
     (async () => {
       initExt();
+      initDiff();
       void loadTheme();
       setBootStage("init");
       setBootAction("Готовим UI и подписки RPC…");
@@ -216,6 +221,10 @@ export default function App() {
     if (!activeTabId) return;
     setKeptChatTabIds((prev) => [activeTabId, ...prev.filter((id) => id !== activeTabId && tabOrder.includes(id))].slice(0, 5));
   }, [activeTabId, tabOrder]);
+
+  useEffect(() => {
+    if (mainTab === "diff") void refreshDiff();
+  }, [mainTab, refreshDiff]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -411,6 +420,8 @@ export default function App() {
             onNewSession={() => void createSessionTab()}
             onOpenSearch={() => setSearchOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
+            diffOpen={mainTab === "diff"}
+            onToggleDiff={() => setMainTab((v) => (v === "diff" ? "chat" : "diff"))}
           />
           <AnimatePresence initial={false}>
             {sidebarOpen && (
@@ -495,12 +506,15 @@ export default function App() {
                   })
                 )}
               </div>
-              <Composer onSlash={onSlash} onToggleBash={() => setMainTab("terminal")} onBtw={onBtw} />
+              <Composer onSlash={onSlash} onToggleBash={() => setMainTab("terminal")} onBtw={onBtw} active={mainTab === "chat"} />
             </div>
             <div className={mainTab === "terminal" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
               <TerminalErrorBoundary onBack={() => setMainTab("chat")}>
                 <TerminalPanel open={mainTab === "terminal"} onClose={() => setMainTab("chat")} />
               </TerminalErrorBoundary>
+            </div>
+            <div className={mainTab === "diff" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+              <DiffPanel open={mainTab === "diff"} onClose={() => setMainTab("chat")} />
             </div>
             <PromptSearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
             <BtwOverlay open={btwOpen} initialQuestion={btwQuestion} onClose={() => setBtwOpen(false)} />

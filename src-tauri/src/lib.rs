@@ -2,6 +2,7 @@ mod agents;
 mod analyze_image;
 mod clipboard;
 mod favorites;
+mod git_diff;
 mod mcp;
 mod paths;
 mod plans;
@@ -103,6 +104,9 @@ pub fn run() {
             analyze_image::get_analyze_image_config,
             analyze_image::set_analyze_image_config,
             analyze_image::get_analyze_image_status,
+            // git diff
+            git_diff::git_diff_status,
+            git_diff::git_diff_file,
             // Virtual display
             virtual_display::start_virtual_display,
             virtual_display::stop_virtual_display,

@@ -23,6 +23,8 @@ interface Props {
   onSlash(cmd: string, arg?: string): void;
   onToggleBash?(): void;
   onBtw?(question?: string): void;
+  /** Виден ли композер сейчас (false на вкладках terminal/diff, где он скрыт через display:none). */
+  active?: boolean;
 }
 
 /** Snapshot текста в композере для undo/redo */
@@ -91,7 +93,7 @@ const FileIcon = () => (
   </svg>
 );
 
-export function Composer({ onSlash, onBtw }: Props) {
+export function Composer({ onSlash, onBtw, active = true }: Props) {
   const isStreaming = useChat((s) => s.agentState?.isStreaming ?? false);
   const mcpLoading = useChat((s) => s.mcpLoading);
   const pending = useChat((s) => s.pendingMessageCount);
@@ -241,13 +243,16 @@ export function Composer({ onSlash, onBtw }: Props) {
 
   const chatFontSize = useUiPrefs((s) => s.chatFontSize);
 
-  // авторесайз — пересчитываем при изменении текста ИЛИ размера шрифта в чате
+  // авторесайз — пересчитываем при изменении текста, размера шрифта в чате
+  // ИЛИ при появлении композера (пока он скрыт классом "hidden" на вкладках
+  // terminal/diff, scrollHeight равен 0 — пересчёт при таком состоянии
+  // "запекает" неверную маленькую высоту, поэтому дожидаемся active).
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !active) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
-  }, [value, chatFontSize]);
+  }, [value, chatFontSize, active]);
 
   // фокус по первому рендеру
   useEffect(() => {

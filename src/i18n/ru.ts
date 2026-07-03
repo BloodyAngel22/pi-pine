@@ -91,6 +91,8 @@ export const t = {
     fontScaleHint: "Масштабирует весь интерфейс",
     chatFontSize: "Размер текста в чате",
     chatFontSizeHint: "Влияет на текст сообщений и поле ввода",
+    diffFontSize: "Размер текста в диффе",
+    diffFontSizeHint: "Влияет на текст в панели изменений",
     reset: "Сброс",
     imageAnalysis: "Image Analysis",
     imageAnalysisOcr: "OCR",

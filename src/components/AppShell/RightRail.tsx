@@ -5,7 +5,7 @@ import type { SidePanelTab } from "@/components/SidePanel/SidePanel";
 interface RightRailProps {
   activeTab: SidePanelTab | null;
   panelOpen: boolean;
-  mainTab: "chat" | "terminal";
+  mainTab: "chat" | "terminal" | "diff";
   onSelectPanel(tab: SidePanelTab): void;
   onToggleTerminal(): void;
 }

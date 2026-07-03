@@ -15,6 +15,9 @@ import {
   CHAT_FONT_MIN,
   CHAT_FONT_STEP,
   DEEP_RESEARCH_MODES,
+  DIFF_FONT_MAX,
+  DIFF_FONT_MIN,
+  DIFF_FONT_STEP,
   FONT_MAX,
   FONT_MIN,
   FONT_STEP,
@@ -67,6 +70,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const chatFontSize = useUiPrefs((s) => s.chatFontSize);
   const setChatFontSize = useUiPrefs((s) => s.setChatFontSize);
   const resetChatFont = useUiPrefs((s) => s.resetChatFont);
+  const diffFontSize = useUiPrefs((s) => s.diffFontSize);
+  const setDiffFontSize = useUiPrefs((s) => s.setDiffFontSize);
+  const resetDiffFont = useUiPrefs((s) => s.resetDiffFont);
   const deepResearchMode = useUiPrefs((s) => s.deepResearchMode);
   const setDeepResearchMode = useUiPrefs((s) => s.setDeepResearchMode);
 
@@ -243,6 +249,10 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
               <Section title={t.settings.chatFontSize}>
                 <RangeControl value={chatFontSize} min={CHAT_FONT_MIN} max={CHAT_FONT_MAX} step={CHAT_FONT_STEP} onChange={setChatFontSize} onReset={resetChatFont} resetLabel={t.settings.reset} />
                 <Hint>{t.settings.chatFontSizeHint}</Hint>
+              </Section>
+              <Section title={t.settings.diffFontSize}>
+                <RangeControl value={diffFontSize} min={DIFF_FONT_MIN} max={DIFF_FONT_MAX} step={DIFF_FONT_STEP} onChange={setDiffFontSize} onReset={resetDiffFont} resetLabel={t.settings.reset} />
+                <Hint>{t.settings.diffFontSizeHint}</Hint>
               </Section>
               <Section title="Тема">
                 <div className="flex flex-wrap gap-1.5">
