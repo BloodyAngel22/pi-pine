@@ -142,13 +142,16 @@ function taskDetails(details: unknown): {
   };
 }
 
-function fastFetchDetails(details: unknown): {
+function webSearchDetails(details: unknown): {
   url?: string;
   mode?: string;
   status?: number;
   contentType?: string;
   truncated?: boolean;
   bytes?: number;
+  blocked?: boolean;
+  challengeType?: string;
+  headlessUsed?: boolean;
 } {
   const o = asRecord(details);
   return {
@@ -158,6 +161,9 @@ function fastFetchDetails(details: unknown): {
     contentType: typeof o.contentType === "string" ? o.contentType : undefined,
     truncated: typeof o.truncated === "boolean" ? o.truncated : undefined,
     bytes: typeof o.bytes === "number" ? o.bytes : undefined,
+    blocked: typeof o.blocked === "boolean" ? o.blocked : undefined,
+    challengeType: typeof o.challengeType === "string" ? o.challengeType : undefined,
+    headlessUsed: typeof o.headlessUsed === "boolean" ? o.headlessUsed : undefined,
   };
 }
 
@@ -181,8 +187,8 @@ export function ToolCall({ block }: { block: UiBlockTool }) {
   if (block.name === "deep_research") {
     return <DeepResearchToolCall block={block} open={open} setOpen={setOpen} />;
   }
-  if (block.name === "fast_fetch") {
-    return <FastFetchToolCall block={block} open={open} setOpen={setOpen} />;
+  if (block.name === "web_search") {
+    return <WebSearchToolCall block={block} open={open} setOpen={setOpen} />;
   }
   if (block.name === "fast_context") {
     return <FastContextToolCall block={block} open={open} setOpen={setOpen} />;
@@ -371,7 +377,7 @@ function DeepResearchToolCall({
   );
 }
 
-function FastFetchToolCall({
+function WebSearchToolCall({
   block,
   open,
   setOpen,
@@ -383,7 +389,7 @@ function FastFetchToolCall({
   const isError = block.status === "error";
   const isRunning = block.status === "running";
   const input = asRecord(block.input);
-  const details = fastFetchDetails(block.details);
+  const details = webSearchDetails(block.details);
   const query = String(input.query ?? details.url ?? "");
   const meta = [
     details.mode,
@@ -391,6 +397,8 @@ function FastFetchToolCall({
     details.contentType,
     details.bytes != null ? `${details.bytes}b` : undefined,
     details.truncated ? "truncated" : undefined,
+    details.blocked ? `заблокировано${details.challengeType ? ` (${details.challengeType})` : ""}` : undefined,
+    details.headlessUsed ? "headless" : undefined,
   ].filter(Boolean).join(" · ");
   return (
     <div
@@ -412,7 +420,7 @@ function FastFetchToolCall({
         ) : (
           <Globe size={12} className="text-(--color-accent)" />
         )}
-        <span className="font-mono text-(--color-accent)">fast_fetch</span>
+        <span className="font-mono text-(--color-accent)">web_search</span>
         <span className="font-mono text-(--color-fg) truncate min-w-0" title={details.url ?? query}>
           {details.url ?? query}
         </span>

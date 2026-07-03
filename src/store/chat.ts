@@ -108,11 +108,11 @@ export interface SessionTabState {
   fastContextQuery: string | null;
   fastContextError: string | null;
   fastContextRunId: number;
-  fastFetchStatus: "idle" | "fetching" | "done" | "error" | null;
-  fastFetchResult: import("@/rpc/bridge").FastFetchResult | null;
-  fastFetchQuery: string | null;
-  fastFetchError: string | null;
-  fastFetchRunId: number;
+  webSearchStatus: "idle" | "fetching" | "done" | "error" | null;
+  webSearchResult: import("@/rpc/bridge").WebSearchResult | null;
+  webSearchQuery: string | null;
+  webSearchError: string | null;
+  webSearchRunId: number;
   lastCompactionMessageKey: string | null;
   retryStatus: {
     active: boolean;
@@ -153,11 +153,11 @@ export function createDefaultSessionTab(tabId: string, initial?: Partial<Session
     fastContextQuery: null,
     fastContextError: null,
     fastContextRunId: 0,
-    fastFetchStatus: null,
-    fastFetchResult: null,
-    fastFetchQuery: null,
-    fastFetchError: null,
-    fastFetchRunId: 0,
+    webSearchStatus: null,
+    webSearchResult: null,
+    webSearchQuery: null,
+    webSearchError: null,
+    webSearchRunId: 0,
     lastCompactionMessageKey: null,
     retryStatus: { active: false, attempt: 0 },
     planMode: readPlanMode(),
@@ -192,11 +192,11 @@ const TAB_FIELD_KEYS = new Set<keyof SessionTabState>([
   "fastContextQuery",
   "fastContextError",
   "fastContextRunId",
-  "fastFetchStatus",
-  "fastFetchResult",
-  "fastFetchQuery",
-  "fastFetchError",
-  "fastFetchRunId",
+  "webSearchStatus",
+  "webSearchResult",
+  "webSearchQuery",
+  "webSearchError",
+  "webSearchRunId",
   "lastCompactionMessageKey",
   "retryStatus",
   "planMode",
@@ -248,11 +248,11 @@ function tabProjection(tab: SessionTabState): Partial<ChatState> {
     fastContextQuery: tab.fastContextQuery,
     fastContextError: tab.fastContextError,
     fastContextRunId: tab.fastContextRunId,
-    fastFetchStatus: tab.fastFetchStatus,
-    fastFetchResult: tab.fastFetchResult,
-    fastFetchQuery: tab.fastFetchQuery,
-    fastFetchError: tab.fastFetchError,
-    fastFetchRunId: tab.fastFetchRunId,
+    webSearchStatus: tab.webSearchStatus,
+    webSearchResult: tab.webSearchResult,
+    webSearchQuery: tab.webSearchQuery,
+    webSearchError: tab.webSearchError,
+    webSearchRunId: tab.webSearchRunId,
     lastCompactionMessageKey: tab.lastCompactionMessageKey,
   };
 }
@@ -316,12 +316,12 @@ interface ChatState {
   fastContextQuery: string | null;
   fastContextError: string | null;
   fastContextRunId: number;
-  /** Fast Fetch статус и результаты */
-  fastFetchStatus: "idle" | "fetching" | "done" | "error" | null;
-  fastFetchResult: import("@/rpc/bridge").FastFetchResult | null;
-  fastFetchQuery: string | null;
-  fastFetchError: string | null;
-  fastFetchRunId: number;
+  /** Веб-поиск статус и результаты */
+  webSearchStatus: "idle" | "fetching" | "done" | "error" | null;
+  webSearchResult: import("@/rpc/bridge").WebSearchResult | null;
+  webSearchQuery: string | null;
+  webSearchError: string | null;
+  webSearchRunId: number;
   lastCompactionMessageKey: string | null;
   // multi-session tabs
   tabs: Map<string, SessionTabState>;
@@ -396,8 +396,8 @@ interface ChatState {
   clearForkBanner(): void;
   runFastContext(query: string): Promise<void>;
   clearFastContext(): void;
-  runFastFetch(query: string, options?: import("@/rpc/bridge").FastFetchOptions): Promise<void>;
-  clearFastFetch(): void;
+  runWebSearch(query: string, options?: import("@/rpc/bridge").WebSearchOptions): Promise<void>;
+  clearWebSearch(): void;
   runBash(command: string): Promise<void>;
   injectComposer(text: string): void;
   clearComposerInjection(): void;
@@ -1143,7 +1143,7 @@ function extractFastContextResult(
   return null;
 }
 
-function isFastFetchDetails(value: unknown): value is import("@/rpc/bridge").FastFetchToolDetails {
+function isWebSearchDetails(value: unknown): value is import("@/rpc/bridge").WebSearchToolDetails {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Record<string, unknown>;
   return (
@@ -1156,22 +1156,22 @@ function isFastFetchDetails(value: unknown): value is import("@/rpc/bridge").Fas
   );
 }
 
-function extractFastFetchResult(
+function extractWebSearchResult(
   details: unknown,
   text: string,
   raw: unknown,
-): import("@/rpc/bridge").FastFetchResult | null {
+): import("@/rpc/bridge").WebSearchResult | null {
   if (raw && typeof raw === "object") {
     const record = raw as Record<string, unknown>;
     if (typeof record.text === "string") {
       return {
         text: record.text,
-        details: isFastFetchDetails(record.details) ? record.details : undefined,
+        details: isWebSearchDetails(record.details) ? record.details : undefined,
       };
     }
-    if (isFastFetchDetails(record.details)) return { text, details: record.details };
+    if (isWebSearchDetails(record.details)) return { text, details: record.details };
   }
-  if (isFastFetchDetails(details)) return { text, details };
+  if (isWebSearchDetails(details)) return { text, details };
   return text ? { text } : null;
 }
 
@@ -1382,11 +1382,11 @@ export const useChat = create<ChatState>((rawSet, get) => {
   fastContextQuery: null,
   fastContextError: null,
   fastContextRunId: 0,
-  fastFetchStatus: null,
-  fastFetchResult: null,
-  fastFetchQuery: null,
-  fastFetchError: null,
-  fastFetchRunId: 0,
+  webSearchStatus: null,
+  webSearchResult: null,
+  webSearchQuery: null,
+  webSearchError: null,
+  webSearchRunId: 0,
   lastCompactionMessageKey: null,
 
   tabs: new Map(),
@@ -2832,39 +2832,39 @@ export const useChat = create<ChatState>((rawSet, get) => {
     set({ fastContextStatus: null, fastContextResults: null, fastContextQuery: null, fastContextError: null });
   },
 
-  async runFastFetch(query, options) {
+  async runWebSearch(query, options) {
     const q = query.trim();
     if (!q) {
-      get().setError("Fast Fetch: введите URL или поисковый запрос");
+      get().setError("Веб-поиск: введите URL или поисковый запрос");
       return;
     }
-    const runId = get().fastFetchRunId + 1;
+    const runId = get().webSearchRunId + 1;
     set({
-      fastFetchRunId: runId,
-      fastFetchStatus: "fetching",
-      fastFetchResult: null,
-      fastFetchQuery: q,
-      fastFetchError: null,
+      webSearchRunId: runId,
+      webSearchStatus: "fetching",
+      webSearchResult: null,
+      webSearchQuery: q,
+      webSearchError: null,
     });
     try {
-      const result = await rpc.fastFetch(q, { ...options, sessionId: get().activeTabId });
-      if (get().fastFetchRunId !== runId) return;
-      set({ fastFetchStatus: "done", fastFetchResult: result, fastFetchError: null });
-      const title = result.details?.url ? `Fast Fetch: ${result.details.url}` : `Fast Fetch: ${q}`;
+      const result = await rpc.webSearch(q, { ...options, sessionId: get().activeTabId });
+      if (get().webSearchRunId !== runId) return;
+      set({ webSearchStatus: "done", webSearchResult: result, webSearchError: null });
+      const title = result.details?.url ? `Веб-поиск: ${result.details.url}` : `Веб-поиск: ${q}`;
       set((state) => ({
         messages: [...state.messages, createSystemMessage(`${title}\n\n${result.text}`)],
       }));
     } catch (e) {
-      if (get().fastFetchRunId !== runId) return;
+      if (get().webSearchRunId !== runId) return;
       const message = (e as Error).message;
-      console.error("fastFetch failed:", e);
-      set({ fastFetchStatus: "error", fastFetchResult: null, fastFetchError: message });
-      get().setError(`Fast Fetch: ${message}`);
+      console.error("webSearch failed:", e);
+      set({ webSearchStatus: "error", webSearchResult: null, webSearchError: message });
+      get().setError(`Веб-поиск: ${message}`);
     }
   },
 
-  clearFastFetch() {
-    set({ fastFetchStatus: null, fastFetchResult: null, fastFetchQuery: null, fastFetchError: null });
+  clearWebSearch() {
+    set({ webSearchStatus: null, webSearchResult: null, webSearchQuery: null, webSearchError: null });
   },
 
   setError(msg) {
@@ -3071,17 +3071,17 @@ function handleAgentEvent(
           set({ fastContextStatus: "error", fastContextError: output || "fast_context failed" });
         }
       }
-      if (name === "fast_fetch") {
-        const result = extractFastFetchResult(details, output, event.result ?? event.output);
+      if (name === "web_search") {
+        const result = extractWebSearchResult(details, output, event.result ?? event.output);
         if (!isError && result) {
           set({
-            fastFetchStatus: "done",
-            fastFetchResult: result,
-            fastFetchQuery: result.details?.url ?? null,
-            fastFetchError: null,
+            webSearchStatus: "done",
+            webSearchResult: result,
+            webSearchQuery: result.details?.url ?? null,
+            webSearchError: null,
           });
         } else if (isError) {
-          set({ fastFetchStatus: "error", fastFetchError: output || "fast_fetch failed" });
+          set({ webSearchStatus: "error", webSearchError: output || "web_search failed" });
         }
       }
       break;

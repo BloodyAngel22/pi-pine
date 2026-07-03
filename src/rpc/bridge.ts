@@ -242,29 +242,34 @@ export async function fastContext(query: string, sessionId?: string | null): Pro
   return request<FastContextResult>("fast_context", { query }, { sessionId, timeoutMs: 120_000 });
 }
 
-export interface FastFetchToolDetails {
+export interface WebSearchToolDetails {
   url?: string;
   mode?: "search" | "url";
   status?: number;
   contentType?: string;
   truncated?: boolean;
   bytes?: number;
+  blocked?: boolean;
+  challengeType?: string;
+  headlessAttempted?: boolean;
+  headlessUsed?: boolean;
+  retries?: number;
 }
-export interface FastFetchResult {
+export interface WebSearchResult {
   text: string;
-  details?: FastFetchToolDetails;
+  details?: WebSearchToolDetails;
 }
-export interface FastFetchOptions {
+export interface WebSearchOptions {
   mode?: "search" | "url";
   maxResults?: number;
   timeoutMs?: number;
 }
-export async function fastFetch(
+export async function webSearch(
   query: string,
-  options?: FastFetchOptions & { sessionId?: string | null },
-): Promise<FastFetchResult> {
+  options?: WebSearchOptions & { sessionId?: string | null },
+): Promise<WebSearchResult> {
   const { sessionId, ...payloadOptions } = options ?? {};
-  return request<FastFetchResult>("fast_fetch", { query, ...payloadOptions }, { sessionId, timeoutMs: options?.timeoutMs ?? 120_000 });
+  return request<WebSearchResult>("web_search", { query, ...payloadOptions }, { sessionId, timeoutMs: options?.timeoutMs ?? 120_000 });
 }
 
 export async function abort(sessionId?: string | null): Promise<void> {

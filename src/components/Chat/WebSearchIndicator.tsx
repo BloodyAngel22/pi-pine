@@ -3,12 +3,12 @@ import { Globe, X, ChevronDown, ChevronUp } from "@/components/ui/icons/compat";
 import { Chip } from "@/components/ui/Chip";
 import { useChat } from "@/store/chat";
 
-export function FastFetchIndicator() {
-  const status = useChat((s) => s.fastFetchStatus);
-  const result = useChat((s) => s.fastFetchResult);
-  const query = useChat((s) => s.fastFetchQuery);
-  const error = useChat((s) => s.fastFetchError);
-  const clear = useChat((s) => s.clearFastFetch);
+export function WebSearchIndicator() {
+  const status = useChat((s) => s.webSearchStatus);
+  const result = useChat((s) => s.webSearchResult);
+  const query = useChat((s) => s.webSearchQuery);
+  const error = useChat((s) => s.webSearchError);
+  const clear = useChat((s) => s.clearWebSearch);
   const [open, setOpen] = useState(false);
 
   if (status === null && !result && !error) return null;
@@ -16,12 +16,12 @@ export function FastFetchIndicator() {
   const isFetching = status === "fetching";
   const isError = status === "error";
   const details = result?.details;
-  const label = isFetching ? "ff…" : isError ? "ff!" : details?.status ? `ff:${details.status}` : "ff";
+  const label = isFetching ? "ws…" : isError ? "ws!" : details?.status ? `ws:${details.status}` : "ws";
   const title = isFetching
-    ? "Fast Fetch: загрузка..."
+    ? "Веб-поиск: загрузка..."
     : isError
-      ? `Fast Fetch: ${error}`
-      : `Fast Fetch: ${details?.url ?? query ?? "готово"}`;
+      ? `Веб-поиск: ${error}`
+      : `Веб-поиск: ${details?.url ?? query ?? "готово"}`;
 
   return (
     <>
@@ -52,7 +52,7 @@ export function FastFetchIndicator() {
         {open && (result || isError) && (
           <div className="pi-statusbar-popover">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-medium text-(--color-fg)">Fast Fetch</span>
+              <span className="text-xs font-medium text-(--color-fg)">Веб-поиск</span>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -70,6 +70,8 @@ export function FastFetchIndicator() {
                   {details?.status != null && <span>HTTP {details.status}</span>}
                   {details?.bytes != null && <span>{details.bytes} bytes</span>}
                   {details?.truncated && <span>truncated</span>}
+                  {details?.blocked && <span className="text-(--color-danger)">заблокировано{details.challengeType ? ` (${details.challengeType})` : ""}</span>}
+                  {details?.headlessUsed && <span>headless</span>}
                 </div>
                 {details?.url && <div className="mb-2 truncate font-mono text-[10px] text-(--color-accent)">{details.url}</div>}
                 <div className="mb-2 flex gap-1.5">

@@ -5,7 +5,7 @@ import { shortenPath } from "@/utils/path";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { Chip } from "@/components/ui/Chip";
 import { ExtensionsPill } from "./ExtensionsPill";
-import { FastFetchIndicator } from "./FastFetchIndicator";
+import { WebSearchIndicator } from "./WebSearchIndicator";
 import { ContextIndicator } from "./ContextIndicator";
 import { t } from "@/i18n/ru";
 
@@ -77,7 +77,7 @@ export function StatusBar() {
             </Chip>
           </>
         )}
-        <FastFetchIndicator />
+        <WebSearchIndicator />
         {attachedSkills.length > 0 && (
           <>
             <span className="pi-statusbar-sep">·</span>
