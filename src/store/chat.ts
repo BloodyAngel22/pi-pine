@@ -2054,10 +2054,21 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   async abortStreaming() {
+    const tabId = get().activeTabId;
     try {
-      await rpc.abort(get().activeTabId);
+      await rpc.abort(tabId);
     } catch (e) {
       get().setError((e as Error).message);
+    }
+    // Абортнутый ход может стоять на паузе, ожидая ответа на permission/askUser-диалог —
+    // разрешаем такие диалоги локально, чтобы кнопка Abort всегда деблокировала таб,
+    // даже если бэкенд не успел/не смог сам ответить на них по abort-сигналу.
+    const ext = useExt.getState();
+    for (const perm of ext.pendingPermissions) {
+      if (perm.sessionId === tabId) ext.resolvePendingPermission(perm.id, { decision: "deny-once" });
+    }
+    for (const ask of ext.pendingAskUsers) {
+      if (ask.sessionId === tabId) ext.resolvePendingAskUser(ask.id, { cancelled: true });
     }
   },
 
