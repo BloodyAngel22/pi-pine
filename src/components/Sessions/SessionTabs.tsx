@@ -22,17 +22,9 @@ function waitingLabel(kind: "permission" | "askUser"): string {
   return kind === "permission" ? "perm" : "ask";
 }
 
-/** Ленивая вкладка: восстановлена из localStorage, но backend-сессия ещё не создана. */
-interface PendingTabView {
-  pending: true;
-  tabId: string;
-  label: string;
-}
-
 export function SessionTabs() {
   const tabs = useChat((s) => s.tabs);
   const tabOrder = useChat((s) => s.tabOrder);
-  const pendingRestoreTabs = useChat((s) => s.pendingRestoreTabs);
   const activeTabId = useChat((s) => s.activeTabId);
   const activateTab = useChat((s) => s.activateTab);
   const createSessionTab = useChat((s) => s.createSessionTab);
@@ -41,40 +33,19 @@ export function SessionTabs() {
   const moveTabById = useChat((s) => s.moveTabById);
   const updateTab = useChat((s) => s.updateTab);
   const setSessionName = useChat((s) => s.setSessionName);
-  const renamePendingTab = useChat((s) => s.renamePendingTab);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [materializing, setMaterializing] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement | null>(null);
 
   const orderedTabs = useMemo(
     () =>
       tabOrder
-        .map((id): SessionTabState | PendingTabView | undefined => {
-          const real = tabs.get(id);
-          if (real) return real;
-          const pending = pendingRestoreTabs.get(id);
-          if (pending) return { pending: true, tabId: id, label: pending.label };
-          return undefined;
-        })
-        .filter((t): t is SessionTabState | PendingTabView => Boolean(t)),
-    [tabOrder, tabs, pendingRestoreTabs],
+        .map((id): SessionTabState | undefined => tabs.get(id))
+        .filter((t): t is SessionTabState => Boolean(t)),
+    [tabOrder, tabs],
   );
-
-  const onActivate = async (tabId: string) => {
-    if (pendingRestoreTabs.has(tabId)) {
-      setMaterializing(tabId);
-      try {
-        await activateTab(tabId);
-      } finally {
-        setMaterializing((cur) => (cur === tabId ? null : cur));
-      }
-      return;
-    }
-    void activateTab(tabId);
-  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -90,11 +61,6 @@ export function SessionTabs() {
 
   const commitRename = async (tabId: string) => {
     const name = draft.trim();
-    if (pendingRestoreTabs.has(tabId)) {
-      setRenaming(null);
-      if (name) await renamePendingTab(tabId, name).catch(() => undefined);
-      return;
-    }
     updateTab(tabId, { sessionName: name || null });
     setRenaming(null);
     // Персистим имя для ЛЮБОЙ реальной вкладки, а не только активной —
@@ -132,83 +98,6 @@ export function SessionTabs() {
           className="pi-session-tabs flex items-center gap-1 min-w-0 flex-1 overflow-x-hidden overflow-y-hidden px-2"
         >
       {orderedTabs.map((tab) => {
-        if ("pending" in tab) {
-          const isMaterializing = materializing === tab.tabId;
-          return (
-            <div
-              key={tab.tabId}
-              draggable={!isMaterializing && renaming !== tab.tabId}
-              className={clsx(
-                "group h-7 w-[220px] shrink-0 flex items-center gap-1.5 rounded-lg border border-dashed border-(--color-border-muted) px-2 text-xs select-none transition-colors",
-                "bg-transparent text-(--color-fg-dim) hover:bg-(--color-bg-mute) hover:text-(--color-fg-mute)",
-                draggingTabId === tab.tabId && "opacity-50",
-                dragOverTabId === tab.tabId && "ring-1 ring-(--color-accent) bg-(--color-accent-soft)/20",
-              )}
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", tab.tabId);
-                setDraggingTabId(tab.tabId);
-              }}
-              onDragEnd={() => {
-                setDraggingTabId(null);
-                setDragOverTabId(null);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDragOverTabId(tab.tabId);
-              }}
-              onDragLeave={() => setDragOverTabId((current) => current === tab.tabId ? null : current)}
-              onDrop={(e) => {
-                e.preventDefault();
-                onDropOnTab(tab.tabId);
-              }}
-              onClick={() => {
-                if (renaming === tab.tabId) return;
-                void onActivate(tab.tabId);
-              }}
-              onDoubleClick={() => {
-                setRenaming(tab.tabId);
-                setDraft(tab.label);
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setRenaming(tab.tabId);
-                setDraft(tab.label);
-              }}
-              title={`${tab.label} (не загружена — клик откроет сессию)`}
-            >
-              <span className="h-2 w-2 rounded-full shrink-0 bg-(--color-fg-dim) opacity-40" />
-              {renaming === tab.tabId ? (
-                <input
-                  className="min-w-0 w-28 bg-transparent outline-none border-b border-(--color-accent)"
-                  value={draft}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onBlur={() => void commitRename(tab.tabId)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void commitRename(tab.tabId);
-                    if (e.key === "Escape") setRenaming(null);
-                  }}
-                />
-              ) : (
-                <span className="truncate min-w-0 flex-1 italic">{isMaterializing ? "Открываем…" : tab.label}</span>
-              )}
-              <button
-                type="button"
-                className="ml-auto opacity-0 group-hover:opacity-100 hover:text-(--color-danger) shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void closeSessionTab(tab.tabId);
-                }}
-                title="Закрыть"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          );
-        }
         const active = tab.tabId === activeTabId;
         return (
           <div

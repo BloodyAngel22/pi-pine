@@ -66,7 +66,6 @@ export function SessionsSidebar({
   const openSessionTab = useChat((s) => s.openSessionTab);
   const closeSessionTab = useChat((s) => s.closeSessionTab);
   const tabs = useChat((s) => s.tabs);
-  const pendingRestoreTabs = useChat((s) => s.pendingRestoreTabs);
   const setSessionName = useChat((s) => s.setSessionName);
   const agentSessionFile = useChat((s) => s.agentState?.sessionFile);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
@@ -166,12 +165,8 @@ export function SessionsSidebar({
       const file = tab.agentState?.sessionFile;
       if (file) m.set(file, tabId);
     }
-    // Холодные (ещё не материализованные) вкладки тоже считаются "открытыми".
-    for (const [placeholderId, pending] of pendingRestoreTabs) {
-      if (!m.has(pending.file)) m.set(pending.file, placeholderId);
-    }
     return m;
-  }, [tabs, pendingRestoreTabs]);
+  }, [tabs]);
 
   const groups = useMemo(() => {
     const m: Record<Bucket, SessionInfo[]> = {

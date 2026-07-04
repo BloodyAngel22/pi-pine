@@ -100,7 +100,6 @@ export default function App() {
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"chat" | "terminal" | "diff">("chat");
-  const [keptChatTabIds, setKeptChatTabIds] = useState<string[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [btwOpen, setBtwOpen] = useState(false);
   const [btwQuestion, setBtwQuestion] = useState<string | undefined>(undefined);
@@ -216,11 +215,6 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!activeTabId) return;
-    setKeptChatTabIds((prev) => [activeTabId, ...prev.filter((id) => id !== activeTabId && tabOrder.includes(id))].slice(0, 5));
-  }, [activeTabId, tabOrder]);
 
   useEffect(() => {
     if (mainTab === "diff") void refreshDiff();
@@ -364,7 +358,6 @@ export default function App() {
     setBtwOpen(true);
   };
 
-  const renderedChatTabIds = tabOrder.filter((tabId) => tabId === activeTabId || keptChatTabIds.includes(tabId));
   const selectPanel = (tab: SidePanelTab) => {
     localStorage.setItem("pi-pine.sidePanelTab", tab);
     setActivePanelTab(tab);
@@ -496,7 +489,7 @@ export default function App() {
                 {tabOrder.length === 0 ? (
                   <MessageList active={mainTab === "chat"} onCopy={onCopy} onFork={onFork} onRegenerate={onRegenerate} onEdit={onEdit} />
                 ) : (
-                  renderedChatTabIds.map((tabId) => {
+                  tabOrder.map((tabId) => {
                     const active = mainTab === "chat" && tabId === activeTabId;
                     return (
                       <div key={tabId} className={active ? "absolute inset-0 flex min-h-0 flex-col" : "hidden"} aria-hidden={!active}>
