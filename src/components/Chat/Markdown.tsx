@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { Copy, Check } from "@/components/ui/icons/compat";
 import { open } from "@tauri-apps/plugin-shell";
+import { Mermaid } from "./Mermaid";
 
 interface Props {
   text: string;
@@ -146,9 +147,28 @@ function extractCodeText(node: React.ReactNode): string {
   return "";
 }
 
+// Ищем className внутреннего <code> (rehype-highlight ставит "language-xxx"),
+// чтобы отличить mermaid-блок от обычного кода — сам <pre> его не несёт.
+function findCodeClassName(node: React.ReactNode): string | undefined {
+  if (!node || typeof node !== "object") return undefined;
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const found = findCodeClassName(n);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if ("props" in node) {
+    const el = node as { props?: { className?: string } };
+    return el.props?.className;
+  }
+  return undefined;
+}
+
 function CodeBlock({ children, className, ...props }: React.ComponentPropsWithoutRef<"pre">) {
   const [copied, setCopied] = useState(false);
   const codeText = extractCodeText(children);
+  const codeClassName = findCodeClassName(children);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -159,6 +179,10 @@ function CodeBlock({ children, className, ...props }: React.ComponentPropsWithou
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }, [codeText]);
+
+  if (codeClassName?.includes("language-mermaid")) {
+    return <Mermaid code={codeText} />;
+  }
 
   return (
     <pre className={className} {...props}>

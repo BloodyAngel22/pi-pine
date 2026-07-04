@@ -5,6 +5,7 @@ import {
   IconAlertCircle,
   IconAlertTriangle,
   IconArrowDown,
+  IconArrowsMaximize,
   IconArrowsMinimize,
   IconBolt,
   IconBrain,
@@ -83,6 +84,8 @@ import {
   IconWand,
   IconWorld,
   IconX,
+  IconZoomIn,
+  IconZoomOut,
 } from "@tabler/icons-react";
 import {
   AgentScreenIcon,
@@ -138,6 +141,7 @@ export type AppIconName =
   | "layoutTop"
   | "menu"
   | "loader"
+  | "maximize"
   | "mcp"
   | "message"
   | "messageCircle"
@@ -182,7 +186,9 @@ export type AppIconName =
   | "wand"
   | "web"
   | "x"
-  | "yolo";
+  | "yolo"
+  | "zoomIn"
+  | "zoomOut";
 
 export type AppIconProps = SVGProps<SVGSVGElement> & {
   name: AppIconName;
@@ -235,6 +241,7 @@ const iconMap: Record<AppIconName, IconComponent> = {
   layers: IconLayersIntersect,
   layoutTop: IconLayoutNavbar,
   loader: IconLoader2,
+  maximize: IconArrowsMaximize,
   menu: IconMenu2,
   mcp: McpNetworkIcon,
   message: IconMessage,
@@ -281,6 +288,8 @@ const iconMap: Record<AppIconName, IconComponent> = {
   web: IconWorld,
   x: IconX,
   yolo: YoloDangerIcon,
+  zoomIn: IconZoomIn,
+  zoomOut: IconZoomOut,
 };
 
 export function AppIcon({ name, size = 16, strokeWidth = 1.8, ...props }: AppIconProps) {

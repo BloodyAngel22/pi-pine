@@ -197,7 +197,7 @@ select {
 }
 .md ul,
 .md ol {
-  padding-left: 1.25rem;
+  padding-left: 1.25em;
   margin: 0.12rem 0 0.4rem;
 }
 .md p + ul,
@@ -233,6 +233,20 @@ select {
 .md pre code {
   background: transparent;
   padding: 0;
+}
+.md .mermaid-container {
+  position: relative;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-soft);
+  margin: 0.4rem 0;
+}
+.md .mermaid-container svg {
+  max-width: none;
+  display: block;
+  margin: 0 auto;
 }
 
 /* Wrapping for tool output / diff preview <pre> blocks.
