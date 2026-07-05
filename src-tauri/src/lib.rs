@@ -10,6 +10,7 @@ mod rpc;
 mod sessions;
 mod terminal;
 mod themes;
+mod transcription;
 mod virtual_display;
 
 use rpc::RpcManager;
@@ -35,6 +36,32 @@ pub fn run() {
                     .theme(Some(tauri::Theme::Dark))
                     .enable_clipboard_access()
                     .build()?;
+
+            // webkit2gtk по умолчанию отклоняет любые permission-request (микрофон,
+            // камера и т.д.) — в wry/tauri для Linux этот сигнал никак не обработан,
+            // поэтому getUserMedia всегда молча падает независимо от системных настроек.
+            // Разрешаем ТОЛЬКО чисто аудио-запросы (голосовой ввод); если запрошено
+            // ещё и видео (камера/screen-share) — не трогаем, остаётся дефолтный deny.
+            #[cfg(target_os = "linux")]
+            {
+                use webkit2gtk::glib::prelude::*;
+                use webkit2gtk::{
+                    PermissionRequestExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt,
+                    WebViewExt,
+                };
+                let _ = _window.with_webview(|webview| {
+                    let wv = webview.inner();
+                    wv.connect_permission_request(|_wv, request| {
+                        if let Some(media_request) = request.downcast_ref::<UserMediaPermissionRequest>() {
+                            if media_request.is_for_audio_device() && !media_request.is_for_video_device() {
+                                request.allow();
+                                return true;
+                            }
+                        }
+                        false
+                    });
+                });
+            }
 
             let manager = Arc::new(RpcManager::new(app.handle().clone()));
             app.manage(manager);
@@ -107,6 +134,12 @@ pub fn run() {
             // git diff
             git_diff::git_diff_status,
             git_diff::git_diff_file,
+            // voice transcription (STT)
+            transcription::get_transcription_config,
+            transcription::set_transcription_config,
+            transcription::test_stt_connection,
+            transcription::list_transcription_models,
+            transcription::transcribe_audio,
             // Virtual display
             virtual_display::start_virtual_display,
             virtual_display::stop_virtual_display,

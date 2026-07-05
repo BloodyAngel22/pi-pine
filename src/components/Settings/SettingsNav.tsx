@@ -1,14 +1,15 @@
 import * as Tabs from "@radix-ui/react-tabs";
-import { Bot, FolderCog, Image, KeyRound, Palette } from "@/components/ui/icons/compat";
+import { Bot, FolderCog, Image, KeyRound, Mic, Palette } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 
-export type SettingsSectionId = "environment" | "model" | "interface" | "images" | "auth";
+export type SettingsSectionId = "environment" | "model" | "interface" | "images" | "voice" | "auth";
 
 const items: Array<{ id: SettingsSectionId; label: string; icon: React.ReactNode }> = [
   { id: "environment", label: "Environment", icon: <FolderCog size={14} /> },
   { id: "model", label: "Model", icon: <Bot size={14} /> },
   { id: "interface", label: "Interface", icon: <Palette size={14} /> },
   { id: "images", label: "Images", icon: <Image size={14} /> },
+  { id: "voice", label: "Голос", icon: <Mic size={14} /> },
   { id: "auth", label: "MCP/Auth", icon: <KeyRound size={14} /> },
 ];
 

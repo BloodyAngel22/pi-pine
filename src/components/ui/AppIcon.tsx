@@ -51,6 +51,8 @@ import {
   IconMessage,
   IconMessageCircle,
   IconMessageQuestion,
+  IconMicrophone,
+  IconMicrophoneOff,
   IconNavigation,
   IconPalette,
   IconPaperclip,
@@ -146,6 +148,8 @@ export type AppIconName =
   | "message"
   | "messageCircle"
   | "messageQuestion"
+  | "mic"
+  | "micOff"
   | "model"
   | "more"
   | "navigation"
@@ -247,6 +251,8 @@ const iconMap: Record<AppIconName, IconComponent> = {
   message: IconMessage,
   messageCircle: IconMessageCircle,
   messageQuestion: IconMessageQuestion,
+  mic: IconMicrophone,
+  micOff: IconMicrophoneOff,
   model: IconCpu,
   more: IconDots,
   navigation: IconNavigation,

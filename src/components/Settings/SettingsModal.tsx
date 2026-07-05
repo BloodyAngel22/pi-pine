@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
+import clsx from "clsx";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ExternalLink, Folder, Search } from "@/components/ui/icons/compat";
@@ -43,6 +44,23 @@ interface ImageStatus {
   cache_path: string;
   ocr_languages_available: string;
   ollama_available: boolean;
+}
+
+interface TranscriptionConfig {
+  base_url: string;
+  api_key: string;
+  model: string;
+}
+
+interface AudioModelInfo {
+  id: string;
+  name: string;
+}
+
+interface TestConnectionResult {
+  reachable: boolean;
+  latency_ms?: number;
+  error?: string;
 }
 
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
@@ -90,6 +108,14 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [imgCaptionBackend, setImgCaptionBackend] = useState("tiny");
   const [imgStatus, setImgStatus] = useState<ImageStatus | null>(null);
 
+  const [voiceBaseUrl, setVoiceBaseUrl] = useState("http://localhost:20128");
+  const [voiceApiKey, setVoiceApiKey] = useState("");
+  const [voiceApiKeyVisible, setVoiceApiKeyVisible] = useState(false);
+  const [voiceModel, setVoiceModel] = useState("");
+  const [voiceModelOptions, setVoiceModelOptions] = useState<AudioModelInfo[]>([]);
+  const [voiceTesting, setVoiceTesting] = useState(false);
+  const [voiceTestResult, setVoiceTestResult] = useState<TestConnectionResult | null>(null);
+
   useEffect(() => {
     if (!open) return;
     setPathDraft(cliPathOverride ?? "");
@@ -109,7 +135,38 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       setImgCaptionBackend(cfg.captioning_backend);
     }).catch(() => {});
     void invoke<ImageStatus>("get_analyze_image_status", { pi_binary_path: cliPathOverride || piPath || null }).then(setImgStatus).catch(() => {});
+    void invoke<TranscriptionConfig>("get_transcription_config").then((cfg) => {
+      setVoiceBaseUrl(cfg.base_url);
+      setVoiceApiKey(cfg.api_key);
+      setVoiceModel(cfg.model);
+    }).catch(() => {});
+    setVoiceTestResult(null);
   }, [open, cliPathOverride, cwd, deepResearchMode, piPath]);
+
+  const testSttConnection = async () => {
+    setVoiceTesting(true);
+    setVoiceTestResult(null);
+    setVoiceModelOptions([]);
+    try {
+      const conn = await invoke<TestConnectionResult>("test_stt_connection", { baseUrl: voiceBaseUrl });
+      setVoiceTestResult(conn);
+      if (conn.reachable) {
+        const models = await invoke<AudioModelInfo[]>("list_transcription_models", {
+          baseUrl: voiceBaseUrl,
+          apiKey: voiceApiKey,
+        }).catch((e) => {
+          setVoiceTestResult({ reachable: true, error: typeof e === "string" ? e : String(e) });
+          return [] as AudioModelInfo[];
+        });
+        setVoiceModelOptions(models);
+        if (models.length > 0 && !models.some((m) => m.id === voiceModel)) {
+          setVoiceModel(models[0].id);
+        }
+      }
+    } finally {
+      setVoiceTesting(false);
+    }
+  };
 
   const detectPi = async () => {
     const found = await invoke<string | null>("find_pi_binary");
@@ -147,6 +204,13 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         max_image_size_mb: 10,
         ollama_host: "http://localhost:11434",
         ollama_model: "llava",
+      },
+    }).catch(() => {});
+    void invoke("set_transcription_config", {
+      config: {
+        base_url: voiceBaseUrl,
+        api_key: voiceApiKey,
+        model: voiceModel,
       },
     }).catch(() => {});
     onClose();
@@ -300,6 +364,68 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   </div>
                 )}
                 {imgStatus && <Hint>Cache: {(imgStatus.cache_size_bytes / 1024 / 1024).toFixed(1)}MB · {imgStatus.cache_path}</Hint>}
+              </Section>
+            </SettingsStack>
+          </Tabs.Content>
+
+          <Tabs.Content value="voice" className="outline-none">
+            <SettingsStack>
+              <Section title={t.voice.settingsSection}>
+                <div className="space-y-2">
+                  <Hint>{t.voice.settingsSectionHint}</Hint>
+                  <div>
+                    <div className="mb-1 text-xs font-medium text-(--color-fg)">{t.voice.baseUrlLabel}</div>
+                    <Input
+                      value={voiceBaseUrl}
+                      onChange={(e) => setVoiceBaseUrl(e.target.value)}
+                      placeholder="http://localhost:20128"
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-xs font-medium text-(--color-fg)">{t.voice.apiKeyLabel}</div>
+                    <div className="flex gap-2">
+                      <Input
+                        type={voiceApiKeyVisible ? "text" : "password"}
+                        value={voiceApiKey}
+                        onChange={(e) => setVoiceApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="flex-1"
+                      />
+                      <Button variant="subtle" size="md" onClick={() => setVoiceApiKeyVisible((v) => !v)}>
+                        {voiceApiKeyVisible ? "Скрыть" : "Показать"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button variant="subtle" size="sm" onClick={() => void testSttConnection()} disabled={voiceTesting}>
+                      {voiceTesting ? t.voice.testing : t.voice.testConnection}
+                    </Button>
+                    {voiceTestResult && (
+                      <span className={clsx("text-xs", voiceTestResult.reachable ? "text-(--color-success)" : "text-(--color-danger)")}>
+                        {voiceTestResult.reachable ? t.voice.reachable : (voiceTestResult.error ?? t.voice.unreachable)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Section>
+              <Section title={t.voice.modelSectionTitle}>
+                <Input
+                  value={voiceModel}
+                  onChange={(e) => setVoiceModel(e.target.value)}
+                  placeholder={t.voice.modelPlaceholder}
+                  list="voice-model-suggestions"
+                />
+                {voiceModelOptions.length > 0 && (
+                  <datalist id="voice-model-suggestions">
+                    {voiceModelOptions.map((m) => (
+                      <option key={m.id} value={m.id} />
+                    ))}
+                  </datalist>
+                )}
+                <Hint>{t.voice.modelSectionHint}</Hint>
+                {voiceTestResult?.reachable && voiceModelOptions.length === 0 && (
+                  <Hint>{t.voice.noModelsFound}</Hint>
+                )}
               </Section>
             </SettingsStack>
           </Tabs.Content>

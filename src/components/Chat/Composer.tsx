@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Send, Square, Paperclip, X, Slash, Sparkles, ListTodo, Play } from "@/components/ui/icons/compat";
+import { Send, Square, Paperclip, X, Slash, Sparkles, ListTodo, Play, Loader2 } from "@/components/ui/icons/compat";
 import { AppIcon } from "@/components/ui/AppIcon";
 import { Chip } from "@/components/ui/Chip";
 import clsx from "clsx";
@@ -11,6 +11,7 @@ import { t } from "@/i18n/ru";
 import { BUILTIN_SLASH, SlashMenu } from "./SlashMenu";
 import { SkillsPalette } from "./SkillsPalette";
 import { RunSettingsPopover } from "@/components/AppShell/RunSettingsPopover";
+import { VoiceRecordButton, type RecordingState } from "./VoiceRecordButton";
 import type { AttachmentContent, FileContent, ImageContent } from "@/rpc/types";
 
 interface DirectoryCompletion {
@@ -156,6 +157,7 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
   const [runSettingsOpen, setRunSettingsOpen] = useState(false);
   const [skillSuggestions, setSkillSuggestions] = useState<import("@/rpc/types").SkillSuggestion[]>([]);
   const [planReady, setPlanReady] = useState(false);
+  const [voiceState, setVoiceState] = useState<RecordingState>("idle");
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   /** undo/redo стеки для композера (useRef чтобы избежать ререндеров) */
@@ -712,6 +714,14 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
           </div>
         )}
 
+        {voiceState === "transcribing" && (
+          <div className="mb-2 rounded-xl border border-(--color-accent)/30 bg-(--color-accent)/8 px-3 py-2 flex items-center gap-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-accent)_16%,white_12%)]">
+            <Loader2 size={14} className="animate-spin text-(--color-accent) shrink-0" />
+            <div className="text-xs font-medium text-(--color-fg)">{t.voice.transcribing}</div>
+            <div className="text-[10px] text-(--color-fg-dim)">{t.voice.transcribingHint}</div>
+          </div>
+        )}
+
         {planMode && planFilePath && (planReady || assistantPlanReady) && (
           <div className="mb-2 rounded-xl border border-(--color-warn)/30 bg-(--color-warn)/9 px-3 py-2 flex items-center gap-2 shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-warn)_16%,white_12%)]">
             <AppIcon name="plan" size={14} className="text-(--color-warn) shrink-0" />
@@ -1018,6 +1028,7 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
             </button>
             <div className="flex-1" />
             <RunSettingsPopover open={runSettingsOpen} onOpenChange={setRunSettingsOpen} />
+            <VoiceRecordButton onStateChange={setVoiceState} />
             {isStreaming ? (
               <button
                 type="button"
