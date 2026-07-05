@@ -258,8 +258,11 @@ export default function App() {
         return;
       }
       if (ctrl && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        setSearchOpen(true);
+        // На вкладке Diff Ctrl+F перехватывается собственным обработчиком DiffPanel (поиск по diff).
+        if (mainTab !== "diff") {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
         return;
       }
       if (ctrl && e.key.toLowerCase() === "n") {
@@ -294,7 +297,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activateTab, closeSessionTab, commitPlan, createSessionTab, newSession]);
+  }, [activateTab, closeSessionTab, commitPlan, createSessionTab, newSession, mainTab]);
 
   const onSlash = (cmd: string, arg = "") => {
     switch (cmd) {

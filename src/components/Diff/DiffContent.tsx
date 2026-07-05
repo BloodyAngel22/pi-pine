@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Check, Copy, MessageCircleQuestion } from "@/components/ui/icons/compat";
-import { formatDiffReference, nearestNewLineNo, parseFileDiff, type ParsedDiffLine } from "@/lib/gitDiff";
+import { Check, ChevronDown, ChevronUp, Copy, MessageCircleQuestion } from "@/components/ui/icons/compat";
+import {
+  formatDiffReference,
+  hunkOffsets as computeHunkOffsets,
+  nearestNewLineNo,
+  parseFileDiff,
+  type ParsedDiffLine,
+} from "@/lib/gitDiff";
 import { useActiveDiffText, type ChangedFile } from "@/store/diff";
 import { useChat } from "@/store/chat";
 
 interface Props {
   file: ChangedFile | null;
-  activeHunkIndex: number;
+  activeGroupIndex: number;
+  groupCount: number;
+  focusLineIdx?: number | null;
+  onPrevGroup(): void;
+  onNextGroup(): void;
 }
 
 interface Selection {
@@ -59,18 +69,50 @@ function CopyPathButton({ path }: { path: string }) {
   );
 }
 
-export function DiffContent({ file, activeHunkIndex }: Props) {
+function ChangeNavButtons({
+  activeGroupIndex,
+  groupCount,
+  onPrevGroup,
+  onNextGroup,
+}: {
+  activeGroupIndex: number;
+  groupCount: number;
+  onPrevGroup(): void;
+  onNextGroup(): void;
+}) {
+  if (groupCount <= 1) return null;
+  return (
+    <div className="shrink-0 flex items-center gap-0.5">
+      <span className="px-1 text-[10px] tabular-nums text-(--color-fg-dim)">
+        {activeGroupIndex + 1}/{groupCount}
+      </span>
+      <button
+        type="button"
+        onClick={onPrevGroup}
+        disabled={activeGroupIndex === 0}
+        title="Предыдущее изменение (Alt+↑)"
+        className="inline-flex items-center justify-center w-7 h-7 rounded-md text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg) disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <ChevronUp size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={onNextGroup}
+        disabled={activeGroupIndex === groupCount - 1}
+        title="Следующее изменение (Alt+↓)"
+        className="inline-flex items-center justify-center w-7 h-7 rounded-md text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg) disabled:opacity-40 disabled:pointer-events-none"
+      >
+        <ChevronDown size={16} />
+      </button>
+    </div>
+  );
+}
+
+export function DiffContent({ file, activeGroupIndex, groupCount, focusLineIdx, onPrevGroup, onNextGroup }: Props) {
   const { text: diffText } = useActiveDiffText(file);
   const parsed = useMemo(() => (file ? parseFileDiff(diffText) : null), [file, diffText]);
   const flatLines = useMemo(() => parsed?.hunks.flatMap((h) => h.lines) ?? [], [parsed]);
-  const hunkOffsets = useMemo(() => {
-    let acc = 0;
-    return (parsed?.hunks.map((h) => {
-      const start = acc;
-      acc += h.lines.length;
-      return start;
-    }) ?? []) as number[];
-  }, [parsed]);
+  const hunkOffsets = useMemo(() => (parsed ? computeHunkOffsets(parsed.hunks) : []), [parsed]);
 
   const [selection, setSelection] = useState<Selection | null>(null);
   const [justAsked, setJustAsked] = useState(false);
@@ -136,18 +178,19 @@ export function DiffContent({ file, activeHunkIndex }: Props) {
   return (
     <div className="relative flex-1 min-h-0 flex flex-col">
       <div className="pi-diff-content flex-1 min-h-0 overflow-auto font-mono">
-        <div className="sticky top-0 z-10 h-7 flex items-center gap-1.5 px-2.5 bg-(--color-bg-soft) border-b border-(--color-border) text-(--color-fg-mute)">
+        <div className="sticky top-0 z-10 h-9 flex items-center gap-1.5 px-2.5 bg-(--color-bg-soft) border-b border-(--color-border) text-(--color-fg-mute)">
           <span className="flex-1 min-w-0 truncate">{file.path}</span>
+          <ChangeNavButtons
+            activeGroupIndex={activeGroupIndex}
+            groupCount={groupCount}
+            onPrevGroup={onPrevGroup}
+            onNextGroup={onNextGroup}
+          />
           <CopyPathButton path={file.path} />
         </div>
         {parsed.hunks.map((hunk, hunkIndex) => (
-          <div key={hunkIndex} data-hunk-index={hunkIndex}>
-            <div
-              className={clsx(
-                "sticky top-7 px-2.5 py-0.5 text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)",
-                hunkIndex === activeHunkIndex && "text-(--color-accent)",
-              )}
-            >
+          <div key={hunkIndex}>
+            <div className="sticky top-9 px-2.5 py-0.5 text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)">
               {hunk.header}
             </div>
             {hunk.lines.map((line, lineIndex) => {
@@ -155,11 +198,14 @@ export function DiffContent({ file, activeHunkIndex }: Props) {
               return (
                 <div
                   key={lineIndex}
+                  data-line-idx={flatIdx}
                   className={clsx("flex whitespace-pre-wrap", lineClass(line.type))}
                   style={
-                    isSelected(flatIdx)
-                      ? { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--color-accent) 14%, transparent)" }
-                      : undefined
+                    flatIdx === focusLineIdx
+                      ? { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--color-accent) 28%, transparent)" }
+                      : isSelected(flatIdx)
+                        ? { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--color-accent) 14%, transparent)" }
+                        : undefined
                   }
                 >
                   <span

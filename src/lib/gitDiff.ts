@@ -84,6 +84,58 @@ function langForPath(path: string): string {
   return EXT_LANG[ext] ?? "";
 }
 
+/** Начальный плоский индекс каждого hunk'а в объединённом списке строк всех hunk'ов. */
+export function hunkOffsets(hunks: ParsedDiffHunk[]): number[] {
+  let acc = 0;
+  return hunks.map((h) => {
+    const start = acc;
+    acc += h.lines.length;
+    return start;
+  });
+}
+
+export interface ChangeGroup {
+  startFlatIdx: number;
+  endFlatIdx: number;
+}
+
+/**
+ * Группирует add/del-строки в логические блоки изменений по плоскому списку строк.
+ * Бэкенд всегда отдаёт diff с полным контекстом файла (-U100000, см. git_diff.rs),
+ * поэтому `parseFileDiff` всегда возвращает ровно один hunk на файл — реальные
+ * границы "кусков правок" нужно вычислять здесь, объединяя соседние add/del-раны,
+ * если между ними меньше 2*contextLines строк контекста (как это сделал бы сам git
+ * при выводе с ограниченным контекстом).
+ */
+export function groupChangedLines(lines: ParsedDiffLine[], contextLines = 8): ChangeGroup[] {
+  const groups: ChangeGroup[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].type === "context") {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < lines.length && lines[j].type !== "context") j++;
+    const prev = groups[groups.length - 1];
+    if (prev && i - prev.endFlatIdx - 1 <= contextLines * 2) {
+      prev.endFlatIdx = j - 1;
+    } else {
+      groups.push({ startFlatIdx: i, endFlatIdx: j - 1 });
+    }
+    i = j;
+  }
+  return groups;
+}
+
+/** Индекс группы изменений, содержащей (или ближайшей к) плоский индекс строки flatIdx. */
+export function groupIndexForFlatLine(groups: ChangeGroup[], flatIdx: number): number {
+  for (let i = 0; i < groups.length; i++) {
+    if (flatIdx <= groups[i].endFlatIdx) return i;
+  }
+  return Math.max(0, groups.length - 1);
+}
+
 /** Ближайший известный newLineNo от idx и правее; если хвост — сплошные del-строки, ищем левее. */
 export function nearestNewLineNo(lines: ParsedDiffLine[], idx: number): number | null {
   for (let i = idx; i < lines.length; i++) if (lines[i].newLineNo != null) return lines[i].newLineNo;

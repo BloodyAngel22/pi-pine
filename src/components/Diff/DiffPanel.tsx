@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { ChevronDown, GitFork, Loader2, RefreshCw } from "@/components/ui/icons/compat";
 import { useActiveDiffText, useDiff } from "@/store/diff";
-import { parseFileDiff } from "@/lib/gitDiff";
+import { groupChangedLines, groupIndexForFlatLine, parseFileDiff } from "@/lib/gitDiff";
 import { useResize } from "@/lib/useResize";
 import { DiffFileList } from "./DiffFileList";
 import { DiffContent } from "./DiffContent";
+import { DiffSearchPalette } from "./DiffSearchPalette";
 
 interface Props {
   open: boolean;
@@ -24,23 +25,54 @@ export function DiffPanel({ open, onClose }: Props) {
   const refresh = useDiff((s) => s.refresh);
 
   const [listWidth, setListWidth] = useState(260);
-  const [activeHunkIndex, setActiveHunkIndex] = useState(0);
+  const [activeGroupIndex, setActiveGroupIndex] = useState(0);
+  const [focusLineIdx, setFocusLineIdx] = useState<number | null>(null);
+  const [diffSearchOpen, setDiffSearchOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const resize = useResize({ edge: "right", initial: listWidth, min: 160, max: 480, onChange: setListWidth });
 
   const selectedFile = useMemo(() => files.find((f) => f.path === selectedPath) ?? null, [files, selectedPath]);
   const { text: activeDiffText } = useActiveDiffText(selectedFile);
-  const hunkCount = useMemo(() => parseFileDiff(activeDiffText).hunks.length, [activeDiffText]);
+  const parsedActive = useMemo(() => parseFileDiff(activeDiffText), [activeDiffText]);
+  const flatLinesActive = useMemo(() => parsedActive.hunks.flatMap((h) => h.lines), [parsedActive]);
+  // Бэкенд отдаёт diff с полным контекстом файла (см. FULL_CONTEXT_FLAG в git_diff.rs),
+  // поэтому у parseFileDiff всегда ровно один "hunk" — реальные блоки изменений
+  // для навигации вычисляются отдельно из плоского списка строк.
+  const changeGroups = useMemo(() => groupChangedLines(flatLinesActive), [flatLinesActive]);
+  const groupCount = changeGroups.length;
+
+  function jumpToGroup(index: number) {
+    const clamped = Math.max(0, Math.min(groupCount - 1, index));
+    setActiveGroupIndex(clamped);
+    const group = changeGroups[clamped];
+    if (!group) return;
+    setFocusLineIdx(group.startFlatIdx);
+    window.setTimeout(() => setFocusLineIdx((cur) => (cur === group.startFlatIdx ? null : cur)), 1000);
+  }
+
+  const goPrevGroup = () => jumpToGroup(activeGroupIndex - 1);
+  const goNextGroup = () => jumpToGroup(activeGroupIndex + 1);
+
+  function onJumpToLine(flatIdx: number) {
+    setActiveGroupIndex(groupIndexForFlatLine(changeGroups, flatIdx));
+    setFocusLineIdx(flatIdx);
+    window.setTimeout(() => setFocusLineIdx((cur) => (cur === flatIdx ? null : cur)), 1000);
+  }
 
   useEffect(() => {
-    setActiveHunkIndex(0);
+    setActiveGroupIndex(0);
+    setFocusLineIdx(null);
   }, [selectedPath]);
 
   useEffect(() => {
-    if (!open) return;
-    const el = contentRef.current?.querySelector(`[data-hunk-index="${activeHunkIndex}"]`);
+    if (!open) setDiffSearchOpen(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || focusLineIdx == null) return;
+    const el = contentRef.current?.querySelector(`[data-line-idx="${focusLineIdx}"]`);
     el?.scrollIntoView({ block: "center" });
-  }, [activeHunkIndex, open]);
+  }, [focusLineIdx, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -49,35 +81,43 @@ export function DiffPanel({ open, onClose }: Props) {
       const inEditable =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
       if (inEditable) return;
-      const container = contentRef.current?.closest("[data-diff-panel]");
-      if (!container?.contains(document.activeElement) && document.activeElement !== document.body) return;
+      const ctrl = e.ctrlKey || e.metaKey;
 
+      if (ctrl && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setDiffSearchOpen(true);
+        return;
+      }
       if (e.altKey && e.key === "ArrowDown") {
         e.preventDefault();
-        setActiveHunkIndex((i) => Math.min(hunkCount - 1, i + 1));
+        goNextGroup();
         return;
       }
       if (e.altKey && e.key === "ArrowUp") {
         e.preventDefault();
-        setActiveHunkIndex((i) => Math.max(0, i - 1));
+        goPrevGroup();
         return;
       }
-      if (!e.altKey && !e.ctrlKey && !e.metaKey && e.key === "ArrowDown") {
+
+      const container = contentRef.current?.closest("[data-diff-panel]");
+      if (!container?.contains(document.activeElement) && document.activeElement !== document.body) return;
+
+      if (!e.altKey && !ctrl && e.key === "ArrowDown") {
         e.preventDefault();
         selectNextFile();
         return;
       }
-      if (!e.altKey && !e.ctrlKey && !e.metaKey && e.key === "ArrowUp") {
+      if (!e.altKey && !ctrl && e.key === "ArrowUp") {
         e.preventDefault();
         selectPrevFile();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, hunkCount, selectNextFile, selectPrevFile]);
+  }, [open, activeGroupIndex, changeGroups, selectNextFile, selectPrevFile]);
 
   return (
-    <section data-diff-panel className={open ? "flex-1 min-h-0 bg-(--color-bg) flex flex-col" : "hidden"} tabIndex={-1}>
+    <section data-diff-panel className={open ? "relative flex-1 min-h-0 bg-(--color-bg) flex flex-col" : "hidden"} tabIndex={-1}>
       <div className="h-9 shrink-0 flex items-center gap-2 border-b border-(--color-border) bg-(--color-bg-soft) px-2.5">
         <div className="flex items-center gap-1.5 text-xs text-(--color-fg-mute)">
           <GitFork size={13} />
@@ -127,10 +167,26 @@ export function DiffPanel({ open, onClose }: Props) {
             )}
           />
           <div ref={contentRef} className="flex-1 min-w-0 flex flex-col">
-            <DiffContent file={selectedFile} activeHunkIndex={activeHunkIndex} />
+            <DiffContent
+              file={selectedFile}
+              activeGroupIndex={activeGroupIndex}
+              groupCount={groupCount}
+              focusLineIdx={focusLineIdx}
+              onPrevGroup={goPrevGroup}
+              onNextGroup={goNextGroup}
+            />
           </div>
         </div>
       )}
+      <DiffSearchPalette
+        open={diffSearchOpen}
+        onClose={() => setDiffSearchOpen(false)}
+        files={files}
+        selectedFile={selectedFile}
+        diffText={activeDiffText}
+        onSelectFile={selectFile}
+        onJumpToLine={onJumpToLine}
+      />
     </section>
   );
 }
