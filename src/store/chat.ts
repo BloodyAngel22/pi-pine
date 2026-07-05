@@ -359,7 +359,9 @@ interface ChatState {
   runSlashCommand(command: string, arg?: string): Promise<void>;
   /** Plan mode actions */
   togglePlanMode(): Promise<void>;
-  loadPlan(): Promise<void>;
+  loadPlan(opts?: { reset?: boolean }): Promise<void>;
+  /** Создаёт новый файл плана для текущей сессии, не трогая старый на диске. */
+  resetPlan(): Promise<void>;
   savePlan(text: string): Promise<void>;
   commitPlan(): Promise<void>;
   /** Skills */
@@ -412,6 +414,8 @@ const STORAGE_KEY_MODEL = "pi-pine.model";
 const STORAGE_KEY_PLAN_MODE = "pi-pine.planMode";
 const STORAGE_KEY_SKILLS_PREFIX_FILE = "pi-pine.attachedSkills.file.";
 const STORAGE_KEY_SKILLS_PREFIX_ID = "pi-pine.attachedSkills.id.";
+const STORAGE_KEY_PLAN_ID_PREFIX_FILE = "pi-pine.planId.file.";
+const STORAGE_KEY_PLAN_ID_PREFIX_ID = "pi-pine.planId.id.";
 const STORAGE_KEY_OPEN_TABS_PREFIX = "pi-pine.openTabs.";
 const SESSIONS_CHANGED_EVENT = "pi-pine:sessions-changed";
 const closedTabIds = new Set<string>();
@@ -534,6 +538,55 @@ function migrateAttachedSkillsKey(fromSessionId: string, toSessionFile: string):
       localStorage.setItem(toKey, raw);
     }
     localStorage.removeItem(fromKey);
+  } catch {
+    // ignore
+  }
+}
+
+function planIdFileKey(sessionFile: string): string {
+  const base = sessionFile
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    ?.replace(/\.jsonl$/i, "")
+    ?.replace(/[^a-zA-Z0-9_.-]/g, "_")
+    ?? sessionFile;
+  return `${STORAGE_KEY_PLAN_ID_PREFIX_FILE}${base}`;
+}
+function planIdIdKey(sessionId: string): string {
+  return `${STORAGE_KEY_PLAN_ID_PREFIX_ID}${sessionId}`;
+}
+function migratePlanIdKey(fromSessionId: string, toSessionFile: string): void {
+  const fromKey = planIdIdKey(fromSessionId);
+  const toKey = planIdFileKey(toSessionFile);
+  if (fromKey === toKey) return;
+  try {
+    const raw = localStorage.getItem(fromKey);
+    if (raw === null) return;
+    if (localStorage.getItem(toKey) === null) {
+      localStorage.setItem(toKey, raw);
+    }
+    localStorage.removeItem(fromKey);
+  } catch {
+    // ignore
+  }
+}
+function readPlanId(sessionId: string, sessionFile: string | null | undefined): string | null {
+  try {
+    if (sessionFile) {
+      migratePlanIdKey(sessionId, sessionFile);
+      return localStorage.getItem(planIdFileKey(sessionFile));
+    }
+    return localStorage.getItem(planIdIdKey(sessionId));
+  } catch {
+    return null;
+  }
+}
+function writePlanId(sessionId: string, sessionFile: string | null | undefined, uuid: string): void {
+  try {
+    const key = sessionFile ? planIdFileKey(sessionFile) : planIdIdKey(sessionId);
+    localStorage.setItem(key, uuid);
   } catch {
     // ignore
   }
@@ -2343,20 +2396,29 @@ export const useChat = create<ChatState>((rawSet, get) => {
     }
   },
 
-  async loadPlan() {
+  async loadPlan(opts) {
     set({ planLoading: true });
     try {
-      // Генерируем UUID на фронтенде (доступен в Tauri 2 webview)
-      const uuid = crypto.randomUUID();
+      const sessionId = get().activeTabId ?? DEFAULT_TAB_ID;
+      const sessionFile = get().agentState?.sessionFile ?? null;
+      const reset = opts?.reset ?? false;
+      // Переиспользуем ранее сохранённый uuid для этой сессии, если он есть —
+      // иначе (или при явном сбросе) генерируем новый на фронтенде.
+      const uuid = (!reset && readPlanId(sessionId, sessionFile)) || crypto.randomUUID();
       const path = await invoke<string>("ensure_plan_file", {
         uuid,
       });
+      writePlanId(sessionId, sessionFile, uuid);
       set({ planFilePath: path });
     } catch (e) {
       get().setError(`План: ${(e as Error).message}`);
     } finally {
       set({ planLoading: false });
     }
+  },
+
+  async resetPlan() {
+    await get().loadPlan({ reset: true });
   },
 
   async savePlan(text) {

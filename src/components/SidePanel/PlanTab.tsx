@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CheckCircle2, Circle, ExternalLink, RefreshCw, Save, Play } from "@/components/ui/icons/compat";
+import { CheckCircle2, Circle, ExternalLink, RefreshCw, RotateCcw, Save, Play } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
 import { useChat } from "@/store/chat";
 
@@ -38,6 +38,7 @@ export function PlanTab() {
   const planLoading = useChat((s) => s.planLoading);
   const togglePlanMode = useChat((s) => s.togglePlanMode);
   const loadPlan = useChat((s) => s.loadPlan);
+  const resetPlan = useChat((s) => s.resetPlan);
   const savePlan = useChat((s) => s.savePlan);
   const commitPlan = useChat((s) => s.commitPlan);
 
@@ -122,6 +123,18 @@ export function PlanTab() {
             файл
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<RotateCcw size={11} />}
+          onClick={() => {
+            if (!window.confirm("Создать новый план? Текущий файл плана останется на диске, но перестанет быть активным.")) return;
+            void resetPlan();
+          }}
+          disabled={planLoading}
+        >
+          Новый план
+        </Button>
         <div className="flex-1" />
         {dirty ? (
           <span className="text-[10px] text-(--color-warn)">несохр.</span>
