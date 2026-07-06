@@ -263,6 +263,14 @@ function handleEvent(
         else next[key] = text;
         return { statuses: next };
       });
+      // MCP-статус меняется на каждый переход коннекта/ретрая/ошибки —
+      // используем это как триггер для переопроса детального per-server статуса,
+      // не заводя отдельное RPC-событие.
+      if (key === "mcp") {
+        void import("@/store/mcpStatus")
+          .then((m) => m.useMcpStatus.getState().refresh(sessionId))
+          .catch(() => undefined);
+      }
       break;
     }
     case "setWidget": {

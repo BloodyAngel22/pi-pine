@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ImageContent,
+  McpStatusResult,
   Model,
   QueueMode,
   RpcResponse,
@@ -346,6 +347,10 @@ export async function setSessionName(name: string, sessionId?: string | null): P
 
 export async function getState(sessionId?: string | null): Promise<RpcSessionState> {
   return request<RpcSessionState>("get_state", {}, { sessionId });
+}
+
+export async function getMcpStatus(sessionId?: string | null): Promise<McpStatusResult> {
+  return request<McpStatusResult>("get_mcp_status", {}, { sessionId });
 }
 
 export interface CwdCommandResult {

@@ -93,6 +93,8 @@ pub fn run() {
             // mcp
             mcp::read_mcp_config,
             mcp::toggle_mcp_server,
+            mcp::write_mcp_server,
+            mcp::delete_mcp_server,
             // favorites + pi settings
             favorites::read_favorites,
             favorites::write_favorites,

@@ -64,6 +64,26 @@ export interface RpcSessionState {
   cwd?: string;
 }
 
+export type McpServerRpcStatus = "connected" | "connecting" | "retrying" | "error" | "disabled";
+
+export interface McpToolInfo {
+  name: string;
+  description?: string;
+}
+
+export interface McpServerStatusEntry {
+  name: string;
+  status: McpServerRpcStatus;
+  error?: string;
+  attempt?: number;
+  nextRetryAt?: number;
+  tools: McpToolInfo[];
+}
+
+export interface McpStatusResult {
+  servers: McpServerStatusEntry[];
+}
+
 export interface ImageContent {
   type: "image";
   data: string;
