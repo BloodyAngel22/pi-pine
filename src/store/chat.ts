@@ -3087,17 +3087,23 @@ function handleAgentEvent(
           )),
         })),
       }));
-      // Clean up any stale pending permissions that match this tool
+      // Clean up any stale pending permissions that match this tool —
+      // scoped to this event's own session, so a concurrent session's
+      // still-unresolved permission request isn't silently swallowed.
       const extState = useExt.getState();
+      const eventSessionId = typeof event.sessionId === "string" ? event.sessionId : get().activeTabId;
       const staleIdx = extState.pendingPermissions.findIndex(
-        (p) => p.permissionToolName === name || (p.permissionType === "bash" && name === "bash"),
+        (p) => p.sessionId === eventSessionId
+          && (p.permissionToolName === name || (p.permissionType === "bash" && name === "bash")),
       );
       if (staleIdx !== -1) {
         extState.removePendingPermission(extState.pendingPermissions[staleIdx].id);
       }
       // Clean up any stale pending askUser requests that match this tool
       if (name === "ask_user" || name === "askUser") {
-        extState.pendingAskUsers.forEach((p) => extState.removePendingAskUser(p.id));
+        extState.pendingAskUsers
+          .filter((p) => p.sessionId === eventSessionId)
+          .forEach((p) => extState.removePendingAskUser(p.id));
       }
       // Привязываем к последнему ассистент-сообщению
       attachToolBlock(set, get, toolUseId, {
