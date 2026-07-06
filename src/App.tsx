@@ -73,6 +73,8 @@ export default function App() {
   const cwd = useChat((s) => s.cwd);
   const setCwd = useChat((s) => s.setCwd);
   const rpcRunning = useChat((s) => s.rpcRunning);
+  const reconnectStatus = useChat((s) => s.reconnectStatus);
+  const cancelReconnect = useChat((s) => s.cancelReconnect);
   const tabOrder = useChat((s) => s.tabOrder);
   const activeTabId = useChat((s) => s.activeTabId);
   const loadAvailableModels = useChat((s) => s.loadAvailableModels);
@@ -471,7 +473,23 @@ export default function App() {
               )}
             </AnimatePresence>
             <AnimatePresence initial={false}>
-              {!rpcRunning && !errorBanner && (
+              {reconnectStatus.active && !errorBanner && (
+                <motion.div
+                  key="reconnect-banner"
+                  {...bannerMotion}
+                  className="flex items-center gap-2 border-b border-(--color-warn)/30 bg-(--color-warn)/10 px-3 py-2 text-xs text-(--color-warn)"
+                >
+                  <span className="flex-1">
+                    Переподключение… попытка {reconnectStatus.attempt}/{reconnectStatus.maxAttempts}
+                  </span>
+                  <Button variant="subtle" size="sm" onClick={() => cancelReconnect()}>
+                    Отменить
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence initial={false}>
+              {!rpcRunning && !errorBanner && !reconnectStatus.active && (
                 <motion.div
                   key="rpc-stopped-banner"
                   {...bannerMotion}

@@ -116,6 +116,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [voiceTesting, setVoiceTesting] = useState(false);
   const [voiceTestResult, setVoiceTestResult] = useState<TestConnectionResult | null>(null);
 
+  const [rpcLogEnabled, setRpcLogEnabled] = useState(false);
+
   useEffect(() => {
     if (!open) return;
     setPathDraft(cliPathOverride ?? "");
@@ -139,6 +141,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       setVoiceBaseUrl(cfg.base_url);
       setVoiceApiKey(cfg.api_key);
       setVoiceModel(cfg.model);
+    }).catch(() => {});
+    void invoke<{ enabled: boolean }>("get_rpc_log_config").then((cfg) => {
+      setRpcLogEnabled(cfg.enabled);
     }).catch(() => {});
     setVoiceTestResult(null);
   }, [open, cliPathOverride, cwd, deepResearchMode, piPath]);
@@ -213,6 +218,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         model: voiceModel,
       },
     }).catch(() => {});
+    void invoke("set_rpc_log_config", {
+      config: { enabled: rpcLogEnabled },
+    }).catch(() => {});
     onClose();
   };
 
@@ -264,6 +272,15 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   onChange={(mode) => setDeepResearchModeDraft(mode)}
                 />
                 <Hint>quick ≈ 5m/snippets · balanced ≈ 10m/1 page · deep ≈ 20m/2 pages</Hint>
+              </Section>
+
+              <Section title="Логи RPC">
+                <Switch
+                  checked={rpcLogEnabled}
+                  onChange={setRpcLogEnabled}
+                  label="Логировать RPC-трафик в ~/.pi-pine/logs/"
+                  description="Для диагностики падений pi. Применяется при следующем запуске RPC."
+                />
               </Section>
             </SettingsStack>
           </Tabs.Content>

@@ -7,6 +7,7 @@ mod mcp;
 mod paths;
 mod plans;
 mod rpc;
+mod rpc_log;
 mod sessions;
 mod terminal;
 mod themes;
@@ -127,6 +128,8 @@ pub fn run() {
             rpc::rpc_send,
             rpc::rpc_stop,
             rpc::rpc_status,
+            rpc_log::get_rpc_log_config,
+            rpc_log::set_rpc_log_config,
             // analyze-image config
             analyze_image::get_analyze_image_config,
             analyze_image::set_analyze_image_config,

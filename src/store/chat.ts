@@ -288,6 +288,13 @@ interface ChatState {
     errorMessage?: string;
     finalError?: string;
   };
+  /** Автореконнект RPC-процесса после неожиданного завершения pi (не по инициативе пользователя). */
+  reconnectStatus: {
+    active: boolean;
+    attempt: number;
+    maxAttempts: number;
+    lastError?: string;
+  };
   availableModels: Model[];
   pendingMessageCount: number;
   sessionStats: import("@/rpc/bridge").SessionStats | null;
@@ -397,6 +404,8 @@ interface ChatState {
   injectComposer(text: string): void;
   clearComposerInjection(): void;
   setError(msg: string | null): void;
+  /** Отменяет запланированный автореконнект (юзер сам решит, когда стартовать заново). */
+  cancelReconnect(): void;
 
   /** Add a pending permission block to the current assistant message */
   addPendingPermissionBlock(permId: string, name: string, input: unknown, tabId?: string | null): void;
@@ -640,6 +649,18 @@ const MCP_LOADING_TIMEOUT_MS = 30_000; // 30 секунд макс
 let mcpLoadingStartedAt = 0;
 let activeStartPromise: Promise<void> | null = null;
 let activeSwitch: { file: string; promise: Promise<void> } | null = null;
+
+// --- Автореконнект RPC-процесса --------------------------------------
+// currentGeneration в bridge.ts защищает только от событий уже мёртвого
+// процесса; здесь нужна отдельная защита от гонки с ЕЩЁ НЕ сработавшим
+// таймером бэкоффа при ручном stopRpc()/restartRpc().
+const RECONNECT_MAX_ATTEMPTS = 5;
+let reconnectTimer: number | null = null;
+let reconnectGeneration = 0;
+// true, пока stopRpc()/restartRpc() гасит процесс — нужен, т.к. rust-читалка
+// stdout всегда шлёт reason:"stdout-eof" (что при падении, что при kille),
+// а bridge.rpcStop() шлёт "rpc_stop" отдельным путём, минуя onClosed-листенеры.
+let userInitiatedStop = false;
 const LIVE_STATS_REFRESH_INTERVAL_MS = 750;
 let statsRefreshTimer: number | null = null;
 let statsRefreshInFlight = false;
@@ -703,6 +724,71 @@ function setMcpLoading(
     mcpLoadingStartedAt = 0;
     set({ mcpLoading: false });
   }
+}
+
+/** Гасит запланированный/идущий автореконнект и сбрасывает reconnectStatus. */
+function stopReconnectAttempts(
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  get: () => ChatState,
+) {
+  reconnectGeneration += 1;
+  if (reconnectTimer != null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  set({ reconnectStatus: { active: false, attempt: 0, maxAttempts: get().reconnectStatus.maxAttempts } });
+}
+
+/** Планирует автопереподключение pi после неожиданного завершения процесса. */
+function scheduleReconnect(
+  set: (
+    partial:
+      | Partial<ChatState>
+      | ((s: ChatState) => Partial<ChatState>),
+  ) => void,
+  get: () => ChatState,
+  reason: string,
+) {
+  const myGen = ++reconnectGeneration;
+  const attempt = get().reconnectStatus.attempt + 1;
+  const maxAttempts = get().reconnectStatus.maxAttempts;
+  if (attempt > maxAttempts) {
+    set({ reconnectStatus: { active: false, attempt: 0, maxAttempts, lastError: reason } });
+    const tail = get()
+      .stderrBuffer.filter((s) => s.trim().length > 0)
+      .slice(-3)
+      .join(" | ");
+    const detail = tail ? ` — ${tail}` : "";
+    get().setError(`pi завершился: ${reason}${detail} — реконнект не удался после ${maxAttempts} попыток.`);
+    return;
+  }
+  const delayMs = Math.min(1000 * 2 ** (attempt - 1), 30_000);
+  if (reconnectTimer != null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  set({
+    reconnectStatus: { active: true, attempt, maxAttempts, lastError: reason },
+    errorBanner: null,
+  });
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    if (myGen !== reconnectGeneration) return;
+    void get()
+      .startRpc()
+      .then(() => {
+        if (myGen === reconnectGeneration) {
+          set({ reconnectStatus: { active: false, attempt: 0, maxAttempts } });
+        }
+      })
+      .catch((e: Error) => {
+        if (myGen === reconnectGeneration) scheduleReconnect(set, get, e.message);
+      });
+  }, delayMs);
 }
 
 function scheduleSessionStatsRefresh(get: () => ChatState) {
@@ -1406,6 +1492,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
   switching: false,
   agentState: null,
   retryStatus: { active: false, attempt: 0 },
+  reconnectStatus: { active: false, attempt: 0, maxAttempts: RECONNECT_MAX_ATTEMPTS },
   availableModels: [],
   pendingMessageCount: 0,
   sessionStats: null,
@@ -1661,17 +1748,16 @@ export const useChat = create<ChatState>((rawSet, get) => {
     });
     rpc.onClosed((reason) => {
       set({ rpcRunning: false });
-      if (reason !== "rpc_stop") {
-        // Приклеиваем последние осмысленные stderr-строки —
-        // это критично, чтобы видеть ПОЧЕМУ pi упал (нет ключа,
-        // unknown provider, network и т.п.).
-        const tail = get()
-          .stderrBuffer.filter((s) => s.trim().length > 0)
-          .slice(-3)
-          .join(" | ");
-        const detail = tail ? ` — ${tail}` : "";
-        get().setError(`pi завершился: ${reason}${detail}`);
+      // ВАЖНО: rust-читалка stdout всегда шлёт reason:"stdout-eof" — что при
+      // падении pi, что при нашем же stopRpc()/restartRpc(). Строка "rpc_stop"
+      // сюда никогда не долетает (это отдельный синхронный путь в bridge.ts,
+      // минующий onClosed-листенеры). Поэтому различаем ручную остановку
+      // явным флагом userInitiatedStop, а не по содержимому reason.
+      if (userInitiatedStop) {
+        userInitiatedStop = false;
+        return;
       }
+      scheduleReconnect(set, get, reason);
     });
     rpc.onStderr((line) => {
       const buf = [...get().stderrBuffer, line].slice(-200);
@@ -1751,6 +1837,10 @@ export const useChat = create<ChatState>((rawSet, get) => {
           },
         });
         progress({ id: "rpc:started", label: "RPC-процесс pi запущен", detail: res.piPath, tone: "success" });
+        // Новый процесс успешно поднялся — последующий crash снова считаем
+        // неожиданным (флаг мог остаться true, если это был реконнект после
+        // предыдущего ручного stopRpc(), либо просто для симметрии).
+        userInitiatedStop = false;
         setMcpLoading(set, true);
         closedTabIds.clear();
         set({
@@ -1873,6 +1963,8 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   async stopRpc() {
     clearScheduledSessionStatsRefresh();
+    userInitiatedStop = true;
+    stopReconnectAttempts(set, get);
     await rpc.rpcStop().catch(() => undefined);
     setMcpLoading(set, false);
     closedTabIds.clear();
@@ -1881,6 +1973,8 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   async restartRpc(opts) {
     clearScheduledSessionStatsRefresh();
+    userInitiatedStop = true;
+    stopReconnectAttempts(set, get);
     // Полный перезапуск: stop → пауза → start.
     // Если safe=true — стираем сохранённые provider/model из localStorage,
     // чтобы pi не использовал сломанную модель и подхватил дефолт.
@@ -2851,6 +2945,10 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   setError(msg) {
     set({ errorBanner: msg });
+  },
+
+  cancelReconnect() {
+    stopReconnectAttempts(set, get);
   },
 });
 });

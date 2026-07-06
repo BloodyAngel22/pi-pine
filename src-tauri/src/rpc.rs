@@ -3,6 +3,7 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -10,11 +11,17 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 use crate::paths::find_pi_binary;
+use crate::rpc_log;
+
+/// Лимит размера одного лог-файла RPC-трафика — после него дальнейшие
+/// строки этого процесса больше не логируются (без ротации, см. rpc_log.rs).
+const RPC_LOG_MAX_BYTES: u64 = 20 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct RpcManager {
     inner: Mutex<Option<RpcInstance>>,
     app: Mutex<Option<AppHandle>>,
+    log_writer: Mutex<Option<File>>,
 }
 
 struct RpcInstance {
@@ -52,12 +59,28 @@ impl RpcManager {
         Self {
             inner: Mutex::new(None),
             app: Mutex::new(Some(app)),
+            log_writer: Mutex::new(None),
         }
     }
 
     fn app(&self) -> Option<AppHandle> {
         self.app.lock().ok()?.clone()
     }
+}
+
+/// Пишет одну строку RPC-трафика в лог-файл, если логирование включено.
+/// direction: '>' — исходящая (в stdin pi), '<' — входящая (из stdout/stderr pi).
+fn log_line(writer: &Mutex<Option<File>>, direction: char, line: &str) {
+    let mut guard = writer.lock().unwrap();
+    let Some(file) = guard.as_mut() else { return };
+    if let Ok(meta) = file.metadata() {
+        if meta.len() > RPC_LOG_MAX_BYTES {
+            let _ = writeln!(file, "--- log truncated: size limit reached ---");
+            *guard = None;
+            return;
+        }
+    }
+    let _ = writeln!(file, "{} {}", direction, line);
 }
 
 static ANSI_RE: Lazy<Regex> = Lazy::new(|| {
@@ -151,10 +174,33 @@ pub fn rpc_start(
         gen
     };
 
+    // Открываем лог-файл RPC-трафика, если включено в настройках
+    // (~/.pi-pine/rpc_log_config.json) — по одному файлу на generation.
+    {
+        let log_file = if rpc_log::get_rpc_log_config().enabled {
+            rpc_log::logs_dir().and_then(|dir| {
+                std::fs::create_dir_all(&dir).ok()?;
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()?
+                    .as_secs();
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(dir.join(format!("rpc-{}-gen{}.jsonl", ts, generation)))
+                    .ok()
+            })
+        } else {
+            None
+        };
+        *state.log_writer.lock().unwrap() = log_file;
+    }
+
     // Reader stdout
     {
         let app = app.clone();
         let gen = generation;
+        let manager = state.inner().clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
@@ -164,12 +210,14 @@ pub fn rpc_start(
                     continue;
                 }
                 if !is_jsonish(&cleaned) {
+                    log_line(&manager.log_writer, '<', &cleaned);
                     let _ = app.emit(
                         "rpc://stderr",
                         serde_json::json!({ "generation": gen, "line": cleaned }),
                     );
                     continue;
                 }
+                log_line(&manager.log_writer, '<', &cleaned);
                 let _ = app.emit(
                     "rpc://line",
                     serde_json::json!({ "generation": gen, "line": cleaned }),
@@ -185,6 +233,7 @@ pub fn rpc_start(
     {
         let app = app.clone();
         let gen = generation;
+        let manager = state.inner().clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines() {
@@ -193,6 +242,7 @@ pub fn rpc_start(
                 if cleaned.is_empty() {
                     continue;
                 }
+                log_line(&manager.log_writer, '<', &cleaned);
                 let _ = app.emit(
                     "rpc://stderr",
                     serde_json::json!({ "generation": gen, "line": cleaned }),
@@ -228,7 +278,10 @@ pub fn rpc_send(line: String, state: tauri::State<'_, Arc<RpcManager>>) -> Resul
         .map_err(|e| format!("Запись в stdin: {}", e))?;
     inst.stdin
         .flush()
-        .map_err(|e| format!("Flush stdin: {}", e))
+        .map_err(|e| format!("Flush stdin: {}", e))?;
+    drop(guard);
+    log_line(&state.log_writer, '>', buf.trim_end());
+    Ok(())
 }
 
 #[tauri::command]
