@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useAgentsStore } from "@/store/agents";
+import { useUiPrefs, DEEP_RESEARCH_MODES, type DeepResearchMode } from "@/store/uiPrefs";
 import type { ThinkingLevel } from "@/rpc/types";
 import { Switch } from "@/components/ui/Switch";
 import { AppIcon } from "@/components/ui/AppIcon";
@@ -24,6 +25,12 @@ const thinkingOptions: Array<{ value: ThinkingLevel; label: string }> = [
   { value: "medium", label: "Med" },
   { value: "high", label: "High" },
 ];
+
+const researchModeLabels: Record<DeepResearchMode, string> = {
+  quick: "Quick",
+  balanced: "Balanced",
+  deep: "Deep",
+};
 
 function middleTruncate(value: string, head = 16, tail = 14): string {
   if (value.length <= head + tail + 1) return value;
@@ -50,6 +57,8 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
   const clearPreset = useAgentsStore((s) => s.clearPreset);
   const yoloMode = useExt((s) => s.yoloMode);
   const toggleYoloMode = useExt((s) => s.toggleYoloMode);
+  const deepResearchMode = useUiPrefs((s) => s.deepResearchMode);
+  const setDeepResearchMode = useUiPrefs((s) => s.setDeepResearchMode);
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const presetMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -241,6 +250,36 @@ export function RunSettingsPopover({ open, onOpenChange, onOpenSettings, trigger
                     )}
                   >
                     {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-(--color-fg-dim)">Research mode</div>
+            <div
+              role="radiogroup"
+              aria-label="Deep research mode"
+              className="grid grid-cols-3 gap-0.5 rounded-lg border border-(--color-border) bg-(--color-bg-soft) p-0.5"
+            >
+              {DEEP_RESEARCH_MODES.map((mode) => {
+                const active = mode === deepResearchMode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setDeepResearchMode(mode)}
+                    className={clsx(
+                      "h-7 min-w-0 rounded-md px-2 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)/25",
+                      active
+                        ? "bg-(--color-accent-soft) text-(--color-accent) shadow-sm ring-1 ring-(--color-accent)/20"
+                        : "text-(--color-fg-mute) hover:bg-(--color-bg-mute) hover:text-(--color-fg)",
+                    )}
+                  >
+                    {researchModeLabels[mode]}
                   </button>
                 );
               })}

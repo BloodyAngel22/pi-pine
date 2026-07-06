@@ -2,7 +2,7 @@ import { memo } from "react";
 import clsx from "clsx";
 import type { UiBlock, UiBlockTool, UiMessage } from "@/store/chat";
 import { Markdown } from "./Markdown";
-import { ToolCall } from "./ToolCall";
+import { ToolCall, SubagentSwarm } from "./ToolCall";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { SkillBlock } from "./SkillBlock";
 import { CommandBlock } from "./CommandBlock";
@@ -148,30 +148,57 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
   const isCompactionEvent = isSystem && Boolean(message.compaction);
 
   const visibleBlocks = message.blocks.filter((b) => !shouldHideRunningToolBehindPermission(b, message.blocks));
-  const blocks = visibleBlocks.map((b, i) => {
-    if (b.kind === "text") {
-      return renderTextWithSkills(b.text, i);
+  const blocks: React.ReactNode[] = [];
+  for (let i = 0; i < visibleBlocks.length; i++) {
+    const b = visibleBlocks[i];
+    if (b.kind === "tool" && b.name === "task") {
+      const group: UiBlockTool[] = [b];
+      while (i + 1 < visibleBlocks.length) {
+        const next = visibleBlocks[i + 1];
+        if (next.kind !== "tool" || next.name !== "task") break;
+        group.push(next);
+        i++;
+      }
+      blocks.push(
+        group.length >= 2 ? (
+          <SubagentSwarm key={i} blocks={group} />
+        ) : (
+          <ToolCall key={i} block={group[0]} />
+        ),
+      );
+      continue;
     }
-    if (b.kind === "thinking") return <ThinkingBlock key={i} text={b.text} />;
-    if (b.kind === "tool") return <ToolCall key={i} block={b} />;
+    if (b.kind === "text") {
+      blocks.push(renderTextWithSkills(b.text, i));
+      continue;
+    }
+    if (b.kind === "thinking") {
+      blocks.push(<ThinkingBlock key={i} text={b.text} />);
+      continue;
+    }
+    if (b.kind === "tool") {
+      blocks.push(<ToolCall key={i} block={b} />);
+      continue;
+    }
     if (b.kind === "command") {
-      return <CommandBlock key={i} name={b.name} content={b.content} />;
+      blocks.push(<CommandBlock key={i} name={b.name} content={b.content} />);
+      continue;
     }
     if (b.kind === "compactionSummary") {
-      return <CompactionSummaryBlock key={i} text={b.text} tokensBefore={b.tokensBefore} />;
+      blocks.push(<CompactionSummaryBlock key={i} text={b.text} tokensBefore={b.tokensBefore} />);
+      continue;
     }
     if (b.kind === "image") {
-      return (
+      blocks.push(
         <img
           key={i}
           src={`data:${b.mimeType};base64,${b.data}`}
           alt=""
           className="max-h-72 rounded-md border border-(--color-border)"
-        />
+        />,
       );
     }
-    return null;
-  });
+  }
 
   return (
     <div className="pi-stream-msg group">

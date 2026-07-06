@@ -34,6 +34,9 @@ export interface UiBlockTool {
   /** Изображения, встроенные в результат инструмента (screenshot/interact) */
   images?: UiBlockImage[];
   status: "running" | "done" | "error" | "pending";
+  /** Метки времени (epoch ms) для живого таймера длительности выполнения */
+  startedAt?: number;
+  completedAt?: number;
 }
 export interface UiBlockImage {
   kind: "image";
@@ -3005,6 +3008,7 @@ function handleAgentEvent(
         name,
         input,
         status: "running",
+        startedAt: Date.now(),
       });
       break;
     }
@@ -3036,6 +3040,7 @@ function handleAgentEvent(
         details,
         images: images.length > 0 ? images : undefined,
         status: isError ? "error" : "done",
+        completedAt: Date.now(),
       });
       if (name === "fast_context") {
         const result = extractFastContextResult(details, event.result ?? event.output);
