@@ -429,6 +429,10 @@ export async function setAutoCompaction(enabled: boolean, sessionId?: string | n
   await request("set_auto_compaction", { enabled }, { sessionId });
 }
 
+export async function setContextPruning(enabled: boolean, sessionId?: string | null): Promise<void> {
+  await request("set_context_pruning", { enabled }, { sessionId });
+}
+
 // === v0.2 ===
 
 export interface BashResult {

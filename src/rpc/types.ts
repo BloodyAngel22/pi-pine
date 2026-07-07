@@ -56,6 +56,7 @@ export interface RpcSessionState {
   sessionId: string;
   sessionName?: string;
   autoCompactionEnabled: boolean;
+  contextPruningEnabled: boolean;
   autoRetryEnabled: boolean;
   isRetrying: boolean;
   retryAttempt: number;
@@ -223,6 +224,12 @@ export interface QueueUpdateEvent {
   steering?: unknown[];
   followUp?: unknown[];
   pendingMessageCount?: number;
+}
+export interface ContextPrunedEvent {
+  type: "context_pruned";
+  prunedCount: number;
+  tokensFreed: number;
+  paths: string[];
 }
 
 // === extension UI requests (мы их no-op-аем) ===

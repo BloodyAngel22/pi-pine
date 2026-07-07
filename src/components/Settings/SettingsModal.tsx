@@ -75,6 +75,9 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const availableModels = useChat((s) => s.availableModels);
   const switchModel = useChat((s) => s.switchModel);
   const setThinking = useChat((s) => s.setThinking);
+  const setAutoCompaction = useChat((s) => s.setAutoCompaction);
+  const setContextPruning = useChat((s) => s.setContextPruning);
+  const contextPruningStats = useChat((s) => s.contextPruningStats);
   const startRpc = useChat((s) => s.startRpc);
   const stopRpc = useChat((s) => s.stopRpc);
 
@@ -317,6 +320,26 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   options={THINKING_LEVELS.map((lvl) => ({ value: lvl, label: lvl }))}
                   onChange={(lvl) => void setThinking(lvl)}
                 />
+              </Section>
+
+              <Section title="Управление контекстом">
+                <Switch
+                  checked={agentState?.autoCompactionEnabled ?? true}
+                  onChange={(v) => void setAutoCompaction(v)}
+                  label="Автоматическое сжатие контекста"
+                  description="Суммаризировать старую историю через LLM, когда контекст почти заполнен."
+                />
+                <Switch
+                  checked={agentState?.contextPruningEnabled ?? true}
+                  onChange={(v) => void setContextPruning(v)}
+                  label="Очистка устаревших файлов"
+                  description="Без обращения к LLM заменять устаревшие результаты чтения файлов (повторно прочитанные или изменённые) короткой заглушкой перед каждым запросом к модели."
+                />
+                {contextPruningStats.totalPrunedCount > 0 && (
+                  <Hint>
+                    Очищено результатов: {contextPruningStats.totalPrunedCount}, освобождено ≈{contextPruningStats.totalTokensFreed} токенов за эту сессию.
+                  </Hint>
+                )}
               </Section>
             </SettingsStack>
           </Tabs.Content>

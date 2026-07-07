@@ -104,6 +104,8 @@ export interface SessionTabState {
   uiToPiId: Record<string, string>;
   sessionName: string | null;
   sessionStats: import("@/rpc/bridge").SessionStats | null;
+  /** Накопительная статистика по context_pruned-событиям (лёгкое удаление устаревших file-read из контекста). */
+  contextPruningStats: { totalPrunedCount: number; totalTokensFreed: number };
   pendingMessageCount: number;
   unseenAssistantCount: number;
   fastContextStatus: "idle" | "searching" | "done" | "error" | null;
@@ -149,6 +151,7 @@ export function createDefaultSessionTab(tabId: string, initial?: Partial<Session
     uiToPiId: {},
     sessionName: null,
     sessionStats: null,
+    contextPruningStats: { totalPrunedCount: 0, totalTokensFreed: 0 },
     pendingMessageCount: 0,
     unseenAssistantCount: 0,
     fastContextStatus: null,
@@ -188,6 +191,7 @@ const TAB_FIELD_KEYS = new Set<keyof SessionTabState>([
   "uiToPiId",
   "sessionName",
   "sessionStats",
+  "contextPruningStats",
   "pendingMessageCount",
   "unseenAssistantCount",
   "fastContextStatus",
@@ -234,6 +238,7 @@ function tabProjection(tab: SessionTabState): Partial<ChatState> {
     retryStatus: tab.retryStatus,
     pendingMessageCount: tab.pendingMessageCount,
     sessionStats: tab.sessionStats,
+    contextPruningStats: tab.contextPruningStats,
     uiToPiId: tab.uiToPiId,
     messages: tab.messages,
     currentAssistantId: tab.currentAssistantId,
@@ -298,6 +303,8 @@ interface ChatState {
   availableModels: Model[];
   pendingMessageCount: number;
   sessionStats: import("@/rpc/bridge").SessionStats | null;
+  /** Накопительная статистика по context_pruned-событиям (лёгкое удаление устаревших file-read из контекста). */
+  contextPruningStats: { totalPrunedCount: number; totalTokensFreed: number };
   /** id pi user-message (нужен для fork/regenerate) для каждого UI-сообщения */
   uiToPiId: Record<string, string>;
   // сообщения
@@ -383,6 +390,8 @@ interface ChatState {
   setStreamingBehavior(b: StreamingBehavior): void;
   setAutoRetry(enabled: boolean): Promise<void>;
   abortRetry(): Promise<void>;
+  setAutoCompaction(enabled: boolean): Promise<void>;
+  setContextPruning(enabled: boolean): Promise<void>;
   setThinking(level: ThinkingLevel): Promise<void>;
   switchModel(provider: string, modelId: string): Promise<void>;
   loadAvailableModels(): Promise<void>;
@@ -1496,6 +1505,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
   availableModels: [],
   pendingMessageCount: 0,
   sessionStats: null,
+  contextPruningStats: { totalPrunedCount: 0, totalTokensFreed: 0 },
   uiToPiId: {},
   messages: [],
   currentAssistantId: null,
@@ -1850,6 +1860,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
           errorBanner: null,
           stderrBuffer: [],
           sessionStats: null,
+          contextPruningStats: { totalPrunedCount: 0, totalTokensFreed: 0 },
           messages: [],
           currentAssistantId: null,
           messageIdMap: new Map(),
@@ -2168,6 +2179,24 @@ export const useChat = create<ChatState>((rawSet, get) => {
     }
   },
 
+  async setAutoCompaction(enabled) {
+    try {
+      await rpc.setAutoCompaction(enabled, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async setContextPruning(enabled) {
+    try {
+      await rpc.setContextPruning(enabled, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
   async abortRetry() {
     try {
       await rpc.abortRetry(get().activeTabId);
@@ -2401,7 +2430,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
         // Мгновенно очищаем сообщения ДО отправки switch — пользователь
         // видит пустую сессию сразу, не ожидая завершения RPC.
         get().clearMessages();
-        set({ sessionStats: null });
+        set({ sessionStats: null, contextPruningStats: { totalPrunedCount: 0, totalTokensFreed: 0 } });
         // pi на switch_session эмитит session_before_switch (MCP cleanup) и
         // session_switch (MCP reload). Это нормальное поведение pi — мы не
         // вызываем этот RPC дважды и не делаем ничего, что добавило бы
@@ -3241,6 +3270,21 @@ function handleAgentEvent(
           }));
         }
       });
+      break;
+    }
+    case "context_pruned": {
+      // Лёгкое, частое событие (может срабатывать несколько раз за ход) —
+      // в отличие от compaction, не создаём маркер в чате, только копим
+      // счётчик и обновляем контекстную статистику для следующего ответа.
+      const prunedCount = typeof event.prunedCount === "number" ? event.prunedCount : 0;
+      const tokensFreed = typeof event.tokensFreed === "number" ? event.tokensFreed : 0;
+      set((s) => ({
+        contextPruningStats: {
+          totalPrunedCount: s.contextPruningStats.totalPrunedCount + prunedCount,
+          totalTokensFreed: s.contextPruningStats.totalTokensFreed + tokensFreed,
+        },
+      }));
+      void get().refreshSessionStats().catch(() => undefined);
       break;
     }
     case "turn_start":
