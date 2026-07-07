@@ -392,6 +392,7 @@ interface ChatState {
   abortRetry(): Promise<void>;
   setAutoCompaction(enabled: boolean): Promise<void>;
   setContextPruning(enabled: boolean): Promise<void>;
+  setFileManifest(enabled: boolean): Promise<void>;
   setThinking(level: ThinkingLevel): Promise<void>;
   switchModel(provider: string, modelId: string): Promise<void>;
   loadAvailableModels(): Promise<void>;
@@ -2191,6 +2192,15 @@ export const useChat = create<ChatState>((rawSet, get) => {
   async setContextPruning(enabled) {
     try {
       await rpc.setContextPruning(enabled, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async setFileManifest(enabled) {
+    try {
+      await rpc.setFileManifest(enabled, get().activeTabId);
       await get().refreshState();
     } catch (e) {
       get().setError((e as Error).message);

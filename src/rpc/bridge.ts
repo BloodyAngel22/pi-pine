@@ -433,6 +433,10 @@ export async function setContextPruning(enabled: boolean, sessionId?: string | n
   await request("set_context_pruning", { enabled }, { sessionId });
 }
 
+export async function setFileManifest(enabled: boolean, sessionId?: string | null): Promise<void> {
+  await request("set_file_manifest", { enabled }, { sessionId });
+}
+
 // === v0.2 ===
 
 export interface BashResult {

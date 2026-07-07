@@ -78,6 +78,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const setAutoCompaction = useChat((s) => s.setAutoCompaction);
   const setContextPruning = useChat((s) => s.setContextPruning);
   const contextPruningStats = useChat((s) => s.contextPruningStats);
+  const setFileManifest = useChat((s) => s.setFileManifest);
   const startRpc = useChat((s) => s.startRpc);
   const stopRpc = useChat((s) => s.stopRpc);
 
@@ -340,6 +341,12 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                     Очищено результатов: {contextPruningStats.totalPrunedCount}, освобождено ≈{contextPruningStats.totalTokensFreed} токенов за эту сессию.
                   </Hint>
                 )}
+                <Switch
+                  checked={agentState?.fileManifestEnabled ?? true}
+                  onChange={(v) => void setFileManifest(v)}
+                  label="Манифест файлов сессии"
+                  description="Без обращения к LLM перед каждым запросом к модели напоминать список прочитанных/изменённых файлов — даже если их содержимое уже вычищено очисткой контекста."
+                />
               </Section>
             </SettingsStack>
           </Tabs.Content>
