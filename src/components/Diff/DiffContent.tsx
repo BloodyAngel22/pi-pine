@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { Check, ChevronDown, ChevronUp, Copy, MessageCircleQuestion } from "@/components/ui/icons/compat";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import {
+  buildCompactBlocks,
   formatDiffReference,
+  groupChangedLines,
   hunkOffsets as computeHunkOffsets,
   nearestNewLineNo,
   parseFileDiff,
@@ -10,6 +13,7 @@ import {
 } from "@/lib/gitDiff";
 import { useActiveDiffText, type ChangedFile } from "@/store/diff";
 import { useChat } from "@/store/chat";
+import { useUiPrefs } from "@/store/uiPrefs";
 
 interface Props {
   file: ChangedFile | null;
@@ -24,6 +28,11 @@ interface Selection {
   path: string;
   anchorIdx: number;
   focusIdx: number;
+}
+
+interface DiffSection {
+  header: string;
+  rows: { flatIdx: number; line: ParsedDiffLine }[];
 }
 
 function lineClass(type: ParsedDiffLine["type"]): string {
@@ -113,6 +122,20 @@ export function DiffContent({ file, activeGroupIndex, groupCount, focusLineIdx, 
   const parsed = useMemo(() => (file ? parseFileDiff(diffText) : null), [file, diffText]);
   const flatLines = useMemo(() => parsed?.hunks.flatMap((h) => h.lines) ?? [], [parsed]);
   const hunkOffsets = useMemo(() => (parsed ? computeHunkOffsets(parsed.hunks) : []), [parsed]);
+  const diffViewMode = useUiPrefs((s) => s.diffViewMode);
+  const setDiffViewMode = useUiPrefs((s) => s.setDiffViewMode);
+
+  const changeGroups = useMemo(() => groupChangedLines(flatLines), [flatLines]);
+  const sections = useMemo((): DiffSection[] => {
+    if (diffViewMode === "compact" && changeGroups.length > 0) {
+      return buildCompactBlocks(flatLines, changeGroups).map((block) => ({ header: block.header, rows: block.rows }));
+    }
+    if (!parsed) return [];
+    return parsed.hunks.map((hunk, hunkIndex) => ({
+      header: hunk.header,
+      rows: hunk.lines.map((line, lineIndex) => ({ flatIdx: hunkOffsets[hunkIndex] + lineIndex, line })),
+    }));
+  }, [diffViewMode, changeGroups, flatLines, parsed, hunkOffsets]);
 
   const [selection, setSelection] = useState<Selection | null>(null);
   const [justAsked, setJustAsked] = useState(false);
@@ -186,18 +209,33 @@ export function DiffContent({ file, activeGroupIndex, groupCount, focusLineIdx, 
             onPrevGroup={onPrevGroup}
             onNextGroup={onNextGroup}
           />
+          <SegmentedControl
+            value={diffViewMode}
+            onChange={setDiffViewMode}
+            ariaLabel="Режим отображения диффа"
+            options={[
+              { value: "compact", label: "Компактно" },
+              { value: "full", label: "Полностью" },
+            ]}
+          />
           <CopyPathButton path={file.path} />
         </div>
-        {parsed.hunks.map((hunk, hunkIndex) => (
-          <div key={hunkIndex}>
-            <div className="sticky top-9 px-2.5 py-0.5 text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)">
-              {hunk.header}
-            </div>
-            {hunk.lines.map((line, lineIndex) => {
-              const flatIdx = hunkOffsets[hunkIndex] + lineIndex;
-              return (
+        {sections.map((section, sectionIndex) => {
+          const prevEnd = sectionIndex === 0 ? -1 : sections[sectionIndex - 1].rows.at(-1)!.flatIdx;
+          const hiddenBefore = section.rows[0].flatIdx - prevEnd - 1;
+          return (
+            <div key={sectionIndex}>
+              {diffViewMode === "compact" && hiddenBefore > 0 && (
+                <div className="px-2.5 py-1 text-center text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)">
+                  ⋯ {hiddenBefore} {hiddenBefore === 1 ? "строка" : "строк"} без изменений ⋯
+                </div>
+              )}
+              <div className="sticky top-9 px-2.5 py-0.5 text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)">
+                {section.header}
+              </div>
+              {section.rows.map(({ flatIdx, line }) => (
                 <div
-                  key={lineIndex}
+                  key={flatIdx}
                   data-line-idx={flatIdx}
                   className={clsx("flex whitespace-pre-wrap", lineClass(line.type))}
                   style={
@@ -223,10 +261,20 @@ export function DiffContent({ file, activeGroupIndex, groupCount, focusLineIdx, 
                   <span className={clsx("shrink-0 select-none", lineTextClass(line.type))}>{linePrefix(line.type)}</span>
                   <span className="flex-1 min-w-0 pl-1 whitespace-pre-wrap break-all">{line.text}</span>
                 </div>
-              );
-            })}
-          </div>
-        ))}
+              ))}
+            </div>
+          );
+        })}
+        {diffViewMode === "compact" &&
+          sections.length > 0 &&
+          (() => {
+            const hiddenAfter = flatLines.length - 1 - sections.at(-1)!.rows.at(-1)!.flatIdx;
+            return hiddenAfter > 0 ? (
+              <div className="px-2.5 py-1 text-center text-(--color-fg-dim) bg-(--color-bg-soft) border-y border-(--color-border)">
+                ⋯ {hiddenAfter} {hiddenAfter === 1 ? "строка" : "строк"} без изменений ⋯
+              </div>
+            ) : null;
+          })()}
       </div>
       {selRange && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2">

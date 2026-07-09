@@ -100,6 +100,13 @@ export interface ChangeGroup {
 }
 
 /**
+ * Число строк контекста вокруг куска правок — общее и для слияния групп навигации
+ * (groupChangedLines), и для окон компактного режима (buildCompactBlocks). Значения
+ * должны совпадать, иначе цель перехода Alt+↑/↓ может оказаться скрытой в compact-виде.
+ */
+export const DIFF_CONTEXT_LINES = 10;
+
+/**
  * Группирует add/del-строки в логические блоки изменений по плоскому списку строк.
  * Бэкенд всегда отдаёт diff с полным контекстом файла (-U100000, см. git_diff.rs),
  * поэтому `parseFileDiff` всегда возвращает ровно один hunk на файл — реальные
@@ -107,7 +114,7 @@ export interface ChangeGroup {
  * если между ними меньше 2*contextLines строк контекста (как это сделал бы сам git
  * при выводе с ограниченным контекстом).
  */
-export function groupChangedLines(lines: ParsedDiffLine[], contextLines = 8): ChangeGroup[] {
+export function groupChangedLines(lines: ParsedDiffLine[], contextLines = DIFF_CONTEXT_LINES): ChangeGroup[] {
   const groups: ChangeGroup[] = [];
   let i = 0;
   while (i < lines.length) {
@@ -134,6 +141,48 @@ export function groupIndexForFlatLine(groups: ChangeGroup[], flatIdx: number): n
     if (flatIdx <= groups[i].endFlatIdx) return i;
   }
   return Math.max(0, groups.length - 1);
+}
+
+export interface CompactBlock {
+  header: string;
+  rows: { flatIdx: number; line: ParsedDiffLine }[];
+}
+
+/**
+ * Строит "компактные" блоки для отображения диффа: каждая группа изменений
+ * (ChangeGroup) плюс contextLines строк контекста по краям, остальное — схлопнуто.
+ * Т.к. groupChangedLines уже сливает группы, если разрыв между ними не превышает
+ * 2*contextLines, окна соседних блоков здесь гарантированно не пересекаются.
+ * flatIdx в rows — индекс в исходном (не локальном) плоском списке lines, чтобы
+ * gutter-клики, выделение и подсветка focusLineIdx работали без изменений.
+ */
+export function buildCompactBlocks(
+  lines: ParsedDiffLine[],
+  groups: ChangeGroup[],
+  contextLines = DIFF_CONTEXT_LINES,
+): CompactBlock[] {
+  return groups.map((group) => {
+    const from = Math.max(0, group.startFlatIdx - contextLines);
+    const to = Math.min(lines.length - 1, group.endFlatIdx + contextLines);
+    const rows = [];
+    let oldStart: number | null = null;
+    let newStart: number | null = null;
+    let oldLines = 0;
+    let newLines = 0;
+    for (let i = from; i <= to; i++) {
+      const line = lines[i];
+      if (line.oldLineNo != null) {
+        oldStart ??= line.oldLineNo;
+        oldLines++;
+      }
+      if (line.newLineNo != null) {
+        newStart ??= line.newLineNo;
+        newLines++;
+      }
+      rows.push({ flatIdx: i, line });
+    }
+    return { header: hunkHeader(oldStart ?? 0, oldLines, newStart ?? 0, newLines), rows };
+  });
 }
 
 /** Ближайший известный newLineNo от idx и правее; если хвост — сплошные del-строки, ищем левее. */
