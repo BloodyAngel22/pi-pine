@@ -389,6 +389,13 @@ export async function getMessages(sessionId?: string | null): Promise<{ messages
   return request("get_messages", {}, { sessionId });
 }
 
+// Полная, несжатая история сессии — сообщения, исключённые компакцией из
+// контекста LLM, здесь остаются (с inline-маркерами compactionSummary на
+// месте каждой компакции). Используется UI для отображения истории чата.
+export async function getFullHistory(sessionId?: string | null): Promise<{ messages: unknown[] }> {
+  return request("get_full_history", {}, { sessionId });
+}
+
 export async function setModel(provider: string, modelId: string, sessionId?: string | null): Promise<Model> {
   return request<Model>("set_model", { provider, modelId }, { sessionId });
 }

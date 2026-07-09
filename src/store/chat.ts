@@ -2229,7 +2229,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   async reloadHistory() {
     try {
-      const res = await rpc.getMessages(get().activeTabId);
+      const res = await rpc.getFullHistory(get().activeTabId);
       const messages = Array.isArray(res.messages) ? res.messages : [];
       const ui: UiMessage[] = [];
       const idMap = new Map<string, string>();
@@ -2303,7 +2303,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
       set((s) => {
         // reloadHistory() отражает только persisted историю pi. Steering/follow-up
         // prompt, отправленный во время streaming, может быть принят/queued, но ещё
-        // не попасть в get_messages(). Не удаляем локальные optimistic echo — иначе
+        // не попасть в get_full_history(). Не удаляем локальные optimistic echo — иначе
         // второй prompt визуально "пропадает" сразу после фонового refresh-а.
         const preservedLocalEchoes = s.messages.filter((m) => {
           if (m.role !== "user" || !(m.localEcho || m.optimistic)) return false;
