@@ -194,12 +194,12 @@ export function PlanTodoInline({ tabId, active = true }: Props) {
   const visibleTodos = collapsed ? todos.slice(0, 4) : todos;
 
   return (
-    <div className="sticky top-0 z-10 mx-auto w-full max-w-[850px] px-4 pt-3 pb-2 bg-(--color-bg)">
-      <div className="rounded-xl border border-(--color-border) bg-(--color-bg-soft) shadow-sm overflow-hidden text-xs">
+    <div className="sticky top-0 z-10 mx-auto w-full max-w-[850px] px-4 pt-3 pb-2 pointer-events-none">
+      <div className="pointer-events-auto rounded-xl border border-(--color-border) bg-(--color-bg-soft)/85 backdrop-blur-md shadow-lg overflow-hidden text-xs">
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="w-full px-3 py-2 flex items-center gap-2 hover:bg-(--color-bg-mute) text-left"
+          className="w-full px-3 py-2 flex items-center gap-2 hover:bg-(--color-bg-mute)/60 text-left"
         >
           {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           <ListTodo size={14} className="text-(--color-accent)" />
@@ -219,7 +219,7 @@ export function PlanTodoInline({ tabId, active = true }: Props) {
           </div>
         </button>
         {!collapsed && (
-          <div className="border-t border-(--color-border) bg-(--color-bg) py-1">
+          <div className="border-t border-(--color-border) py-1">
             {visibleTodos.map((todo) => (
               <div
                 key={`${todo.id}:${todo.text}`}

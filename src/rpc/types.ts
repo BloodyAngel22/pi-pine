@@ -45,6 +45,12 @@ export interface Model {
   reasoning?: boolean;
 }
 
+export interface PlanModeState {
+  active: boolean;
+  planFilePath?: string;
+  planName?: string;
+}
+
 export interface RpcSessionState {
   model: Model | null;
   thinkingLevel: ThinkingLevel;
@@ -64,6 +70,7 @@ export interface RpcSessionState {
   messageCount: number;
   pendingMessageCount: number;
   cwd?: string;
+  planMode: PlanModeState;
 }
 
 export type McpServerRpcStatus = "connected" | "connecting" | "retrying" | "error" | "disabled";

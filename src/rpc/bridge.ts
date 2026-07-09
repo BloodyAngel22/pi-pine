@@ -437,6 +437,14 @@ export async function setFileManifest(enabled: boolean, sessionId?: string | nul
   await request("set_file_manifest", { enabled }, { sessionId });
 }
 
+export async function enterPlanMode(name?: string, sessionId?: string | null): Promise<{ planFilePath: string }> {
+  return request<{ planFilePath: string }>("enter_plan_mode", { name }, { sessionId });
+}
+
+export async function exitPlanMode(sessionId?: string | null): Promise<{ planFilePath?: string }> {
+  return request<{ planFilePath?: string }>("exit_plan_mode", {}, { sessionId });
+}
+
 // === v0.2 ===
 
 export interface BashResult {

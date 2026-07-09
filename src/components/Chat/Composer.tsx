@@ -4,6 +4,7 @@ import { Send, Square, Paperclip, X, Slash, Sparkles, ListTodo, Play, Loader2 } 
 import { AppIcon } from "@/components/ui/AppIcon";
 import { Chip } from "@/components/ui/Chip";
 import clsx from "clsx";
+import { isPlaceholderPlan, parsePlanTasks } from "@/lib/planStatus";
 import { useChat, type UiBlock } from "@/store/chat";
 import { useExt } from "@/store/ext";
 import { useUiPrefs } from "@/store/uiPrefs";
@@ -46,35 +47,6 @@ const WORD_BOUNDARY_RE = /[\s\p{P}\p{Z}]/u;
 type Updater<T> = T | ((prev: T) => T);
 function resolveUpdater<T>(next: Updater<T>, prev: T): T {
   return typeof next === "function" ? (next as (prev: T) => T)(prev) : next;
-}
-
-function countPlanTasks(markdown: string): number {
-  let count = 0;
-  let inTasksSection = false;
-  for (const line of markdown.split(/\r?\n/)) {
-    if (/^##\s/.test(line)) {
-      inTasksSection = /^##\s+(tasks|todos|todo|шаги|задачи|план)\b/i.test(line);
-      continue;
-    }
-    if (!inTasksSection) continue;
-    const match = line.match(/^\s*-\s+\[[ xX]\]\s+(.+)$/);
-    const text = match?.[1]?.trim();
-    if (text) count += 1;
-  }
-  return count;
-}
-
-function hasMeaningfulPlan(markdown: string): boolean {
-  for (const rawLine of markdown.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (/^#+\s*(план|контекст|шаги|tasks|todos|todo|открытые вопросы)\s*$/i.test(line)) continue;
-    if (/^_?Файл создан pi-pine\b/i.test(line)) continue;
-    if (/^ID сессии:\s*`[^`]+`\s*$/i.test(line)) continue;
-    if (/^-\s*(?:\[[ xX]\])?\s*$/.test(line)) continue;
-    return true;
-  }
-  return false;
 }
 
 function blocksText(blocks: UiBlock[]): string {
@@ -172,7 +144,7 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
   const lastTypingTime = useRef(0);
   const assistantPlanReady = useMemo(() => {
     if (!assistantPlanSource) return false;
-    return countPlanTasks(assistantPlanSource) > 0 || hasMeaningfulPlan(assistantPlanSource);
+    return parsePlanTasks(assistantPlanSource).length > 0;
   }, [assistantPlanSource]);
 
   // --- undo/redo helpers ---
@@ -435,7 +407,7 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
       void invoke<string>("read_plan_file", { path: planFilePath })
         .then((text) => {
           if (!cancelled) {
-            setPlanReady(hasMeaningfulPlan(text));
+            setPlanReady(!isPlaceholderPlan(text));
           }
         })
         .catch(() => {

@@ -121,10 +121,8 @@ pub fn run() {
             terminal::terminal_kill,
             terminal::terminal_list,
             // plans
-            plans::ensure_plan_file,
             plans::read_plan_file,
             plans::write_plan_file,
-            plans::list_plan_files,
             // RPC bridge
             rpc::rpc_start,
             rpc::rpc_send,

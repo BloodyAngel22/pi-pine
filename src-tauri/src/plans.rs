@@ -1,28 +1,13 @@
-//! Plan-mode: файлы планов в `/tmp/.pi/plans/<uuid>.md`.
+//! Plan-mode: чтение/ручное редактирование файла плана.
+//!
+//! Сам файл плана создаёт и удаляет pi-mono-x (RPC-команды `enter_plan_mode`/
+//! `exit_plan_mode`, каталог `~/tmp/.pi/plans/`) — pi-pine здесь только читает
+//! и сохраняет текст, который показывает пользователю в панели плана.
 
 use std::path::PathBuf;
 
-fn plans_dir() -> PathBuf {
-    std::env::temp_dir().join(".pi").join("plans")
-}
-
-/// Создаёт каталог планов если нужно, возвращает абсолютный путь к файлу плана.
-/// Принимает UUID (генерируется на фронтенде) для имени файла.
-/// Если файла нет — создаёт его с заголовком-шаблоном.
-/// Если файл уже существует — возвращает путь к нему.
-#[tauri::command]
-pub fn ensure_plan_file(uuid: String) -> Result<String, String> {
-    let dir = plans_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Создание {:?}: {}", dir, e))?;
-    let name = format!("{}.md", uuid);
-    let path = dir.join(&name);
-    if !path.exists() {
-        let template = String::from(
-            "# План\n\n_Файл создан pi-pine в режиме планирования._\n\n## Контекст\n\n- \n\n## Шаги\n\n- [ ] \n\n## Открытые вопросы\n\n- \n",
-        );
-        std::fs::write(&path, template).map_err(|e| e.to_string())?;
-    }
-    Ok(path.to_string_lossy().into_owned())
+fn plans_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| home.join("tmp").join(".pi").join("plans"))
 }
 
 #[tauri::command]
@@ -37,35 +22,12 @@ pub fn read_plan_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_plan_file(path: String, text: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
+    let base = plans_dir().ok_or("Не удалось определить домашнюю директорию")?;
+    if !p.starts_with(&base) {
+        return Err(format!("Файл плана должен лежать в {:?}", base));
+    }
     if let Some(parent) = p.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let base = plans_dir();
-    if !p.starts_with(&base) {
-        return Err("Файл плана должен лежать в /tmp/.pi/plans/".into());
-    }
     std::fs::write(&p, text).map_err(|e| e.to_string())
-}
-
-/// Список планов в текущем cwd.
-#[tauri::command]
-pub fn list_plan_files(cwd: String) -> Vec<String> {
-    let _ = cwd;
-    let dir = plans_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<String> = entries
-        .flatten()
-        .filter_map(|e| {
-            let p = e.path();
-            if p.extension().and_then(|s| s.to_str()) == Some("md") {
-                Some(p.to_string_lossy().into_owned())
-            } else {
-                None
-            }
-        })
-        .collect();
-    out.sort();
-    out
 }

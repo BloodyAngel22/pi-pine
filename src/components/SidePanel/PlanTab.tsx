@@ -2,40 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CheckCircle2, Circle, ExternalLink, RefreshCw, RotateCcw, Save, Play } from "@/components/ui/icons/compat";
 import { Button } from "@/components/ui/Button";
+import { isPlaceholderPlan, parsePlanTasks } from "@/lib/planStatus";
 import { useChat } from "@/store/chat";
-
-interface PlanTask {
-  text: string;
-  done: boolean;
-  level: number;
-}
-
-function parsePlanTasks(markdown: string): PlanTask[] {
-  const tasks: PlanTask[] = [];
-  let inTasksSection = false;
-  for (const line of markdown.split(/\r?\n/)) {
-    if (/^##\s/.test(line)) {
-      inTasksSection = /^##\s+(tasks|todos|todo|шаги|задачи|план)\b/i.test(line);
-      continue;
-    }
-    if (!inTasksSection) continue;
-    const match = line.match(/^(\s*)-\s+\[([ xX])\]\s+(.+)$/);
-    if (!match) continue;
-    const text = match[3]?.trim();
-    if (!text) continue;
-    tasks.push({
-      text,
-      done: match[2]?.toLowerCase() === "x",
-      level: Math.floor((match[1]?.length ?? 0) / 2),
-    });
-  }
-  return tasks;
-}
 
 export function PlanTab() {
   const planMode = useChat((s) => s.planMode);
   const planFilePath = useChat((s) => s.planFilePath);
   const planLoading = useChat((s) => s.planLoading);
+  const planRefreshNonce = useChat((s) => s.planRefreshNonce);
   const togglePlanMode = useChat((s) => s.togglePlanMode);
   const loadPlan = useChat((s) => s.loadPlan);
   const resetPlan = useChat((s) => s.resetPlan);
@@ -45,6 +19,7 @@ export function PlanTab() {
   const [text, setText] = useState("");
   const [dirty, setDirty] = useState(false);
   const lastLoadedFor = useRef<string | null>(null);
+  const lastRefreshNonce = useRef<number>(0);
   const saveTimer = useRef<number | null>(null);
   const tasks = parsePlanTasks(text);
   const completedTasks = tasks.filter((task) => task.done).length;
@@ -86,6 +61,15 @@ export function PlanTab() {
     setText(s);
     setDirty(false);
   };
+
+  // pi-mono-x пишет план напрямую на диск (не через Tauri) — после каждого
+  // хода агента (turn_end) store бампает planRefreshNonce, и мы перечитываем файл.
+  useEffect(() => {
+    if (!planFilePath) return;
+    if (lastRefreshNonce.current === planRefreshNonce) return;
+    lastRefreshNonce.current = planRefreshNonce;
+    void reload();
+  }, [planRefreshNonce, planFilePath]);
 
   if (!planMode) {
     return (
@@ -202,7 +186,8 @@ export function PlanTab() {
           size="sm"
           icon={<Play size={11} />}
           onClick={() => void commitPlan()}
-          disabled={!planFilePath}
+          disabled={!planFilePath || isPlaceholderPlan(text, tasks)}
+          title={isPlaceholderPlan(text, tasks) ? "План ещё пуст — попроси pi заполнить задачи" : undefined}
         >
           Реализовать
         </Button>

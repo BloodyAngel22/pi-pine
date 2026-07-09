@@ -130,6 +130,8 @@ export interface SessionTabState {
   planMode: boolean;
   planFilePath: string | null;
   planLoading: boolean;
+  /** Инкрементится на каждый turn_end, пока planMode активен — сигнал панели плана перечитать файл с диска. */
+  planRefreshNonce: number;
   forkBanner: string | null;
   composerInjection: { text: string; nonce: number } | null;
   composerValue: string;
@@ -166,9 +168,10 @@ export function createDefaultSessionTab(tabId: string, initial?: Partial<Session
     webSearchRunId: 0,
     lastCompactionMessageKey: null,
     retryStatus: { active: false, attempt: 0 },
-    planMode: readPlanMode(),
+    planMode: false,
     planFilePath: null,
     planLoading: false,
+    planRefreshNonce: 0,
     forkBanner: null,
     composerInjection: null,
     composerValue: "",
@@ -209,6 +212,7 @@ const TAB_FIELD_KEYS = new Set<keyof SessionTabState>([
   "planMode",
   "planFilePath",
   "planLoading",
+  "planRefreshNonce",
   "forkBanner",
   "composerInjection",
   "composerValue",
@@ -234,6 +238,7 @@ function tabProjection(tab: SessionTabState): Partial<ChatState> {
     planMode: tab.planMode,
     planFilePath: tab.planFilePath,
     planLoading: tab.planLoading,
+    planRefreshNonce: tab.planRefreshNonce,
     agentState: tab.agentState,
     retryStatus: tab.retryStatus,
     pendingMessageCount: tab.pendingMessageCount,
@@ -279,6 +284,7 @@ interface ChatState {
   planMode: boolean;
   planFilePath: string | null;
   planLoading: boolean;
+  planRefreshNonce: number;
   // скиллы, прикреплённые к текущей сессии/tab
   attachedSkills: string[];
   // сессия переключается? (для UI-спиннера)
@@ -376,7 +382,7 @@ interface ChatState {
   runSlashCommand(command: string, arg?: string): Promise<void>;
   /** Plan mode actions */
   togglePlanMode(): Promise<void>;
-  loadPlan(opts?: { reset?: boolean }): Promise<void>;
+  loadPlan(): Promise<void>;
   /** Создаёт новый файл плана для текущей сессии, не трогая старый на диске. */
   resetPlan(): Promise<void>;
   savePlan(text: string): Promise<void>;
@@ -433,11 +439,8 @@ const STORAGE_KEY_CLI = "pi-pine.cliPathOverride";
 const STORAGE_KEY_CWD = "pi-pine.cwd";
 const STORAGE_KEY_PROVIDER = "pi-pine.provider";
 const STORAGE_KEY_MODEL = "pi-pine.model";
-const STORAGE_KEY_PLAN_MODE = "pi-pine.planMode";
 const STORAGE_KEY_SKILLS_PREFIX_FILE = "pi-pine.attachedSkills.file.";
 const STORAGE_KEY_SKILLS_PREFIX_ID = "pi-pine.attachedSkills.id.";
-const STORAGE_KEY_PLAN_ID_PREFIX_FILE = "pi-pine.planId.file.";
-const STORAGE_KEY_PLAN_ID_PREFIX_ID = "pi-pine.planId.id.";
 const STORAGE_KEY_OPEN_TABS_PREFIX = "pi-pine.openTabs.";
 const SESSIONS_CHANGED_EVENT = "pi-pine:sessions-changed";
 const closedTabIds = new Set<string>();
@@ -489,9 +492,6 @@ function notifySessionsChanged(): void {
   }
 }
 
-function readPlanMode(): boolean {
-  return localStorage.getItem(STORAGE_KEY_PLAN_MODE) === "1";
-}
 function normalizeSkillName(s: string): string {
   // Снимаем все ведущие "skill:" — на случай старых записей вида "skill:skill:foo".
   let r = s;
@@ -560,55 +560,6 @@ function migrateAttachedSkillsKey(fromSessionId: string, toSessionFile: string):
       localStorage.setItem(toKey, raw);
     }
     localStorage.removeItem(fromKey);
-  } catch {
-    // ignore
-  }
-}
-
-function planIdFileKey(sessionFile: string): string {
-  const base = sessionFile
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .pop()
-    ?.replace(/\.jsonl$/i, "")
-    ?.replace(/[^a-zA-Z0-9_.-]/g, "_")
-    ?? sessionFile;
-  return `${STORAGE_KEY_PLAN_ID_PREFIX_FILE}${base}`;
-}
-function planIdIdKey(sessionId: string): string {
-  return `${STORAGE_KEY_PLAN_ID_PREFIX_ID}${sessionId}`;
-}
-function migratePlanIdKey(fromSessionId: string, toSessionFile: string): void {
-  const fromKey = planIdIdKey(fromSessionId);
-  const toKey = planIdFileKey(toSessionFile);
-  if (fromKey === toKey) return;
-  try {
-    const raw = localStorage.getItem(fromKey);
-    if (raw === null) return;
-    if (localStorage.getItem(toKey) === null) {
-      localStorage.setItem(toKey, raw);
-    }
-    localStorage.removeItem(fromKey);
-  } catch {
-    // ignore
-  }
-}
-function readPlanId(sessionId: string, sessionFile: string | null | undefined): string | null {
-  try {
-    if (sessionFile) {
-      migratePlanIdKey(sessionId, sessionFile);
-      return localStorage.getItem(planIdFileKey(sessionFile));
-    }
-    return localStorage.getItem(planIdIdKey(sessionId));
-  } catch {
-    return null;
-  }
-}
-function writePlanId(sessionId: string, sessionFile: string | null | undefined, uuid: string): void {
-  try {
-    const key = sessionFile ? planIdFileKey(sessionFile) : planIdIdKey(sessionId);
-    localStorage.setItem(key, uuid);
   } catch {
     // ignore
   }
@@ -1495,9 +1446,10 @@ export const useChat = create<ChatState>((rawSet, get) => {
     localStorage.getItem(STORAGE_KEY_CWD) ||
     (typeof window !== "undefined" ? "/" : "/"),
   home: null,
-  planMode: readPlanMode(),
+  planMode: false,
   planFilePath: null,
   planLoading: false,
+  planRefreshNonce: 0,
   attachedSkills: [],
   switching: false,
   agentState: null,
@@ -2008,7 +1960,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   async send(message, images, sendOpts) {
-    const { agentState, streamingBehavior, planMode, planFilePath, attachedSkills } = get();
+    const { agentState, streamingBehavior, attachedSkills } = get();
     const trimmed = message.trim();
     const files = sendOpts?.files;
     if (!trimmed && (!images || images.length === 0) && (!files || files.length === 0)) return;
@@ -2018,21 +1970,12 @@ export const useChat = create<ChatState>((rawSet, get) => {
     const attachedCommandBlocks = await resolveAttachedCommands(attachedSkills);
     const allCommandBlocks = [...commandBlocks, ...attachedCommandBlocks];
 
-    // Build body
-    // 1) plan mode: префикс с инструкциями для модели.
+    // Build body.
+    // Plan mode restrictions are enforced by pi-mono-x itself (system prompt append +
+    // tool permission gate in enter_plan_mode) — no client-side instruction prefix needed.
     let body = "";
-    if (planMode) {
-      const planPath = planFilePath || "<plan.md>";
-      body =
-        `[PLAN MODE] Не модифицируй файлы кроме \`${planPath}\`. ` +
-        `Не запускай разрушительные команды (rm, mv, git push, drop и т.п.). ` +
-        `Сначала исследуй кодовую базу через read-only инструменты (read_file, grep, list_dir). ` +
-        `Веди и обновляй план в \`${planPath}\` (markdown, секция "## Шаги" или "## Tasks" с чек-листами, ссылки на файлы). ` +
-        `Если доступен todo tool/todo_list, обязательно создай и обновляй видимый список задач. ` +
-        `Жди явного «Реализуй» от пользователя — не приступай к изменениям сейчас.\n\n`;
-    }
 
-    // 2) clean text (without /skill: tokens) + command content for agent
+    // clean text (without /skill: tokens) + command content for agent
     if (cleanText) body += cleanText;
     if (allCommandBlocks.length > 0) {
       const cmdBody = commandsToAgentBody(allCommandBlocks);
@@ -2258,11 +2201,15 @@ export const useChat = create<ChatState>((rawSet, get) => {
       const tabId = s.sessionId || get().activeTabId || DEFAULT_TAB_ID;
       const currentSkills = get().tabs.get(tabId)?.attachedSkills;
       const attachedSkills = reconcileAttachedSkillsForSession(tabId, s.sessionFile, currentSkills);
+      const planMode = s.planMode?.active ?? false;
+      const planFilePath = s.planMode?.planFilePath ?? null;
       get().ensureTab(tabId, {
         agentState: s,
         pendingMessageCount: s.pendingMessageCount ?? 0,
         sessionName: s.sessionName ?? null,
         attachedSkills,
+        planMode,
+        planFilePath,
       });
       if (!get().activeTabId || get().activeTabId === tabId) {
         get().updateTab(tabId, {
@@ -2270,6 +2217,8 @@ export const useChat = create<ChatState>((rawSet, get) => {
           pendingMessageCount: s.pendingMessageCount ?? 0,
           sessionName: s.sessionName ?? null,
           attachedSkills,
+          planMode,
+          planFilePath,
         });
         get().syncFromTab(tabId);
       }
@@ -2409,9 +2358,6 @@ export const useChat = create<ChatState>((rawSet, get) => {
       get().clearMessages();
       await get().reloadHistory().catch(() => undefined);
       await get().refreshSessionStats().catch(() => undefined);
-      if (get().planMode) {
-        await get().loadPlan().catch(() => undefined);
-      }
     } catch (e) {
       get().setError((e as Error).message);
     } finally {
@@ -2453,10 +2399,6 @@ export const useChat = create<ChatState>((rawSet, get) => {
         await get().reloadHistory().catch(() => undefined);
         await get().refreshSessionStats().catch(() => undefined);
         debugMcp("switchSession:after reloadHistory", { file });
-        if (get().planMode) {
-          await get().loadPlan().catch(() => undefined);
-          debugMcp("switchSession:after loadPlan", { file });
-        }
       } catch (e) {
         get().setError((e as Error).message);
       } finally {
@@ -2524,28 +2466,25 @@ export const useChat = create<ChatState>((rawSet, get) => {
 
   async togglePlanMode() {
     const next = !get().planMode;
-    if (next) localStorage.setItem(STORAGE_KEY_PLAN_MODE, "1");
-    else localStorage.removeItem(STORAGE_KEY_PLAN_MODE);
-    set({ planMode: next });
     if (next) {
       await get().loadPlan().catch(() => undefined);
+      return;
+    }
+    set({ planMode: false });
+    try {
+      await rpc.exitPlanMode(get().activeTabId);
+    } catch (e) {
+      get().setError(`План: ${(e as Error).message}`);
     }
   },
 
-  async loadPlan(opts) {
+  async loadPlan() {
+    // Реально включает Plan Mode в pi-mono-x (permission-гейт на write/edit/bash) и
+    // создаёт новый файл плана — план всегда живёт в сессии агента, а не в pi-pine.
     set({ planLoading: true });
     try {
-      const sessionId = get().activeTabId ?? DEFAULT_TAB_ID;
-      const sessionFile = get().agentState?.sessionFile ?? null;
-      const reset = opts?.reset ?? false;
-      // Переиспользуем ранее сохранённый uuid для этой сессии, если он есть —
-      // иначе (или при явном сбросе) генерируем новый на фронтенде.
-      const uuid = (!reset && readPlanId(sessionId, sessionFile)) || crypto.randomUUID();
-      const path = await invoke<string>("ensure_plan_file", {
-        uuid,
-      });
-      writePlanId(sessionId, sessionFile, uuid);
-      set({ planFilePath: path });
+      const res = await rpc.enterPlanMode(undefined, get().activeTabId);
+      set({ planMode: true, planFilePath: res.planFilePath });
     } catch (e) {
       get().setError(`План: ${(e as Error).message}`);
     } finally {
@@ -2554,7 +2493,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
   },
 
   async resetPlan() {
-    await get().loadPlan({ reset: true });
+    await get().loadPlan();
   },
 
   async savePlan(text) {
@@ -2570,9 +2509,14 @@ export const useChat = create<ChatState>((rawSet, get) => {
   async commitPlan() {
     const { planFilePath, planMode } = get();
     if (!planMode || !planFilePath) return;
-    // Выключаем plan mode, шлём prompt
-    localStorage.removeItem(STORAGE_KEY_PLAN_MODE);
+    // Выключаем plan mode (снимает permission-гейт в pi-mono-x), шлём prompt
     set({ planMode: false });
+    try {
+      await rpc.exitPlanMode(get().activeTabId);
+    } catch (e) {
+      get().setError((e as Error).message);
+      return;
+    }
     const prompt = `Реализуй план из файла \`${planFilePath}\`. Сначала прочитай plan file, затем выполняй задачи по порядку. По мере выполнения обновляй чекбоксы в plan file с [ ] на [x], измени Status на "executing", а после завершения на "done". Можешь редактировать код и запускать команды. Если возникнут вопросы — спроси.`;
     try {
       await rpc.sendPrompt(prompt, { sessionId: get().activeTabId });
@@ -3298,7 +3242,15 @@ function handleAgentEvent(
       break;
     }
     case "turn_start":
-    case "turn_end":
+      break;
+    case "turn_end": {
+      // Пока активен plan mode, агент мог дописать план прямо на диске (не через
+      // Tauri-команды) — просим панель плана перечитать файл после каждого хода.
+      if (get().planMode) {
+        set((s) => ({ planRefreshNonce: s.planRefreshNonce + 1 }));
+      }
+      break;
+    }
     case "extension_error":
       break;
     case "auto_retry_start": {
