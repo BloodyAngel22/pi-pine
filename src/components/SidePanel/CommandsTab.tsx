@@ -134,7 +134,7 @@ export function CommandsTab() {
                           {isPinned ? "Закреплён" : "Закрепить"}
                         </Button>
                       )}
-                      <Button variant="ghost" size="sm" icon={<Plus size={11} />} onClick={() => injectComposer(text)} className="shrink-0">
+                      <Button variant="ghost" size="sm" icon={<Plus size={11} />} onClick={() => injectComposer(`${text} `)} className="shrink-0">
                         Вставить
                       </Button>
                       <Button variant="primary" size="sm" icon={<Play size={11} />} onClick={() => void send(text)} className="shrink-0">

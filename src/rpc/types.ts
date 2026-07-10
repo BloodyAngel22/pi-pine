@@ -184,6 +184,14 @@ export interface SkillDetail {
   content: string;
 }
 
+/** Раскрытое содержимое prompt/markdown-команды (не скилла) — см. get_command_detail. */
+export interface CommandDetail {
+  name: string;
+  description: string;
+  path: string;
+  content: string;
+}
+
 // === события (выборка ключевых) ===
 
 export interface AgentStartEvent {

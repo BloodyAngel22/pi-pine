@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  CommandDetail,
   ImageContent,
   McpStatusResult,
   Model,
@@ -559,6 +560,9 @@ export async function getCommands(sessionId?: string | null): Promise<{ commands
 }
 export async function getSkillDetail(name: string, sessionId?: string | null): Promise<SkillDetail> {
   return request("get_skill_detail", { name }, { sessionId });
+}
+export async function getCommandDetail(name: string, sessionId?: string | null): Promise<CommandDetail> {
+  return request("get_command_detail", { name }, { sessionId });
 }
 export async function suggestSkills(query: string, options?: { limit?: number; minScore?: number; sessionId?: string | null }): Promise<{ skills: SkillSuggestion[] }> {
   const { sessionId, ...payload } = options ?? {};

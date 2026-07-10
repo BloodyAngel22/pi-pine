@@ -878,11 +878,19 @@ async function resolveSkillTokens(
   }
   cleanText = cleanText.replace(/\s+/g, " ").trim();
 
-  // Резолвим параллельно
+  // Резолвим параллельно. /skill:name — всегда скилл. Голый /name может
+  // оказаться markdown/prompt-командой (не скиллом), поэтому при неудаче
+  // get_skill_detail пробуем get_command_detail.
   const results = await Promise.allSettled(
-    found.map((f) =>
-      rpc.getSkillDetail(f.name, useChat.getState().activeTabId).catch(() => null),
-    ),
+    found.map(async (f) => {
+      const tabId = useChat.getState().activeTabId;
+      try {
+        return await rpc.getSkillDetail(f.name, tabId);
+      } catch (err) {
+        if (f.origin === "explicit") throw err;
+        return await rpc.getCommandDetail(f.name, tabId);
+      }
+    }),
   );
 
   const commandBlocks: UiBlockCommand[] = [];

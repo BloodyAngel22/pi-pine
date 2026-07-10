@@ -84,7 +84,7 @@ export function SkillsPalette({ open, onClose, onInsert }: Props) {
 
   const insertPinned = () => {
     if (attached.length === 0) return;
-    onInsert(attached.map((n) => `/skill:${n}`).join(" "));
+    onInsert(`${attached.map((n) => `/skill:${n}`).join(" ")} `);
     onClose();
   };
 

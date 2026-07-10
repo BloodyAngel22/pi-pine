@@ -199,6 +199,15 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
     };
     composerCurrentSnapshot.current = snap;
     setValue(next);
+    // setValue сам по себе не двигает реальный курсор textarea — без явного
+    // setSelectionRange он остаётся там же, где был, и следующий ввод
+    // пользователя может приклеиться вплотную к вставленному тексту.
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.length, next.length);
+    });
   }, [pushUndoSnapshot, setValue]);
 
   /** Сброс undo/redo истории (после отправки / инжекции) */
@@ -213,6 +222,12 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
     };
     composerCurrentSnapshot.current = snap;
     setValue(next);
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.length, next.length);
+    });
   }, [setValue]);
 
   const chatFontSize = useUiPrefs((s) => s.chatFontSize);
@@ -269,7 +284,6 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
     if (composerInjection) {
       resetComposerUndo(composerInjection.text);
       clearInjection();
-      setTimeout(() => ref.current?.focus(), 0);
     }
   }, [composerInjection, clearInjection]);
 
@@ -644,7 +658,6 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
           onInsert={(text) => {
             const cur = composerCurrentSnapshot.current.value;
             setComposerValue(cur ? `${cur}\n\n${text}` : text, true);
-            setTimeout(() => ref.current?.focus(), 0);
           }}
         />
         {pending > 0 && (
