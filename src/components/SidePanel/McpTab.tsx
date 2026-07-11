@@ -43,6 +43,8 @@ const statusChipProps: Record<McpServerRpcStatus, { tone: "success" | "warning" 
   retrying: { tone: "warning", pulse: true },
   error: { tone: "danger" },
   disabled: { tone: "neutral" },
+  // Тулы из кэша схем, процесс не запущен — поднимется при первом вызове тула.
+  idle: { tone: "neutral" },
 };
 
 export function McpTab() {

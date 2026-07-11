@@ -42,8 +42,11 @@ interface DiffState {
   loading: boolean;
   error: string | null;
   fullDiffCache: Record<string, FullDiffEntry>;
+  /** Панель Diff видна пользователю (mainTab === "diff" в App.tsx). */
+  panelOpen: boolean;
 
   init(): void;
+  setPanelOpen(open: boolean): void;
   refresh(): Promise<void>;
   selectFile(path: string | null): void;
   selectNextFile(): void;
@@ -61,15 +64,22 @@ export const useDiff = create<DiffState>((set, get) => ({
   loading: false,
   error: null,
   fullDiffCache: {},
+  panelOpen: false,
 
   init() {
     if (initialized) return;
     initialized = true;
     onEvent((event) => {
-      if ((event as { type?: unknown }).type === "turn_end") {
+      // git status/diff (включая полный -U100000 диф выбранного файла) не бесплатны —
+      // считаем их только пока панель реально видна, а не на каждый ход агента.
+      if ((event as { type?: unknown }).type === "turn_end" && get().panelOpen) {
         void get().refresh();
       }
     });
+  },
+
+  setPanelOpen(open) {
+    set({ panelOpen: open });
   },
 
   async refresh() {

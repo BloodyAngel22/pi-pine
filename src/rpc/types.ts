@@ -73,7 +73,8 @@ export interface RpcSessionState {
   planMode: PlanModeState;
 }
 
-export type McpServerRpcStatus = "connected" | "connecting" | "retrying" | "error" | "disabled";
+/** "idle" — тулы зарегистрированы из дискового кэша схем, процесс сервера ещё не запускался (ленивый коннект при первом вызове тула). */
+export type McpServerRpcStatus = "connected" | "connecting" | "retrying" | "error" | "disabled" | "idle";
 
 export interface McpToolInfo {
   name: string;

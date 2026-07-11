@@ -77,6 +77,7 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
   const clearInjection = useChat((s) => s.clearComposerInjection);
   const planMode = useChat((s) => s.planMode);
   const planFilePath = useChat((s) => s.planFilePath);
+  const planRefreshNonce = useChat((s) => s.planRefreshNonce);
   const assistantPlanSource = useChat((s) => {
     const messages = s.tabs.get(s.activeTabId ?? "")?.messages ?? s.messages;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -411,37 +412,30 @@ export function Composer({ onSlash, onBtw, active = true }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // pi-mono-x пишет план напрямую на диск (не через Tauri) — вместо постоянного
+  // поллинга перечитываем файл по тому же planRefreshNonce, который PlanTab
+  // использует для своего reload (бампается в store на каждый turn_end).
   useEffect(() => {
     let cancelled = false;
-    const loadPlanTasks = () => {
-      if (!planMode || !planFilePath) {
-        setPlanReady(false);
-        return;
-      }
-      void invoke<string>("read_plan_file", { path: planFilePath })
-        .then((text) => {
-          if (!cancelled) {
-            setPlanReady(!isPlaceholderPlan(text));
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setPlanReady(false);
-          }
-        });
-    };
-    loadPlanTasks();
     if (!planMode || !planFilePath) {
-      return () => {
-        cancelled = true;
-      };
+      setPlanReady(false);
+      return;
     }
-    const timer = window.setInterval(loadPlanTasks, 1500);
+    void invoke<string>("read_plan_file", { path: planFilePath })
+      .then((text) => {
+        if (!cancelled) {
+          setPlanReady(!isPlaceholderPlan(text));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPlanReady(false);
+        }
+      });
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [planMode, planFilePath, isStreaming]);
+  }, [planMode, planFilePath, planRefreshNonce]);
 
   const toBase64 = (data: Uint8Array): string =>
     btoa(data.reduce((a, b) => a + String.fromCharCode(b), ""));

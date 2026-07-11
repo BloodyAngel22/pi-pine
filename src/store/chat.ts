@@ -42,6 +42,9 @@ export interface UiBlockImage {
   kind: "image";
   mimeType: string;
   data: string;
+  /** true — base64-данные выгружены из памяти (см. capImageData): в пределах
+   * вкладки живыми остаются только последние MAX_LIVE_IMAGES картинок. */
+  dropped?: boolean;
 }
 /**
  * Блок команды/скилла в сообщении.
@@ -1850,7 +1853,10 @@ export const useChat = create<ChatState>((rawSet, get) => {
         // backend-сессии (shared MCP убрал прежний риск роста RAM от
         // независимых наборов MCP-процессов на вкладку).
         if (rememberedOpenTabs.length > 0) {
-          const namesByFile = await invoke<Array<{ file: string; name?: string; first_user_text?: string }>>("list_project_sessions", { cwd })
+          // Только для восстанавливаемых файлов, а не скан всех сессий проекта
+          // (list_project_sessions гоняет полный проход каждого .jsonl дважды —
+          // на имя и на счётчик сообщений — не нужный здесь, нам нужен лейбл).
+          const namesByFile = await invoke<Array<{ file: string; name?: string; first_user_text?: string }>>("get_session_labels", { files: rememberedOpenTabs })
             .then((list) => new Map(list.map((s) => [s.file, { name: s.name?.trim() || null, firstUserText: s.first_user_text?.trim() || null }] as const)))
             .catch(() => new Map<string, { name: string | null; firstUserText: string | null }>());
           const labelForFile = (file: string): string | null => {
@@ -2342,7 +2348,9 @@ export const useChat = create<ChatState>((rawSet, get) => {
           ? nextMessages.some((m) => m.id === s.currentAssistantId)
           : false;
         return {
-          messages: nextMessages,
+          // capImageData: старая сессия может содержать десятки скриншотов —
+          // выгружаем base64 всех, кроме последних MAX_LIVE_IMAGES, сразу при загрузке.
+          messages: capImageData(nextMessages),
           messageIdMap: idMap,
           uiToPiId: uiToPi,
           currentAssistantId: currentStillExists
@@ -3304,6 +3312,51 @@ interface UpsertOpts {
   replace?: boolean;
 }
 
+/** Максимум image-блоков с живыми base64-данными в пределах вкладки.
+ * Скриншоты инструментов (screenshot/interact) весят по 1–2МБ base64 каждый и
+ * без ограничения накапливаются в сторе за длинную сессию на сотни МБ. */
+const MAX_LIVE_IMAGES = 10;
+
+/** Выгружает base64-данные у всех image-блоков старше MAX_LIVE_IMAGES-го с
+ * конца (и отдельных блоков, и картинок внутри tool-блоков), помечая их
+ * dropped — UI показывает плейсхолдер. Возвращает исходный массив, если
+ * ничего выгружать не нужно (обычный случай — без лишних аллокаций). */
+function capImageData(messages: UiMessage[]): UiMessage[] {
+  let live = 0;
+  let result: UiMessage[] | null = null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    let newBlocks: UiBlock[] | null = null;
+    for (let j = msg.blocks.length - 1; j >= 0; j--) {
+      const block = msg.blocks[j];
+      if (block.kind === "image") {
+        if (block.dropped) continue;
+        live++;
+        if (live > MAX_LIVE_IMAGES) {
+          (newBlocks ??= [...msg.blocks])[j] = { ...block, data: "", dropped: true };
+        }
+      } else if (block.kind === "tool" && block.images?.length) {
+        let newImages: UiBlockImage[] | null = null;
+        for (let k = block.images.length - 1; k >= 0; k--) {
+          const img = block.images[k];
+          if (img.dropped) continue;
+          live++;
+          if (live > MAX_LIVE_IMAGES) {
+            (newImages ??= [...block.images])[k] = { ...img, data: "", dropped: true };
+          }
+        }
+        if (newImages) {
+          (newBlocks ??= [...msg.blocks])[j] = { ...block, images: newImages };
+        }
+      }
+    }
+    if (newBlocks) {
+      (result ??= [...messages])[i] = { ...msg, blocks: newBlocks };
+    }
+  }
+  return result ?? messages;
+}
+
 function upsertMessage(
   set: (
     partial:
@@ -3431,7 +3484,7 @@ function upsertMessage(
       const nextUiToPi = { ...s.uiToPiId };
       if (opts.piId) nextUiToPi[targetUiIdResolved] = opts.piId;
       return {
-        messages,
+        messages: capImageData(messages),
         messageIdMap: idMap,
         uiToPiId: nextUiToPi,
         currentAssistantId: opts.markCurrent
@@ -3454,7 +3507,7 @@ function upsertMessage(
     const nextUiToPi = { ...s.uiToPiId };
     if (opts.piId) nextUiToPi[uiId] = opts.piId;
     return {
-      messages: [...s.messages, msg],
+      messages: capImageData([...s.messages, msg]),
       messageIdMap: idMap,
       uiToPiId: nextUiToPi,
       currentAssistantId: opts.markCurrent ? uiId : s.currentAssistantId,
@@ -3585,8 +3638,8 @@ function updateToolBlock(
   toolUseId: string,
   patch: Partial<Omit<UiBlockTool, "kind" | "toolUseId">>,
 ) {
-  set((s) => ({
-    messages: s.messages.map((m) => {
+  set((s) => {
+    const messages = s.messages.map((m) => {
       if (!m.blocks.some((b) => b.kind === "tool" && b.toolUseId === toolUseId)) return m;
       return {
         ...m,
@@ -3595,8 +3648,11 @@ function updateToolBlock(
         ),
         pendingAssistant: false,
       };
-    }),
-  }));
+    });
+    // Кап только когда патч реально добавил картинки — на обычные апдейты
+    // статуса лишний проход не тратим.
+    return { messages: patch.images?.length ? capImageData(messages) : messages };
+  });
 }
 
 export type { AnyContent };

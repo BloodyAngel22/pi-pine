@@ -147,6 +147,17 @@ pub fn rpc_start(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // pi-mono-x (Node/Bun) по умолчанию заводит фоновые пулы потоков (libuv,
+    // V8) размером в число логических ядер. Процесс `pi --mode rpc` живёт
+    // всё время сессии и реально нагружает CPU (tool calls, subagents), так
+    // что без ограничения он вместе с самим pi-pine выедал все ядра машины.
+    // Ограничиваем половиной — значения ниже переопределяемы через args.env.
+    let half_cpus = std::thread::available_parallelism()
+        .map(|n| n.get() / 2)
+        .unwrap_or(4)
+        .max(2);
+    cmd.env("UV_THREADPOOL_SIZE", half_cpus.to_string());
+    cmd.env("NODE_OPTIONS", format!("--v8-pool-size={half_cpus}"));
     if let Some(extra) = &args.env {
         for (k, v) in extra {
             cmd.env(k, v);

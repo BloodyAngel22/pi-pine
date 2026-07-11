@@ -19,8 +19,30 @@ use std::sync::Arc;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use virtual_display::VirtualDisplayManager;
 
+/// Tauri поднимает собственный tokio-рантайм лениво при первом обращении, и по
+/// умолчанию (`tokio::runtime::Runtime::new()`) заводит по воркер-потоку на
+/// каждое логическое ядро. На многоядерных машинах это ощутимо конкурирует
+/// за CPU с остальной системой, хотя UI-команды Tauri этого параллелизма не
+/// требуют. Ограничиваем половиной ядер (минимум 2), пока не зарегистрирован
+/// дефолтный рантайм.
+fn build_capped_tokio_runtime() -> tokio::runtime::Runtime {
+    let total = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let workers = (total / 2).max(2);
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(workers)
+        .enable_all()
+        .build()
+        .expect("не удалось создать tokio runtime")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let runtime = build_capped_tokio_runtime();
+    tauri::async_runtime::set(runtime.handle().clone());
+    // `async_runtime::set` живёт всё время работы процесса — Runtime не должен
+    // быть уничтожен, пока приложение работает, поэтому намеренно не роняем его.
+    std::mem::forget(runtime);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
@@ -110,6 +132,7 @@ pub fn run() {
             agents::ensure_default_preset,
             // sessions
             sessions::list_project_sessions,
+            sessions::get_session_labels,
             sessions::read_last_session_file,
             sessions::write_last_session_file,
             sessions::delete_session_file,

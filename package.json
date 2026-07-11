@@ -6,12 +6,12 @@
   "description": "Компактный десктоп-клиент для pi (pi.dev) на Tauri + React",
   "license": "MIT",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "GOMAXPROCS=8 vite",
+    "build": "tsc -b && GOMAXPROCS=8 vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:dev": "GOMAXPROCS=8 tauri dev",
+    "tauri:build": "GOMAXPROCS=8 tauri build",
     "check": "tsc --noEmit"
   },
   "dependencies": {

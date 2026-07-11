@@ -349,6 +349,23 @@ pub fn git_diff_status(cwd: String, context_lines: Option<u32>) -> Result<GitDif
 /// полного диффа выбранного файла (Diff Viewer, итерация 2).
 const FULL_CONTEXT_FLAG: &str = "-U100000";
 
+/// Для файлов крупнее этого порога полный контекст не запрашиваем: `-U100000`
+/// на многомегабайтном файле раздувает возвращаемую строку (и её копии при
+/// сериализации в JSON → webview) до десятков МБ. Вместо этого используем
+/// ограниченный, но всё ещё широкий контекст.
+const FULL_CONTEXT_MAX_FILE_BYTES: u64 = 1_000_000;
+const LARGE_FILE_CONTEXT_FLAG: &str = "-U200";
+
+/// Выбор флага контекста по размеру файла на диске. Для удалённых файлов
+/// (metadata недоступна) остаёмся на полном контексте — их содержимое уже
+/// целиком входит в дифф независимо от `-U`.
+fn context_flag_for(root: &Path, rel_path: &str) -> &'static str {
+    match std::fs::metadata(root.join(rel_path)) {
+        Ok(meta) if meta.len() > FULL_CONTEXT_MAX_FILE_BYTES => LARGE_FILE_CONTEXT_FLAG,
+        _ => FULL_CONTEXT_FLAG,
+    }
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FileDiffResult {
@@ -364,6 +381,7 @@ pub fn git_diff_file(cwd: String, path: String, untracked: bool) -> Result<FileD
     let root = repo_root(cwd_path).ok_or_else(|| "not a git repository".to_string())?;
     let root_path = Path::new(&root);
 
+    let context_flag = context_flag_for(root_path, &path);
     let raw = if untracked {
         run_git(
             root_path,
@@ -371,7 +389,7 @@ pub fn git_diff_file(cwd: String, path: String, untracked: bool) -> Result<FileD
                 "diff",
                 "--no-index",
                 "--no-color",
-                FULL_CONTEXT_FLAG,
+                context_flag,
                 "--",
                 "/dev/null",
                 &path,
@@ -382,7 +400,7 @@ pub fn git_diff_file(cwd: String, path: String, untracked: bool) -> Result<FileD
         let base = diff_base(root_path);
         run_git(
             root_path,
-            &["diff", base, FULL_CONTEXT_FLAG, "-M", "--no-color", "--", &path],
+            &["diff", base, context_flag, "-M", "--no-color", "--", &path],
             false,
         )?
     };

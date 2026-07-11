@@ -190,12 +190,21 @@ function MessageComponent({ message, onCopy, onFork, onRegenerate, onEdit }: Pro
     }
     if (b.kind === "image") {
       blocks.push(
-        <img
-          key={i}
-          src={`data:${b.mimeType};base64,${b.data}`}
-          alt=""
-          className="max-h-72 rounded-md border border-(--color-border)"
-        />,
+        b.dropped ? (
+          <div
+            key={i}
+            className="rounded-md border border-dashed border-(--color-border) px-3 py-2 text-[11px] text-(--color-fg-dim)"
+          >
+            Изображение выгружено из памяти (показываются только последние)
+          </div>
+        ) : (
+          <img
+            key={i}
+            src={`data:${b.mimeType};base64,${b.data}`}
+            alt=""
+            className="max-h-72 rounded-md border border-(--color-border)"
+          />
+        ),
       );
     }
   }

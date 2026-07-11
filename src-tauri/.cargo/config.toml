@@ -3,3 +3,6 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [build]
 rustc-wrapper = "sccache"
+# Половина логических ядер этой машины (16) — полный `-j` на сборке
+# заметно подвешивал остальную систему во время cargo build/check.
+jobs = 8

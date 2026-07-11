@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search, Copy, Check, Layers } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
@@ -621,7 +621,7 @@ function ScreenshotToolCall({
         <span className="ml-auto shrink-0 text-(--color-fg-dim) flex items-center gap-1.5">
           {hasImages && !open && (
             <span className="flex -space-x-1">
-              {block.images!.slice(0, 3).map((img, idx) => (
+              {block.images!.filter((img) => !img.dropped).slice(0, 3).map((img, idx) => (
                 <img
                   key={idx}
                   src={`data:${img.mimeType};base64,${img.data}`}
@@ -733,7 +733,7 @@ function InteractToolCall({
           {hasScreenshot && <Camera size={10} className="text-(--color-accent)" />}
           {hasImages && !open && (
             <span className="flex -space-x-1">
-              {block.images!.slice(0, 3).map((img, idx) => (
+              {block.images!.filter((img) => !img.dropped).slice(0, 3).map((img, idx) => (
                 <img
                   key={idx}
                   src={`data:${img.mimeType};base64,${img.data}`}
@@ -821,18 +821,19 @@ function CopyPathButton({ path }: { path: string }) {
   );
 }
 
-function FileMutationToolCall({ block }: { block: UiBlockTool }) {
+const FileMutationToolCall = memo(function FileMutationToolCall({ block }: { block: UiBlockTool }) {
   const [open, setOpen] = useState(true);
   const [fileContent, setFileContent] = useState<string | undefined>(undefined);
   const isError = block.status === "error";
   const isRunning = block.status === "running";
+  const backendDiff = detailsDiff(block.details);
 
-  // Load file content for absolute line numbers (async)
+  // Load file content for absolute line numbers (async).
+  // Guarded by `fileContent != null` so a later, unrelated `block.details`
+  // patch (status/output merge — see mergeToolDetails, always a new object
+  // reference) doesn't re-trigger a fresh disk read of a file we already have.
   useEffect(() => {
-    if (block.details && (block.details as Record<string, unknown>).diff) {
-      // Backend already sent a diff with line numbers, no need to read file
-      return;
-    }
+    if (backendDiff != null || fileContent != null) return;
     const input = asRecord(block.input);
     const path = filePathFromInput(input);
     if (!path || path === "unknown file") return;
@@ -846,9 +847,15 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
         // Ignore: fall back to buildEditInputDiff without file content
       });
     return () => { cancelled = true; };
-  }, [block.input, block.details]);
+  }, [backendDiff, fileContent, block.input]);
 
-  const preview = fileMutationPreview(block, fileContent);
+  // jsdiff's diffLines is not cheap for large files — memoize so it only
+  // reruns when the actual inputs change, not on every re-render caused by
+  // a sibling tool call updating within the same assistant message.
+  const preview = useMemo(
+    () => fileMutationPreview(block, fileContent),
+    [block.name, block.input, backendDiff, fileContent],
+  );
   const lines = preview.diff ? preview.diff.split(/\r?\n/) : [];
   return (
     <div
@@ -908,7 +915,7 @@ function FileMutationToolCall({ block }: { block: UiBlockTool }) {
       )}
     </div>
   );
-}
+});
 
 function AskUserToolCall({
   block,
@@ -1778,25 +1785,34 @@ function ToolImages({ images }: { images: UiBlockTool["images"] }) {
         screenshot {images.length > 1 ? `(${images.length})` : ""}
       </div>
       <div className="flex flex-wrap gap-2">
-        {images.map((img, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
-            className="group relative"
-          >
-            <img
-              src={`data:${img.mimeType};base64,${img.data}`}
-              alt=""
-              className={`
-                rounded-md border border-(--color-border) object-cover
-                ${expandedIdx === idx ? "max-h-96 w-auto" : "max-h-32 w-auto"}
-                transition-all duration-200
-              `}
-            />
-            <div className="absolute inset-0 rounded-md ring-1 ring-inset ring-(--color-accent)/0 group-hover:ring-(--color-accent)/30 transition-all" />
-          </button>
-        ))}
+        {images.map((img, idx) =>
+          img.dropped ? (
+            <div
+              key={idx}
+              className="flex items-center rounded-md border border-dashed border-(--color-border) px-2 py-1 text-[10px] text-(--color-fg-dim)"
+            >
+              выгружено из памяти
+            </div>
+          ) : (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+              className="group relative"
+            >
+              <img
+                src={`data:${img.mimeType};base64,${img.data}`}
+                alt=""
+                className={`
+                  rounded-md border border-(--color-border) object-cover
+                  ${expandedIdx === idx ? "max-h-96 w-auto" : "max-h-32 w-auto"}
+                  transition-all duration-200
+                `}
+              />
+              <div className="absolute inset-0 rounded-md ring-1 ring-inset ring-(--color-accent)/0 group-hover:ring-(--color-accent)/30 transition-all" />
+            </button>
+          ),
+        )}
       </div>
     </div>
   );

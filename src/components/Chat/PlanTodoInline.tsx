@@ -135,7 +135,7 @@ export function PlanTodoInline({ tabId, active = true }: Props) {
   const messages = useChat((s) => (tabId ? (s.tabs.get(tabId)?.messages ?? EMPTY_MESSAGES) : s.messages));
   const planMode = useChat((s) => (tabId ? (s.tabs.get(tabId)?.planMode ?? false) : s.planMode));
   const planFilePath = useChat((s) => (tabId ? (s.tabs.get(tabId)?.planFilePath ?? null) : s.planFilePath));
-  const isStreaming = useChat((s) => (tabId ? (s.tabs.get(tabId)?.agentState?.isStreaming ?? false) : (s.agentState?.isStreaming ?? false)));
+  const planRefreshNonce = useChat((s) => (tabId ? (s.tabs.get(tabId)?.planRefreshNonce ?? 0) : s.planRefreshNonce));
   const loadPlan = useChat((s) => s.loadPlan);
   const [planText, setPlanText] = useState("");
   const [collapsed, setCollapsed] = useState(false);
@@ -146,33 +146,25 @@ export function PlanTodoInline({ tabId, active = true }: Props) {
     }
   }, [active, planMode, planFilePath, loadPlan]);
 
+  // pi-mono-x пишет план напрямую на диск — перечитываем по planRefreshNonce
+  // (бампается в store на turn_end), а не постоянным setInterval.
   useEffect(() => {
-    let cancelled = false;
-    const load = () => {
-      if (!active || !planFilePath) {
-        setPlanText("");
-        return;
-      }
-      void invoke<string>("read_plan_file", { path: planFilePath })
-        .then((text) => {
-          if (!cancelled) setPlanText(text);
-        })
-        .catch(() => {
-          if (!cancelled) setPlanText("");
-        });
-    };
-    load();
     if (!active || !planFilePath) {
-      return () => {
-        cancelled = true;
-      };
+      setPlanText("");
+      return;
     }
-    const timer = window.setInterval(load, isStreaming ? 1500 : 4000);
+    let cancelled = false;
+    void invoke<string>("read_plan_file", { path: planFilePath })
+      .then((text) => {
+        if (!cancelled) setPlanText(text);
+      })
+      .catch(() => {
+        if (!cancelled) setPlanText("");
+      });
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [active, planFilePath, isStreaming, messages.length]);
+  }, [active, planFilePath, planRefreshNonce]);
 
   const todos = useMemo(() => {
     const planTodos = parsePlanTasks(planText);

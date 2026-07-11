@@ -81,6 +81,7 @@ export default function App() {
   const initExt = useExt((s) => s.init);
   const initDiff = useDiff((s) => s.init);
   const refreshDiff = useDiff((s) => s.refresh);
+  const setDiffPanelOpen = useDiff((s) => s.setPanelOpen);
   const loadTheme = useTheme((s) => s.load);
   const reduceMotion = useReducedMotion();
 
@@ -219,8 +220,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setDiffPanelOpen(mainTab === "diff");
     if (mainTab === "diff") void refreshDiff();
-  }, [mainTab, refreshDiff]);
+  }, [mainTab, refreshDiff, setDiffPanelOpen]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;

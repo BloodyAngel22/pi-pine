@@ -183,6 +183,38 @@ fn count_messages(path: &Path) -> usize {
     n
 }
 
+#[derive(Serialize, Clone)]
+pub struct SessionLabel {
+    pub file: String,
+    pub name: Option<String>,
+    pub first_user_text: Option<String>,
+}
+
+/// Лёгкая версия `list_project_sessions` для конкретного набора файлов.
+/// Используется при восстановлении вкладок на старте: нужны только
+/// имя/превью нескольких сохранённых сессий, а не скан ВСЕГО каталога
+/// сессий проекта (`read_session_name_scan` + `count_messages`, оба —
+/// полный проход файла, на каждую .jsonl в директории), как это делает
+/// `list_project_sessions`. На проектах с большой историей сессий это
+/// превращало восстановление 2-3 вкладок в чтение десятков файлов.
+#[tauri::command]
+pub fn get_session_labels(files: Vec<String>) -> Vec<SessionLabel> {
+    files
+        .into_iter()
+        .map(|file| {
+            let path = PathBuf::from(&file);
+            let name = read_session_name_scan(&path)
+                .or_else(|| read_header(&path).and_then(|h| h.session_name));
+            let first_user_text = read_first_user_text(&path, 50);
+            SessionLabel {
+                file,
+                name,
+                first_user_text,
+            }
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub fn list_project_sessions(cwd: String) -> Vec<SessionInfo> {
     let Some(home) = dirs::home_dir() else {
