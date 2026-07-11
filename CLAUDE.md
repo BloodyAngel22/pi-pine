@@ -118,7 +118,7 @@ npm run check
 
 Pi Pine общается с pi-mono-x через **JSONL RPC** (одна JSON-строчка на строку, LF-разделитель).
 
-- Команды: `prompt`, `steer`, `follow_up`, `btw`, `bash`, `abort`, `get_state`, `get_messages`, `compact`, `switch_session`, `navigate_tree`, `fork`, `cd`, `pwd`, `ls`, `set_model`, `cycle_model`, `set_thinking_level`, `set_steering_mode`, `set_follow_up_mode`, `set_auto_compaction`, `set_auto_retry`, и др.
+- Команды: `prompt`, `steer`, `follow_up`, `btw`, `bash`, `abort`, `get_state`, `get_messages`, `compact`, `switch_session`, `navigate_tree`, `fork`, `cd`, `pwd`, `ls`, `set_model`, `cycle_model`, `set_thinking_level`, `set_steering_mode`, `set_follow_up_mode`, `set_auto_compaction`, `set_auto_retry`, `get_subagent_tasks`, `cancel_task`, `background_task`, `set_subagent_concurrency`, `set_subagent_timeout`, `list_agents`, `get_agent`, `save_agent`, `delete_agent`, и др.
 - События: `message_update`, `tool_execution_start`, `tool_execution_update`, `tool_execution_end`, `turn_end`, `extension_ui_request`
 - Extension UI: `permission`, `confirm`, `select`, `input`, `notify`, `editor`, `setStatus`, `setWidget`
 - Источник истины протокола: `packages/coding-agent/docs/rpc.md` в pi-mono-x

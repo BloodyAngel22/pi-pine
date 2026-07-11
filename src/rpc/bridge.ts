@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   CommandDetail,
+  CustomAgentConfig,
   ImageContent,
   McpStatusResult,
   Model,
@@ -443,6 +444,57 @@ export async function setContextPruning(enabled: boolean, sessionId?: string | n
 
 export async function setFileManifest(enabled: boolean, sessionId?: string | null): Promise<void> {
   await request("set_file_manifest", { enabled }, { sessionId });
+}
+
+// === Sub-agents ===
+
+export async function cancelTask(taskId: string, sessionId?: string | null): Promise<void> {
+  await request("cancel_task", { taskId }, { sessionId });
+}
+
+export async function backgroundTask(taskId: string, sessionId?: string | null): Promise<void> {
+  await request("background_task", { taskId }, { sessionId });
+}
+
+export async function setSubagentConcurrency(limit: number, sessionId?: string | null): Promise<void> {
+  await request("set_subagent_concurrency", { limit }, { sessionId });
+}
+
+export async function setSubagentTimeout(timeoutMs: number, sessionId?: string | null): Promise<void> {
+  await request("set_subagent_timeout", { timeoutMs }, { sessionId });
+}
+
+// === Custom sub-agent definitions (.pi/agents/*.md) ===
+
+export async function listAgents(sessionId?: string | null): Promise<{ agents: CustomAgentConfig[] }> {
+  return request<{ agents: CustomAgentConfig[] }>("list_agents", {}, { sessionId });
+}
+
+export async function getAgent(name: string, sessionId?: string | null): Promise<{ agent: CustomAgentConfig | null }> {
+  return request<{ agent: CustomAgentConfig | null }>("get_agent", { name }, { sessionId });
+}
+
+export interface SaveAgentPayload {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  tools?: string[];
+  mcpTools?: string[];
+  model?: string;
+  source: "project" | "user";
+  originalName?: string;
+}
+
+export async function saveAgent(payload: SaveAgentPayload, sessionId?: string | null): Promise<{ agents: CustomAgentConfig[] }> {
+  return request<{ agents: CustomAgentConfig[] }>("save_agent", { ...payload }, { sessionId });
+}
+
+export async function deleteAgent(
+  name: string,
+  source: "project" | "user",
+  sessionId?: string | null,
+): Promise<{ agents: CustomAgentConfig[] }> {
+  return request<{ agents: CustomAgentConfig[] }>("delete_agent", { name, source }, { sessionId });
 }
 
 export async function enterPlanMode(name?: string, sessionId?: string | null): Promise<{ planFilePath: string }> {

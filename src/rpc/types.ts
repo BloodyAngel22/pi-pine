@@ -71,6 +71,59 @@ export interface RpcSessionState {
   pendingMessageCount: number;
   cwd?: string;
   planMode: PlanModeState;
+  subagentConcurrencyLimit: number;
+  subagentDefaultTimeoutMs: number;
+}
+
+// === Sub-agents ===
+
+export type SubagentTaskStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "done"
+  | "error"
+  | "background";
+
+export interface SubagentToolCallEntry {
+  toolCallId: string;
+  toolName: string;
+  args?: Record<string, unknown>;
+  status: "running" | "done" | "error";
+  output?: string;
+  startedAt: number;
+  completedAt?: number;
+}
+
+export interface SubagentTask {
+  id: string;
+  label: string;
+  status: SubagentTaskStatus;
+  startedAt: number;
+  completedAt?: number;
+  agentName?: string;
+  inputTokens: number;
+  outputTokens: number;
+  savedTokens: number;
+  result?: string;
+  error?: string;
+  timedOut?: boolean;
+  interrupted?: boolean;
+  recentActivities?: string[];
+  toolCalls?: SubagentToolCallEntry[];
+  queuedAt?: number;
+}
+
+/** A custom sub-agent definition (`.pi/agents/*.md`). */
+export interface CustomAgentConfig {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  tools?: string[];
+  mcpTools?: string[];
+  model?: string;
+  sourcePath: string;
+  source: "project" | "user";
 }
 
 /** "idle" — тулы зарегистрированы из дискового кэша схем, процесс сервера ещё не запускался (ленивый коннект при первом вызове тула). */

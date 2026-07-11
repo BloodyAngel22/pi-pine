@@ -402,6 +402,10 @@ interface ChatState {
   setAutoCompaction(enabled: boolean): Promise<void>;
   setContextPruning(enabled: boolean): Promise<void>;
   setFileManifest(enabled: boolean): Promise<void>;
+  cancelTask(taskId: string): Promise<void>;
+  backgroundTask(taskId: string): Promise<void>;
+  setSubagentConcurrency(limit: number): Promise<void>;
+  setSubagentTimeout(timeoutMs: number): Promise<void>;
   setThinking(level: ThinkingLevel): Promise<void>;
   switchModel(provider: string, modelId: string): Promise<void>;
   loadAvailableModels(): Promise<void>;
@@ -2158,6 +2162,40 @@ export const useChat = create<ChatState>((rawSet, get) => {
   async setFileManifest(enabled) {
     try {
       await rpc.setFileManifest(enabled, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async cancelTask(taskId) {
+    try {
+      await rpc.cancelTask(taskId, get().activeTabId);
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async backgroundTask(taskId) {
+    try {
+      await rpc.backgroundTask(taskId, get().activeTabId);
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async setSubagentConcurrency(limit) {
+    try {
+      await rpc.setSubagentConcurrency(limit, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async setSubagentTimeout(timeoutMs) {
+    try {
+      await rpc.setSubagentTimeout(timeoutMs, get().activeTabId);
       await get().refreshState();
     } catch (e) {
       get().setError((e as Error).message);

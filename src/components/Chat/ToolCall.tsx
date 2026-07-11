@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, memo } from "react";
-import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search, Copy, Check, Layers } from "@/components/ui/icons/compat";
+import { ChevronDown, ChevronRight, Wrench, AlertCircle, MessageCircleQuestion, Bot, FileText, Globe, Image as ImageIcon, Camera, MousePointer2, Clock, Search, Copy, Check, Layers, X, Cloud } from "@/components/ui/icons/compat";
 import clsx from "clsx";
 import type { UiBlockTool } from "@/store/chat";
 import { useChat } from "@/store/chat";
@@ -123,34 +123,72 @@ function formatSeconds(value: unknown): string | undefined {
   return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
 }
 
+interface SubagentToolCallEntryInfo {
+  toolCallId: string;
+  toolName: string;
+  args?: Record<string, unknown>;
+  status: "running" | "done" | "error";
+  output?: string;
+  startedAt: number;
+  completedAt?: number;
+}
+
+function toolCallEntryList(value: unknown): SubagentToolCallEntryInfo[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => asRecord(v))
+    .filter((o) => typeof o.toolCallId === "string" && typeof o.toolName === "string")
+    .map((o) => ({
+      toolCallId: o.toolCallId as string,
+      toolName: o.toolName as string,
+      args: typeof o.args === "object" && o.args !== null ? (o.args as Record<string, unknown>) : undefined,
+      status: (o.status === "done" || o.status === "error" ? o.status : "running") as "running" | "done" | "error",
+      output: typeof o.output === "string" ? o.output : undefined,
+      startedAt: typeof o.startedAt === "number" ? o.startedAt : Date.now(),
+      completedAt: typeof o.completedAt === "number" ? o.completedAt : undefined,
+    }));
+}
+
 function taskDetails(details: unknown): {
+  taskId?: string;
+  rawStatus?: string;
   description?: string;
   cwd?: string;
   inputTokens?: number;
   outputTokens?: number;
   savedTokens?: number;
   activities: string[];
+  toolCalls: SubagentToolCallEntryInfo[];
+  queuedAt?: number;
   timedOut?: boolean;
   interrupted?: boolean;
 } {
   const o = asRecord(details);
   return {
+    taskId: typeof o.taskId === "string" ? o.taskId : undefined,
+    rawStatus: typeof o.status === "string" ? o.status : undefined,
     description: typeof o.description === "string" ? o.description : undefined,
     cwd: typeof o.cwd === "string" ? o.cwd : undefined,
     inputTokens: typeof o.inputTokens === "number" ? o.inputTokens : undefined,
     outputTokens: typeof o.outputTokens === "number" ? o.outputTokens : undefined,
     savedTokens: typeof o.savedTokens === "number" ? o.savedTokens : undefined,
     activities: stringList(o.activities ?? o.recentActivities),
+    toolCalls: toolCallEntryList(o.toolCalls),
+    queuedAt: typeof o.queuedAt === "number" ? o.queuedAt : undefined,
     timedOut: typeof o.timedOut === "boolean" ? o.timedOut : undefined,
     interrupted: typeof o.interrupted === "boolean" ? o.interrupted : undefined,
   };
 }
 
-export type SubagentStatus = "running" | "done" | "error" | "timeout" | "partial";
+export type SubagentStatus = "queued" | "running" | "done" | "error" | "timeout" | "partial";
 
 export function getSubagentStatus(block: UiBlockTool): SubagentStatus {
   if (block.status === "error") return "error";
-  if (block.status === "running" || block.status === "pending") return "running";
+  if (block.status === "running" || block.status === "pending") {
+    const details = taskDetails(block.details);
+    if (details.rawStatus === "queued") return "queued";
+    return "running";
+  }
   const details = taskDetails(block.details);
   if (details.timedOut) return "timeout";
   if (details.interrupted) return "partial";
@@ -158,6 +196,7 @@ export function getSubagentStatus(block: UiBlockTool): SubagentStatus {
 }
 
 const SUBAGENT_STATUS_LABEL: Record<SubagentStatus, string> = {
+  queued: "в очереди",
   running: "выполняется",
   done: "готово",
   error: "ошибка",
@@ -1079,6 +1118,8 @@ export function SubagentStatusIcon({ status, size = 12 }: { status: SubagentStat
       return <Clock size={size} className="text-(--color-warn)" />;
     case "partial":
       return <AlertCircle size={size} className="text-(--color-warn)" />;
+    case "queued":
+      return <Clock size={size} className="text-(--color-fg-dim)" />;
     case "running":
       return <Bot size={size} className="text-(--color-accent)" />;
     default:
@@ -1098,12 +1139,83 @@ function SubagentStatusBadge({ status, elapsed }: { status: SubagentStatus; elap
     );
   }
   const tone =
-    status === "error" ? "text-(--color-danger)" : status === "timeout" || status === "partial" ? "text-(--color-warn)" : "text-(--color-fg-dim)";
+    status === "error"
+      ? "text-(--color-danger)"
+      : status === "timeout" || status === "partial"
+        ? "text-(--color-warn)"
+        : "text-(--color-fg-dim)";
   return (
     <span className={clsx("font-mono text-[10px]", tone)}>
       {subagentStatusLabel(status)}
       {elapsed ? ` · ${elapsed}` : ""}
     </span>
+  );
+}
+
+function SubagentTaskActions({ block, status }: { block: UiBlockTool; status: SubagentStatus }) {
+  const cancelTask = useChat((s) => s.cancelTask);
+  const backgroundTask = useChat((s) => s.backgroundTask);
+  const details = taskDetails(block.details);
+  if (!details.taskId) return null;
+  if (status !== "running" && status !== "queued") return null;
+  return (
+    <span className="flex items-center gap-1 shrink-0">
+      {status === "running" && (
+        <button
+          type="button"
+          title="Перевести в фон"
+          onClick={(e) => {
+            e.stopPropagation();
+            backgroundTask(details.taskId!);
+          }}
+          className="p-0.5 rounded hover:bg-(--color-bg-hover) text-(--color-fg-dim) hover:text-(--color-fg)"
+        >
+          <Cloud size={12} />
+        </button>
+      )}
+      <button
+        type="button"
+        title="Отменить задачу"
+        onClick={(e) => {
+          e.stopPropagation();
+          cancelTask(details.taskId!);
+        }}
+        className="p-0.5 rounded hover:bg-(--color-bg-hover) text-(--color-fg-dim) hover:text-(--color-danger)"
+      >
+        <X size={12} />
+      </button>
+    </span>
+  );
+}
+
+function SubagentToolCallRow({ entry }: { entry: SubagentToolCallEntryInfo }) {
+  const [open, setOpen] = useState(false);
+  const icon =
+    entry.status === "error" ? (
+      <AlertCircle size={11} className="text-(--color-danger)" />
+    ) : entry.status === "running" ? (
+      <Clock size={11} className="text-(--color-accent) animate-pulse" />
+    ) : (
+      <Check size={11} className="text-(--color-fg-mute)" />
+    );
+  const argsPreview = entry.args ? shortInput(entry.args) : undefined;
+  return (
+    <div className="font-mono text-[11px]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 w-full text-left text-(--color-fg-mute) hover:text-(--color-fg)"
+      >
+        {icon}
+        <span className="truncate">
+          {entry.toolName}
+          {argsPreview ? `: ${argsPreview}` : ""}
+        </span>
+      </button>
+      {open && entry.output && (
+        <pre className="mt-1 ml-4 whitespace-pre-wrap text-(--color-fg-dim) max-h-40 overflow-y-auto">{entry.output}</pre>
+      )}
+    </div>
   );
 }
 
@@ -1133,17 +1245,28 @@ function TaskDetailBody({ block, details, instructions }: { block: UiBlockTool; 
           <Metric label="saved" value={details.savedTokens} accent />
         </div>
       )}
-      {details.activities.length > 0 && (
+      {details.toolCalls.length > 0 ? (
         <div>
           <div className="text-(--color-fg-dim) mb-0.5">инструменты субагента</div>
-          <div className="bg-(--color-bg) border border-(--color-border) rounded p-2 space-y-1">
-            {details.activities.map((activity, idx) => (
-              <div key={`${block.toolUseId}-activity-${idx}`} className="font-mono text-[11px] text-(--color-fg-mute) truncate" title={activity}>
-                └─ {activity}
-              </div>
+          <div className="bg-(--color-bg) border border-(--color-border) rounded p-2 space-y-1.5 max-h-64 overflow-y-auto">
+            {details.toolCalls.map((entry) => (
+              <SubagentToolCallRow key={entry.toolCallId} entry={entry} />
             ))}
           </div>
         </div>
+      ) : (
+        details.activities.length > 0 && (
+          <div>
+            <div className="text-(--color-fg-dim) mb-0.5">инструменты субагента</div>
+            <div className="bg-(--color-bg) border border-(--color-border) rounded p-2 space-y-1">
+              {details.activities.map((activity, idx) => (
+                <div key={`${block.toolUseId}-activity-${idx}`} className="font-mono text-[11px] text-(--color-fg-mute) truncate" title={activity}>
+                  └─ {activity}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
       )}
       {details.cwd && (
         <div className="font-mono text-[10px] text-(--color-fg-dim) truncate" title={details.cwd}>
@@ -1188,7 +1311,9 @@ function TaskToolCall({
             ? "border-(--color-warn)/30 bg-(--color-warn)/5"
             : status === "running"
               ? "border-(--color-accent)/30 bg-(--color-accent)/5"
-              : "border-(--color-border) bg-(--color-bg-soft)",
+              : status === "queued"
+                ? "border-(--color-fg-dim)/30 bg-(--color-bg-soft)"
+                : "border-(--color-border) bg-(--color-bg-soft)",
       )}
     >
       <button
@@ -1201,7 +1326,8 @@ function TaskToolCall({
         <span className="font-mono text-(--color-accent)">task</span>
         {agent && <span className="font-mono text-(--color-fg-dim)">{agent}</span>}
         <span className="text-(--color-fg-mute) truncate">{description}</span>
-        <span className="ml-auto shrink-0 text-(--color-fg-dim)">
+        <span className="ml-auto shrink-0 flex items-center gap-1.5 text-(--color-fg-dim)">
+          <SubagentTaskActions block={block} status={status} />
           <SubagentStatusBadge status={status} elapsed={elapsed} />
         </span>
       </button>
@@ -1240,7 +1366,9 @@ function SubagentSwarmCard({ block }: { block: UiBlockTool }) {
             ? "border-(--color-warn)/30 bg-(--color-warn)/5"
             : status === "running"
               ? "border-(--color-accent)/30 bg-(--color-bg)"
-              : "border-(--color-border) bg-(--color-bg)",
+              : status === "queued"
+                ? "border-(--color-fg-dim)/30 bg-(--color-bg)"
+                : "border-(--color-border) bg-(--color-bg)",
       )}
     >
       <button
@@ -1258,6 +1386,7 @@ function SubagentSwarmCard({ block }: { block: UiBlockTool }) {
           {details.savedTokens != null && (
             <span className="ml-auto font-mono text-(--color-accent)">-{details.savedTokens.toLocaleString()}tok</span>
           )}
+          <SubagentTaskActions block={block} status={status} />
         </div>
       </button>
       {isOpen && <TaskDetailBody block={block} details={{ ...details, description }} instructions={instructions} />}

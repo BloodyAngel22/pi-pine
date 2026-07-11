@@ -79,6 +79,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const setContextPruning = useChat((s) => s.setContextPruning);
   const contextPruningStats = useChat((s) => s.contextPruningStats);
   const setFileManifest = useChat((s) => s.setFileManifest);
+  const setSubagentConcurrency = useChat((s) => s.setSubagentConcurrency);
+  const setSubagentTimeout = useChat((s) => s.setSubagentTimeout);
   const startRpc = useChat((s) => s.startRpc);
   const stopRpc = useChat((s) => s.stopRpc);
 
@@ -347,6 +349,70 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   label="Манифест файлов сессии"
                   description="Без обращения к LLM перед каждым запросом к модели напоминать список прочитанных/изменённых файлов — даже если их содержимое уже вычищено очисткой контекста."
                 />
+              </Section>
+
+              <Section title="Sub-agents">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm">Параллельных задач одновременно</span>
+                    <span className="font-mono text-xs text-(--color-fg-mute)">{agentState?.subagentConcurrencyLimit ?? 3}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      onClick={() => void setSubagentConcurrency(Math.max(1, (agentState?.subagentConcurrencyLimit ?? 3) - 1))}
+                    >
+                      −
+                    </Button>
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      onClick={() => void setSubagentConcurrency(Math.min(10, (agentState?.subagentConcurrencyLimit ?? 3) + 1))}
+                    >
+                      +
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => void setSubagentConcurrency(3)}>
+                      Сброс
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm">Таймаут задачи, мин</span>
+                    <span className="font-mono text-xs text-(--color-fg-mute)">
+                      {Math.round((agentState?.subagentDefaultTimeoutMs ?? 5 * 60 * 1000) / 60000)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      onClick={() =>
+                        void setSubagentTimeout(
+                          Math.max(0.5, Math.round((agentState?.subagentDefaultTimeoutMs ?? 5 * 60 * 1000) / 60000) - 1) * 60000,
+                        )
+                      }
+                    >
+                      −
+                    </Button>
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      onClick={() =>
+                        void setSubagentTimeout(
+                          Math.min(30, Math.round((agentState?.subagentDefaultTimeoutMs ?? 5 * 60 * 1000) / 60000) + 1) * 60000,
+                        )
+                      }
+                    >
+                      +
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => void setSubagentTimeout(5 * 60 * 1000)}>
+                      Сброс
+                    </Button>
+                  </div>
+                </div>
+                <Hint>Лимит параллельных под-агентов (task tool) и таймаут одной задачи по умолчанию.</Hint>
               </Section>
             </SettingsStack>
           </Tabs.Content>
