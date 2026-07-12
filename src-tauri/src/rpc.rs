@@ -166,6 +166,9 @@ pub fn rpc_start(
     // Подавляем интерактивные TTY-фокусы
     cmd.env("PI_NO_TTY", "1");
     cmd.env("NO_COLOR", "1");
+    // pi-pine сам показывает нативное OS-уведомление на agent_end (см. src/lib/notify.ts) —
+    // просим pi-mono-x не дублировать визуальное уведомление (звук всё равно проигрывается).
+    cmd.env("PI_RPC_CLIENT_NOTIFIES", "1");
 
     let mut child = cmd
         .spawn()

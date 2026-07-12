@@ -8,6 +8,7 @@ const KEY_SESSIONS_W = "pi-pine.sessionsWidth";
 const KEY_SIDEPANEL_W = "pi-pine.sidePanelWidth";
 const KEY_DEEP_RESEARCH_MODE = "pi-pine.deepResearchMode";
 const KEY_DIFF_VIEW_MODE = "pi-pine.diffViewMode";
+const KEY_NOTIFICATIONS_ENABLED = "pi-pine.enableNotifications";
 
 const DEFAULT_FONT = 1.0;
 const DEFAULT_CHAT_FONT = 1.0;
@@ -16,6 +17,7 @@ const DEFAULT_SESSIONS_W = 288;
 const DEFAULT_SIDEPANEL_W = 320;
 const DEFAULT_DEEP_RESEARCH_MODE: DeepResearchMode = "balanced";
 const DEFAULT_DIFF_VIEW_MODE: DiffViewMode = "full";
+const DEFAULT_NOTIFICATIONS_ENABLED = true;
 
 export const FONT_MIN = 0.85;
 export const FONT_MAX = 1.5;
@@ -42,6 +44,7 @@ interface UiPrefsState {
   sidePanelWidth: number;
   deepResearchMode: DeepResearchMode;
   diffViewMode: DiffViewMode;
+  notificationsEnabled: boolean;
   setFontScale(v: number): void;
   setChatFontSize(v: number): void;
   setDiffFontSize(v: number): void;
@@ -49,6 +52,7 @@ interface UiPrefsState {
   setSidePanelWidth(v: number): void;
   setDeepResearchMode(v: DeepResearchMode): void;
   setDiffViewMode(v: DiffViewMode): void;
+  setNotificationsEnabled(v: boolean): void;
   resetFont(): void;
   resetChatFont(): void;
   resetDiffFont(): void;
@@ -73,6 +77,12 @@ function readDeepResearchMode(): DeepResearchMode {
 function readDiffViewMode(): DiffViewMode {
   const raw = localStorage.getItem(KEY_DIFF_VIEW_MODE);
   return raw === "compact" || raw === "full" ? raw : DEFAULT_DIFF_VIEW_MODE;
+}
+
+function readBool(key: string, def: boolean): boolean {
+  const raw = localStorage.getItem(key);
+  if (raw === null) return def;
+  return raw === "true";
 }
 
 function applyFontScale(scale: number) {
@@ -143,6 +153,7 @@ export const useUiPrefs = create<UiPrefsState>((set) => {
   );
   const deepResearchMode = readDeepResearchMode();
   const diffViewMode = readDiffViewMode();
+  const notificationsEnabled = readBool(KEY_NOTIFICATIONS_ENABLED, DEFAULT_NOTIFICATIONS_ENABLED);
   applyFontScale(fontScale);
   applyChatFontSize(chatFontSize);
   applyDiffFontSize(diffFontSize);
@@ -155,6 +166,7 @@ export const useUiPrefs = create<UiPrefsState>((set) => {
     sidePanelWidth,
     deepResearchMode,
     diffViewMode,
+    notificationsEnabled,
 
     setFontScale(v) {
       const next = clamp(v, FONT_MIN, FONT_MAX);
@@ -193,6 +205,10 @@ export const useUiPrefs = create<UiPrefsState>((set) => {
       const next = v === "compact" || v === "full" ? v : DEFAULT_DIFF_VIEW_MODE;
       localStorage.setItem(KEY_DIFF_VIEW_MODE, next);
       set({ diffViewMode: next });
+    },
+    setNotificationsEnabled(v) {
+      localStorage.setItem(KEY_NOTIFICATIONS_ENABLED, String(v));
+      set({ notificationsEnabled: v });
     },
     resetFont() {
       localStorage.removeItem(KEY_FONT);

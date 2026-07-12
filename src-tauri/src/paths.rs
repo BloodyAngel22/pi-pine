@@ -258,8 +258,12 @@ pub fn read_auth_status() -> AuthStatus {
 /// - флаги (`--foo`, `-x`) пропускаются
 ///
 /// Возвращает абсолютный путь к существующей директории либо `None`.
-#[tauri::command]
-pub fn parse_cli_cwd() -> Option<String> {
+///
+/// Синхронная версия без `#[tauri::command]` — вызывается как из фронтенда
+/// (через `parse_cli_cwd`), так и из `run()` до инициализации Tauri (для
+/// per-directory single-instance, см. `single_instance.rs`), где async/Tauri
+/// контекст ещё недоступен.
+pub fn resolve_cli_cwd() -> Option<PathBuf> {
     let args: Vec<String> = std::env::args().collect();
     let cur = std::env::current_dir().ok();
     for raw in args.into_iter().skip(1) {
@@ -296,13 +300,18 @@ pub fn parse_cli_cwd() -> Option<String> {
         // Каноникализация (раскрывает `.` / `..` / симлинки).
         let resolved = abs.canonicalize().unwrap_or(abs);
         if resolved.is_dir() {
-            return Some(resolved.to_string_lossy().into_owned());
+            return Some(resolved);
         }
         // Первый позиционный — но это не директория. Возвращаем None,
         // чтобы фронт мог показать предупреждение и не «съедал» аргумент молча.
         return None;
     }
     None
+}
+
+#[tauri::command]
+pub fn parse_cli_cwd() -> Option<String> {
+    resolve_cli_cwd().map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

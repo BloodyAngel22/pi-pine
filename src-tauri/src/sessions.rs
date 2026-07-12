@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 /// Кодирование cwd → имя каталога: `/home/maximz/foo` → `--home-maximz-foo--`.
 /// Эмпирически наблюдается в существующих сессиях pi (см. `~/.pi/agent/sessions`).
-fn encode_cwd(cwd: &str) -> String {
+/// `pub(crate)`, т.к. переиспользуется в `single_instance.rs` как ключ сокета.
+pub(crate) fn encode_cwd(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches('/');
     let body: String = trimmed
         .chars()

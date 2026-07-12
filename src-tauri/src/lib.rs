@@ -4,11 +4,13 @@ mod clipboard;
 mod favorites;
 mod git_diff;
 mod mcp;
+mod notify_sound;
 mod paths;
 mod plans;
 mod rpc;
 mod rpc_log;
 mod sessions;
+mod single_instance;
 mod terminal;
 mod themes;
 mod transcription;
@@ -37,6 +39,18 @@ fn build_capped_tokio_runtime() -> tokio::runtime::Runtime {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Per-directory single-instance: если для этой же cwd уже есть живой
+    // инстанс, он получает сигнал фокуса и текущий процесс завершается, не
+    // создавая окно/Tauri-рантайм. Запуск без явного пути (нет CLI-аргумента)
+    // dedup не проходит — всегда новый инстанс (см. single_instance.rs).
+    let single_instance_rx = match paths::resolve_cli_cwd() {
+        Some(cwd) => match single_instance::acquire(&cwd) {
+            single_instance::Outcome::FocusedExisting => return,
+            single_instance::Outcome::Acquired(rx) => Some(rx),
+        },
+        None => None,
+    };
+
     let runtime = build_capped_tokio_runtime();
     tauri::async_runtime::set(runtime.handle().clone());
     // `async_runtime::set` живёт всё время работы процесса — Runtime не должен
@@ -48,7 +62,9 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
+        .setup(move |app| {
             let _window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Pi Pine")
@@ -95,6 +111,20 @@ pub fn run() {
             std::thread::spawn(move || {
                 paths::watch_auth(handle);
             });
+            // Повторный запуск pi-pine в той же cwd шлёт сигнал сюда вместо
+            // открытия второго окна — см. single_instance::acquire в run().
+            if let Some(rx) = single_instance_rx {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    while rx.recv().is_ok() {
+                        if let Some(w) = handle.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -166,6 +196,8 @@ pub fn run() {
             transcription::test_stt_connection,
             transcription::list_transcription_models,
             transcription::transcribe_audio,
+            // notification sound (обход sound_name-only ограничения tauri-plugin-notification на Linux)
+            notify_sound::play_notification_sound,
             // Virtual display
             virtual_display::start_virtual_display,
             virtual_display::stop_virtual_display,

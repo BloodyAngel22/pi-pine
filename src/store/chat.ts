@@ -5,6 +5,7 @@ import { useVirtualDisplay } from "@/store/virtualDisplay";
 import { useExt } from "@/store/ext";
 import { useAgentsStore } from "@/store/agents";
 import { useUiPrefs } from "@/store/uiPrefs";
+import { notifyIfBackground } from "@/lib/notify";
 import { t } from "@/i18n/ru";
 import type {
   AnyContent,
@@ -402,6 +403,9 @@ interface ChatState {
   setAutoCompaction(enabled: boolean): Promise<void>;
   setContextPruning(enabled: boolean): Promise<void>;
   setFileManifest(enabled: boolean): Promise<void>;
+  setNotificationEnabled(enabled: boolean): Promise<void>;
+  setNotificationSoundEnabled(enabled: boolean): Promise<void>;
+  setNotificationSoundPath(path: string | undefined): Promise<void>;
   cancelTask(taskId: string): Promise<void>;
   backgroundTask(taskId: string): Promise<void>;
   setSubagentConcurrency(limit: number): Promise<void>;
@@ -451,6 +455,9 @@ const STORAGE_KEY_SKILLS_PREFIX_ID = "pi-pine.attachedSkills.id.";
 const STORAGE_KEY_OPEN_TABS_PREFIX = "pi-pine.openTabs.";
 const SESSIONS_CHANGED_EVENT = "pi-pine:sessions-changed";
 const closedTabIds = new Set<string>();
+// Вкладки, для которых уже отправлено OS-уведомление "нужен ответ" в рамках
+// текущего хода — не даём turn_end продублировать его уведомлением "ход завершён".
+const notifiedThisTurn = new Set<string>();
 
 function openTabsStorageKey(cwd: string): string {
   return `${STORAGE_KEY_OPEN_TABS_PREFIX}${cwd}`;
@@ -2168,6 +2175,33 @@ export const useChat = create<ChatState>((rawSet, get) => {
     }
   },
 
+  async setNotificationEnabled(enabled) {
+    try {
+      await rpc.setNotificationEnabled(enabled, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async setNotificationSoundEnabled(enabled) {
+    try {
+      await rpc.setNotificationSoundEnabled(enabled, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
+  async setNotificationSoundPath(path) {
+    try {
+      await rpc.setNotificationSoundPath(path, get().activeTabId);
+      await get().refreshState();
+    } catch (e) {
+      get().setError((e as Error).message);
+    }
+  },
+
   async cancelTask(taskId) {
     try {
       await rpc.cancelTask(taskId, get().activeTabId);
@@ -2894,12 +2928,22 @@ export const useChat = create<ChatState>((rawSet, get) => {
     if (!target) return;
     const tab = get().tabs.get(target) ?? createDefaultSessionTab(target);
     const current = tab.pendingUserAction;
+    const wasIdle = (current?.count ?? 0) === 0;
     get().updateTab(target, {
       pendingUserAction: {
         kind,
         count: (current?.count ?? 0) + 1,
       },
     });
+    if (wasIdle) {
+      notifiedThisTurn.add(target);
+      void notifyIfBackground({
+        title: kind === "permission" ? "Требуется разрешение" : "Требуется ответ",
+        body: "Агент ждёт вашего ответа",
+        tabId: target,
+        sound: true,
+      });
+    }
   },
 
   clearTabWaiting(kind, tabId) {
@@ -3055,6 +3099,38 @@ function handleAgentEvent(
         get().refreshSessionStats(),
         get().refreshState(),
       ]).finally(() => notifySessionsChanged());
+      // scoped get (см. makeScopedGet) — activeTabId здесь всегда равен tabId
+      // события, а не реально видимой пользователем вкладке; notifyIfBackground
+      // сам сверяется с настоящим useChat.getState() для проверки видимости.
+      // agent_end (а не turn_end!) — агент действительно закончил и ушёл в idle;
+      // turn_end срабатывает на каждый внутренний шаг (в т.ч. между вызовами
+      // инструментов) и не годится как сигнал "агент закончил отвечать".
+      const notifyTabId = get().activeTabId;
+      if (notifyTabId) {
+        if (notifiedThisTurn.has(notifyTabId)) {
+          // Уведомление "нужен ответ" уже отправлено в рамках этого запуска — не дублируем.
+          notifiedThisTurn.delete(notifyTabId);
+        } else {
+          const tab = get().tabs.get(notifyTabId);
+          const lastAssistant = [...(tab?.messages ?? [])].reverse().find((m) => m.role === "assistant");
+          const hadRealOutput = Boolean(
+            lastAssistant &&
+              lastAssistant.blocks.length > 0 &&
+              !(
+                lastAssistant.blocks.length === 1 &&
+                lastAssistant.blocks[0].kind === "text" &&
+                lastAssistant.blocks[0].text === "Агент завершил работу без видимого ответа."
+              ),
+          );
+          if (hadRealOutput) {
+            void notifyIfBackground({
+              title: "Агент завершил работу",
+              body: tab?.sessionName ?? "Агент завершил ответ",
+              tabId: notifyTabId,
+            });
+          }
+        }
+      }
       break;
     }
     case "message_start":

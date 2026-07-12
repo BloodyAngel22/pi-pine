@@ -446,6 +446,18 @@ export async function setFileManifest(enabled: boolean, sessionId?: string | nul
   await request("set_file_manifest", { enabled }, { sessionId });
 }
 
+export async function setNotificationEnabled(enabled: boolean, sessionId?: string | null): Promise<void> {
+  await request("set_notification_enabled", { enabled }, { sessionId });
+}
+
+export async function setNotificationSoundEnabled(enabled: boolean, sessionId?: string | null): Promise<void> {
+  await request("set_notification_sound_enabled", { enabled }, { sessionId });
+}
+
+export async function setNotificationSoundPath(path: string | undefined, sessionId?: string | null): Promise<void> {
+  await request("set_notification_sound_path", { path }, { sessionId });
+}
+
 // === Sub-agents ===
 
 export async function cancelTask(taskId: string, sessionId?: string | null): Promise<void> {

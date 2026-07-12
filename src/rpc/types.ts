@@ -64,6 +64,9 @@ export interface RpcSessionState {
   autoCompactionEnabled: boolean;
   contextPruningEnabled: boolean;
   fileManifestEnabled: boolean;
+  notificationEnabled: boolean;
+  notificationSoundEnabled: boolean;
+  notificationSoundPath?: string;
   autoRetryEnabled: boolean;
   isRetrying: boolean;
   retryAttempt: number;

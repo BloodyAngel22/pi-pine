@@ -7,6 +7,9 @@ import { useChat, type StartupProgressEvent, type UiMessage } from "@/store/chat
 import { useExt } from "@/store/ext";
 import { useDiff } from "@/store/diff";
 import { useTheme } from "@/store/theme";
+import { useWindowFocus } from "@/store/windowFocus";
+import { registerNotificationActionHandler } from "@/lib/notify";
+import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { compact as rpcCompact, sendPrompt } from "@/rpc/bridge";
 import { LeftRail } from "@/components/AppShell/LeftRail";
 import { RightRail } from "@/components/AppShell/RightRail";
@@ -83,6 +86,7 @@ export default function App() {
   const refreshDiff = useDiff((s) => s.refresh);
   const setDiffPanelOpen = useDiff((s) => s.setPanelOpen);
   const loadTheme = useTheme((s) => s.load);
+  const initWindowFocus = useWindowFocus((s) => s.init);
   const reduceMotion = useReducedMotion();
 
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -147,6 +151,15 @@ export default function App() {
       initExt();
       initDiff();
       void loadTheme();
+      initWindowFocus();
+      registerNotificationActionHandler();
+      void (async () => {
+        try {
+          if (!(await isPermissionGranted())) await requestPermission();
+        } catch {
+          // Не в Tauri-контексте или пользователь отклонил разрешение — уведомления просто не будут отправляться.
+        }
+      })();
       setBootStage("init");
       setBootAction("Готовим UI и подписки RPC…");
       appendBootLog("Инициализация UI…");

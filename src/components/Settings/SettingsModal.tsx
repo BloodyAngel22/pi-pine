@@ -79,6 +79,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const setContextPruning = useChat((s) => s.setContextPruning);
   const contextPruningStats = useChat((s) => s.contextPruningStats);
   const setFileManifest = useChat((s) => s.setFileManifest);
+  const setNotificationSoundEnabled = useChat((s) => s.setNotificationSoundEnabled);
+  const setNotificationSoundPath = useChat((s) => s.setNotificationSoundPath);
   const setSubagentConcurrency = useChat((s) => s.setSubagentConcurrency);
   const setSubagentTimeout = useChat((s) => s.setSubagentTimeout);
   const startRpc = useChat((s) => s.startRpc);
@@ -99,6 +101,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const resetDiffFont = useUiPrefs((s) => s.resetDiffFont);
   const deepResearchMode = useUiPrefs((s) => s.deepResearchMode);
   const setDeepResearchMode = useUiPrefs((s) => s.setDeepResearchMode);
+  const notificationsEnabled = useUiPrefs((s) => s.notificationsEnabled);
+  const setNotificationsEnabled = useUiPrefs((s) => s.setNotificationsEnabled);
 
   const [section, setSection] = useState<SettingsSectionId>("environment");
   const [pathDraft, setPathDraft] = useState(cliPathOverride ?? "");
@@ -192,6 +196,11 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const pickDir = async () => {
     const r = await openDialog({ multiple: false, directory: true });
     if (typeof r === "string") setCwdDraft(r);
+  };
+
+  const pickNotificationSound = async () => {
+    const r = await openDialog({ multiple: false, directory: false });
+    if (typeof r === "string") void setNotificationSoundPath(r);
   };
 
   const save = async () => {
@@ -438,6 +447,28 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                       {th.name}{th.source === "user" && <span className="ml-1 opacity-70">·user</span>}
                     </Button>
                   ))}
+                </div>
+              </Section>
+              <Section title="Уведомления">
+                <Switch
+                  checked={notificationsEnabled}
+                  onChange={setNotificationsEnabled}
+                  label="Системные уведомления"
+                  description="Уведомлять, когда агент ждёт ответа или завершил ход, если окно не в фокусе."
+                />
+                <Switch
+                  checked={agentState?.notificationSoundEnabled ?? true}
+                  onChange={(v) => void setNotificationSoundEnabled(v)}
+                  label="Звук уведомления"
+                  description="Звуковой сигнал при завершении ответа агента, запросе разрешения и вопросе агента (ask_user)."
+                  className="mt-3"
+                />
+                <div className="mt-3 flex items-center gap-2">
+                  <Input value={agentState?.notificationSoundPath ?? ""} readOnly placeholder="Звук по умолчанию" />
+                  <Button variant="subtle" size="md" onClick={pickNotificationSound} icon={<Folder size={14} />} aria-label="Выбрать файл звука" />
+                  {agentState?.notificationSoundPath && (
+                    <Button variant="ghost" size="md" onClick={() => void setNotificationSoundPath(undefined)}>Сбросить</Button>
+                  )}
                 </div>
               </Section>
             </SettingsStack>
