@@ -26,6 +26,7 @@ import { SessionsSidebar } from "@/components/Sessions/SessionsSidebar";
 import { SessionTabs } from "@/components/Sessions/SessionTabs";
 import { SidePanel, type SidePanelTab } from "@/components/SidePanel/SidePanel";
 import { SettingsModal } from "@/components/Settings/SettingsModal";
+import { WorkspaceOverlay } from "@/components/Workspaces/WorkspaceOverlay";
 import { PiMissingCard } from "@/components/Onboarding/PiMissingCard";
 import { SplashScreen, type BootDetail, type BootLogEntry, type BootStage } from "@/components/Onboarding/SplashScreen";
 import { Toasts } from "@/components/ExtUI/Toasts";
@@ -108,12 +109,19 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mainTab, setMainTab] = useState<"chat" | "terminal" | "diff">("chat");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
+  const [workspacesInitialMode, setWorkspacesInitialMode] = useState<"recents" | "new">("recents");
+  const openWorkspacePicker = (mode: "recents" | "new" = "recents") => {
+    setWorkspacesInitialMode(mode);
+    setWorkspacesOpen(true);
+  };
   const [btwOpen, setBtwOpen] = useState(false);
   const [btwQuestion, setBtwQuestion] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
     let bootLogCounter = 0;
+    let sessionWasFresh = false;
     const appendBootLog = (text: string, tone: BootLogEntry["tone"] = "muted") => {
       if (cancelled) return;
       const clipped = shortBootText(text);
@@ -138,6 +146,7 @@ export default function App() {
       }
       if (event.id === "session:selected") {
         setBootDetail("session", event.detail ? "restored" : "new", event.tone);
+        sessionWasFresh = !event.detail;
       }
       if (event.id === "rpc:started" && event.detail) {
         setBootDetail("pi", event.detail, "success");
@@ -200,6 +209,7 @@ export default function App() {
       setBootDetail("cwd", selectedCwd);
       setBootDetail("cwd source", cwdSource, cliCwd ? "success" : "muted");
       appendBootLog(`cwd: ${selectedCwd} (${cwdSource})`, cliCwd ? "success" : "muted");
+      void invoke("touch_workspace", { path: selectedCwd }).catch(() => undefined);
 
       const cliPath = cliPathOverride || env.pi_binary || null;
       if (!cliPath) {
@@ -225,6 +235,9 @@ export default function App() {
       await new Promise((r) => setTimeout(r, 120));
       if (cancelled) return;
       setBootstrapped(true);
+      // Свежий (не восстановленный) старт — предлагаем подготовить сессию,
+      // а не сразу высаживать в пустой чат.
+      if (sessionWasFresh) openWorkspacePicker("new");
     })();
     return () => {
       cancelled = true;
@@ -250,6 +263,34 @@ export default function App() {
     };
   }, [refreshState, loadAvailableModels]);
 
+  // Повторный запуск pi-pine <path> при уже открытом приложении шлёт сюда путь
+  // (см. single_instance.rs / lib.rs) — переключаем активный workspace тем же
+  // путём, что и WorkspaceOverlay.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    listen<string>("pi-pine://open-workspace-request", (event) => {
+      const path = event.payload;
+      if (!path) return;
+      // Per-tab cwd: `pi-pine <path>` при живом инстансе открывает проект
+      // новым табом (последняя сессия проекта либо свежая) — без рестарта RPC.
+      void (async () => {
+        const chat = useChat.getState();
+        if (!chat.rpcRunning) {
+          await chat.changeCwd(path);
+          return;
+        }
+        const lastFile = await invoke<string | null>("read_last_session_file", { cwd: path }).catch(() => null);
+        if (lastFile) await chat.openSessionTab(lastFile, null, true, path);
+        else await chat.createSessionTab(undefined, { cwd: path });
+      })();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -274,6 +315,12 @@ export default function App() {
         setSettingsOpen(true);
         return;
       }
+      if (ctrl && e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        setWorkspacesInitialMode("recents");
+        setWorkspacesOpen((v) => !v);
+        return;
+      }
       if (ctrl && e.key.toLowerCase() === "f") {
         // На вкладке Diff Ctrl+F перехватывается собственным обработчиком DiffPanel (поиск по diff).
         if (mainTab !== "diff") {
@@ -285,7 +332,7 @@ export default function App() {
       if (ctrl && e.key.toLowerCase() === "n") {
         if (inEditable) return;
         e.preventDefault();
-        void createSessionTab();
+        openWorkspacePicker("new");
         return;
       }
       if (ctrl && e.key.toLowerCase() === "w") {
@@ -430,11 +477,12 @@ export default function App() {
           <LeftRail
             sessionsOpen={sidebarOpen}
             onToggleSessions={() => setSidebarOpen((v) => !v)}
-            onNewSession={() => void createSessionTab()}
+            onNewSession={() => openWorkspacePicker("new")}
             onOpenSearch={() => setSearchOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             diffOpen={mainTab === "diff"}
             onToggleDiff={() => setMainTab((v) => (v === "diff" ? "chat" : "diff"))}
+            onOpenWorkspaces={() => openWorkspacePicker("recents")}
           />
           <AnimatePresence initial={false}>
             {sidebarOpen && (
@@ -571,9 +619,14 @@ export default function App() {
             onToggleTerminal={() => setMainTab((v) => (v === "terminal" ? "chat" : "terminal"))}
           />
         </div>
-        <StatusBar />
+        <StatusBar onOpenWorkspaces={() => openWorkspacePicker("recents")} />
       </div>
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <WorkspaceOverlay
+        open={workspacesOpen}
+        onClose={() => setWorkspacesOpen(false)}
+        initialMode={workspacesInitialMode}
+      />
       <Toasts />
       <DialogQueue />
       <AgentScreen />

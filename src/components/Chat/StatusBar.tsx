@@ -16,7 +16,11 @@ function fmtTokens(n: number): string {
   return Math.round(n / 1000) + "k";
 }
 
-export function StatusBar() {
+interface StatusBarProps {
+  onOpenWorkspaces?: () => void;
+}
+
+export function StatusBar({ onOpenWorkspaces }: StatusBarProps = {}) {
   const cwd = useChat((s) => s.cwd);
   const home = useChat((s) => s.home);
   const agent = useChat((s) => s.agentState);
@@ -39,7 +43,14 @@ export function StatusBar() {
     <div className="pi-statusbar">
       <div className="pi-statusbar-scroll">
         {/* === LEFT: контекст работы (cwd / model / thinking) === */}
-        <Chip size="xs" icon={<AppIcon name="folder" size={11} />} mono title={cwd}>
+        <Chip
+          size="xs"
+          icon={<AppIcon name="folder" size={11} />}
+          mono
+          title={`${cwd} — сменить проект`}
+          interactive={Boolean(onOpenWorkspaces)}
+          onClick={onOpenWorkspaces}
+        >
           <span className="truncate max-w-[260px]">{cwdShort}</span>
         </Chip>
         {/* === MIDDLE: метрики сессии === */}

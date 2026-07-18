@@ -15,10 +15,11 @@ mod terminal;
 mod themes;
 mod transcription;
 mod virtual_display;
+mod workspaces;
 
 use rpc::RpcManager;
 use std::sync::Arc;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use virtual_display::VirtualDisplayManager;
 
 /// Tauri поднимает собственный tokio-рантайм лениво при первом обращении, и по
@@ -39,16 +40,15 @@ fn build_capped_tokio_runtime() -> tokio::runtime::Runtime {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Per-directory single-instance: если для этой же cwd уже есть живой
-    // инстанс, он получает сигнал фокуса и текущий процесс завершается, не
-    // создавая окно/Tauri-рантайм. Запуск без явного пути (нет CLI-аргумента)
-    // dedup не проходит — всегда новый инстанс (см. single_instance.rs).
-    let single_instance_rx = match paths::resolve_cli_cwd() {
-        Some(cwd) => match single_instance::acquire(&cwd) {
-            single_instance::Outcome::FocusedExisting => return,
-            single_instance::Outcome::Acquired(rx) => Some(rx),
-        },
-        None => None,
+    // Глобальный single-instance: если приложение уже запущено (в любой
+    // директории), этот процесс передаёт ему путь из CLI-аргумента (если он
+    // есть) и завершается, не создавая окно/Tauri-рантайм — см.
+    // single_instance.rs. Существующий инстанс переключит активный workspace
+    // на этот путь и выведет окно на передний план.
+    let cli_cwd = paths::resolve_cli_cwd();
+    let single_instance_rx = match single_instance::acquire(cli_cwd.as_deref()) {
+        single_instance::Outcome::HandedOff => return,
+        single_instance::Outcome::Acquired(rx) => rx,
     };
 
     let runtime = build_capped_tokio_runtime();
@@ -111,20 +111,23 @@ pub fn run() {
             std::thread::spawn(move || {
                 paths::watch_auth(handle);
             });
-            // Повторный запуск pi-pine в той же cwd шлёт сигнал сюда вместо
-            // открытия второго окна — см. single_instance::acquire в run().
-            if let Some(rx) = single_instance_rx {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    while rx.recv().is_ok() {
-                        if let Some(w) = handle.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
+            // Повторный запуск pi-pine (в любой директории) шлёт сюда путь
+            // вместо открытия второго окна/процесса — см.
+            // single_instance::acquire в run(). Пустой путь — просто фокус
+            // без переключения workspace.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                while let Ok(path) = single_instance_rx.recv() {
+                    if let Some(w) = handle.get_webview_window("main") {
+                        let _ = w.show();
+                        let _ = w.unminimize();
+                        let _ = w.set_focus();
                     }
-                });
-            }
+                    if !path.is_empty() {
+                        let _ = handle.emit("pi-pine://open-workspace-request", &path);
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -168,6 +171,12 @@ pub fn run() {
             sessions::delete_session_file,
             sessions::rename_session_file,
             sessions::truncate_session_at,
+            // workspaces (recents)
+            workspaces::list_workspaces,
+            workspaces::touch_workspace,
+            workspaces::remove_workspace,
+            workspaces::set_workspace_pinned,
+            workspaces::rename_workspace,
             terminal::terminal_spawn,
             terminal::terminal_write,
             terminal::terminal_resize,

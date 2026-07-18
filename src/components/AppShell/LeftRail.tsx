@@ -9,11 +9,22 @@ interface LeftRailProps {
   onOpenSettings(): void;
   diffOpen: boolean;
   onToggleDiff(): void;
+  onOpenWorkspaces(): void;
 }
 
-export function LeftRail({ sessionsOpen, onToggleSessions, onNewSession, onOpenSearch, onOpenSettings, diffOpen, onToggleDiff }: LeftRailProps) {
+export function LeftRail({
+  sessionsOpen,
+  onToggleSessions,
+  onNewSession,
+  onOpenSearch,
+  onOpenSettings,
+  diffOpen,
+  onToggleDiff,
+  onOpenWorkspaces,
+}: LeftRailProps) {
   return (
     <IconRail side="left">
+      <RailButton side="left" icon={<AppIcon name="folder" size={17} />} label="Проекты (Ctrl+Shift+O)" onClick={onOpenWorkspaces} />
       <RailButton side="left" icon={<AppIcon name="message" size={17} />} label="Все сессии" active={sessionsOpen} onClick={onToggleSessions} />
       <RailButton side="left" icon={<AppIcon name="plus" size={17} />} label="Новая сессия" onClick={onNewSession} />
       <RailButton side="left" icon={<AppIcon name="search" size={17} />} label="Поиск" onClick={onOpenSearch} />

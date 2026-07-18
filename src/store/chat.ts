@@ -101,6 +101,8 @@ export interface StartupProgressEvent {
 
 export interface SessionTabState {
   tabId: string;
+  /** Рабочая директория этой сессии (per-tab, как в Claude Desktop). Источник истины — agentState.cwd из get_state. */
+  cwd: string;
   messages: UiMessage[];
   agentState: RpcSessionState | null;
   currentAssistantId: string | null;
@@ -150,6 +152,7 @@ export interface SessionTabState {
 export function createDefaultSessionTab(tabId: string, initial?: Partial<SessionTabState>): SessionTabState {
   return {
     tabId,
+    cwd: "",
     messages: [],
     agentState: null,
     currentAssistantId: null,
@@ -191,6 +194,7 @@ export function createDefaultSessionTab(tabId: string, initial?: Partial<Session
 type SessionTabPatch = Partial<Omit<SessionTabState, "tabId">>;
 
 const TAB_FIELD_KEYS = new Set<keyof SessionTabState>([
+  "cwd",
   "messages",
   "agentState",
   "currentAssistantId",
@@ -239,6 +243,9 @@ function pickTabPatch(partial: Partial<ChatState>): SessionTabPatch {
 
 function tabProjection(tab: SessionTabState): Partial<ChatState> {
   return {
+    // Верхнеуровневый cwd = проект активного таба. Пустой cwd нового таба
+    // не должен затирать текущий — оставляем ключ отсутствующим.
+    ...(tab.cwd ? { cwd: tab.cwd } : {}),
     planMode: tab.planMode,
     planFilePath: tab.planFilePath,
     planLoading: tab.planLoading,
@@ -355,9 +362,9 @@ interface ChatState {
   tabOrder: string[];
   activeTabId: string | null;
   activateTab(tabId: string): Promise<void>;
-  createSessionTab(name?: string, options?: { mode?: "empty" | "copy"; sourceSessionId?: string | null; sessionPath?: string | null }): Promise<string | null>;
+  createSessionTab(name?: string, options?: { mode?: "empty" | "copy"; sourceSessionId?: string | null; sessionPath?: string | null; cwd?: string | null }): Promise<string | null>;
   createForkTab(): Promise<string | null>;
-  openSessionTab(file: string, name?: string | null, activate?: boolean): Promise<string | null>;
+  openSessionTab(file: string, name?: string | null, activate?: boolean, cwd?: string | null): Promise<string | null>;
   closeSessionTab(tabId: string): Promise<void>;
   moveTab(fromIndex: number, toIndex: number): void;
   moveTabById(tabId: string, beforeTabId: string | null): void;
@@ -459,44 +466,78 @@ const closedTabIds = new Set<string>();
 // текущего хода — не даём turn_end продублировать его уведомлением "ход завершён".
 const notifiedThisTurn = new Set<string>();
 
-function openTabsStorageKey(cwd: string): string {
-  return `${STORAGE_KEY_OPEN_TABS_PREFIX}${cwd}`;
+const STORAGE_KEY_OPEN_TABS_GLOBAL = "pi-pine.openTabs.global";
+
+/** Одна сохранённая вкладка: файл сессии + её проект (per-tab cwd). */
+interface RememberedTabEntry {
+  file: string;
+  cwd?: string;
 }
 
 interface RememberedOpenTabsState {
-  files: string[];
+  tabs: RememberedTabEntry[];
   activeFile?: string;
 }
 
-function readRememberedOpenTabs(cwd: string): RememberedOpenTabsState {
-  if (!cwd || typeof window === "undefined") return { files: [] };
+/**
+ * Глобальный снапшот открытых вкладок (все проекты сразу — модель Claude
+ * Desktop). Если глобального ключа ещё нет, мигрируем из старого per-cwd
+ * ключа переданного проекта.
+ */
+function readRememberedOpenTabs(fallbackCwd: string): RememberedOpenTabsState {
+  if (typeof window === "undefined") return { tabs: [] };
   try {
-    const raw = localStorage.getItem(openTabsStorageKey(cwd));
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed)) {
-      return { files: parsed.filter((x): x is string => typeof x === "string" && x.length > 0) };
-    }
-    if (parsed && typeof parsed === "object") {
-      const obj = parsed as Record<string, unknown>;
-      const files = Array.isArray(obj.files)
-        ? obj.files.filter((x): x is string => typeof x === "string" && x.length > 0)
+    const raw = localStorage.getItem(STORAGE_KEY_OPEN_TABS_GLOBAL);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const tabs = Array.isArray(parsed.tabs)
+        ? (parsed.tabs as unknown[])
+            .map((x) => {
+              if (typeof x === "string") return { file: x };
+              if (x && typeof x === "object" && typeof (x as Record<string, unknown>).file === "string") {
+                const obj = x as Record<string, unknown>;
+                return { file: obj.file as string, cwd: typeof obj.cwd === "string" ? obj.cwd : undefined };
+              }
+              return null;
+            })
+            .filter((x): x is RememberedTabEntry => Boolean(x?.file))
         : [];
-      const activeFile = typeof obj.activeFile === "string" ? obj.activeFile : undefined;
-      return { files, activeFile };
+      const activeFile = typeof parsed.activeFile === "string" ? parsed.activeFile : undefined;
+      return { tabs, activeFile };
+    }
+    // Миграция со старого формата: per-cwd список файлов текущего проекта.
+    const legacyRaw = fallbackCwd ? localStorage.getItem(`${STORAGE_KEY_OPEN_TABS_PREFIX}${fallbackCwd}`) : null;
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw);
+      const files: string[] = Array.isArray(parsed)
+        ? parsed.filter((x): x is string => typeof x === "string" && x.length > 0)
+        : Array.isArray((parsed as Record<string, unknown>)?.files)
+          ? ((parsed as Record<string, unknown>).files as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0)
+          : [];
+      const activeFile =
+        parsed && typeof parsed === "object" && typeof (parsed as Record<string, unknown>).activeFile === "string"
+          ? ((parsed as Record<string, unknown>).activeFile as string)
+          : undefined;
+      return { tabs: files.map((file) => ({ file, cwd: fallbackCwd })), activeFile };
     }
   } catch {
     // ignore
   }
-  return { files: [] };
+  return { tabs: [] };
 }
 
-function writeRememberedOpenTabs(cwd: string, state: RememberedOpenTabsState): void {
-  if (!cwd || typeof window === "undefined") return;
-  const unique = Array.from(new Set(state.files.filter(Boolean)));
+function writeRememberedOpenTabs(state: RememberedOpenTabsState): void {
+  if (typeof window === "undefined") return;
+  const seen = new Set<string>();
+  const unique = state.tabs.filter((t) => {
+    if (!t.file || seen.has(t.file)) return false;
+    seen.add(t.file);
+    return true;
+  });
   if (unique.length === 0) {
-    localStorage.removeItem(openTabsStorageKey(cwd));
+    localStorage.removeItem(STORAGE_KEY_OPEN_TABS_GLOBAL);
   } else {
-    localStorage.setItem(openTabsStorageKey(cwd), JSON.stringify({ files: unique, activeFile: state.activeFile }));
+    localStorage.setItem(STORAGE_KEY_OPEN_TABS_GLOBAL, JSON.stringify({ tabs: unique, activeFile: state.activeFile }));
   }
 }
 
@@ -806,17 +847,26 @@ async function rememberCurrentSession(cwd: string, sessionFile?: string) {
   await invoke("write_last_session_file", { cwd, sessionFile }).catch(() => undefined);
 }
 
-function collectOpenSessionFiles(state: ChatState): string[] {
-  return state.tabOrder
-    .map((tabId) => state.tabs.get(tabId)?.agentState?.sessionFile)
-    .filter((file): file is string => typeof file === "string" && file.length > 0);
+function collectOpenSessionTabs(state: ChatState): RememberedTabEntry[] {
+  const entries: RememberedTabEntry[] = [];
+  for (const tabId of state.tabOrder) {
+    const tab = state.tabs.get(tabId);
+    const file = tab?.agentState?.sessionFile;
+    if (!tab || typeof file !== "string" || file.length === 0) continue;
+    entries.push({ file, cwd: tab.cwd || tab.agentState?.cwd || undefined });
+  }
+  return entries;
 }
 
 function rememberOpenTabsSnapshot(state: ChatState): void {
-  const files = collectOpenSessionFiles(state);
+  const tabs = collectOpenSessionTabs(state);
   const activeFile = state.agentState?.sessionFile;
-  writeRememberedOpenTabs(state.cwd, { files, activeFile });
-  if (activeFile) void rememberCurrentSession(state.cwd, activeFile);
+  writeRememberedOpenTabs({ tabs, activeFile });
+  // Последняя сессия проекта пишется в per-cwd файл для превью в пикере
+  // workspaces — привязываем к cwd активного таба, а не глобальному.
+  const activeTab = state.activeTabId ? state.tabs.get(state.activeTabId) : null;
+  const activeCwd = activeTab?.cwd || state.cwd;
+  if (activeFile) void rememberCurrentSession(activeCwd, activeFile);
 }
 
 function joinText(blocks: UiBlock[]): string {
@@ -1576,13 +1626,25 @@ export const useChat = create<ChatState>((rawSet, get) => {
         ...tabProjection(nextTab),
       };
     });
+    // Переключение на таб другого проекта = смена активного workspace:
+    // запоминаем его для следующего запуска и обновляем recents.
+    const activatedCwd = get().tabs.get(tabId)?.cwd;
+    if (activatedCwd && activatedCwd !== initial.cwd) {
+      localStorage.setItem(STORAGE_KEY_CWD, activatedCwd);
+      void invoke("touch_workspace", { path: activatedCwd }).catch(() => undefined);
+    }
     rememberOpenTabsSnapshot(get());
   },
 
   async createSessionTab(name, options) {
     try {
+      // Per-tab cwd: сессия создаётся в своей директории внутри одного
+      // pi-процесса (backend поддерживает command.cwd) — без рестарта RPC.
+      // Для sessionPath без явного cwd параметр не передаём: backend возьмёт
+      // cwd из самого файла сессии (SessionManager.getCwd()).
+      const targetCwd = options?.cwd || (options?.sessionPath ? undefined : get().cwd);
       const { sessionId } = await rpc.createSession({
-        cwd: get().cwd,
+        cwd: targetCwd,
         mode: options?.mode ?? "empty",
         sourceSessionId: options?.sourceSessionId ?? get().activeTabId,
         sessionPath: options?.sessionPath ?? undefined,
@@ -1590,7 +1652,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
       closedTabIds.delete(sessionId);
       const sourceId = options?.sourceSessionId ?? get().activeTabId;
       const sourceSkills = options?.mode === "copy" && sourceId ? (get().tabs.get(sourceId)?.attachedSkills ?? get().attachedSkills) : [];
-      const initial: Partial<SessionTabState> = { sessionName: name ?? null };
+      const initial: Partial<SessionTabState> = { sessionName: name ?? null, cwd: targetCwd ?? "" };
       if (options?.mode === "copy") {
         initial.attachedSkills = sourceSkills;
         writeAttachedSkills(sessionId, sourceSkills, false);
@@ -1622,6 +1684,9 @@ export const useChat = create<ChatState>((rawSet, get) => {
       }
       await get().reloadHistory().catch(() => undefined);
       await get().refreshSessionStats().catch(() => undefined);
+      // refreshState уже уточнил cwd таба из get_state — фиксируем проект в recents.
+      const createdCwd = get().tabs.get(sessionId)?.cwd;
+      if (createdCwd) void invoke("touch_workspace", { path: createdCwd }).catch(() => undefined);
       rememberOpenTabsSnapshot(get());
       notifySessionsChanged();
       return sessionId;
@@ -1639,14 +1704,14 @@ export const useChat = create<ChatState>((rawSet, get) => {
     return get().createSessionTab(`${baseName} fork`, { mode: "copy", sourceSessionId: source });
   },
 
-  async openSessionTab(file, name, activate = true) {
+  async openSessionTab(file, name, activate = true, cwd) {
     const existing = Array.from(get().tabs.values()).find((tab) => tab.agentState?.sessionFile === file);
     if (existing) {
       if (activate) await get().activateTab(existing.tabId);
       return existing.tabId;
     }
     const previousActive = get().activeTabId;
-    const tabId = await get().createSessionTab(name ?? undefined, { mode: "empty", sessionPath: file });
+    const tabId = await get().createSessionTab(name ?? undefined, { mode: "empty", sessionPath: file, cwd: cwd ?? undefined });
     if (tabId && !activate && previousActive && previousActive !== tabId) {
       await get().activateTab(previousActive).catch(() => undefined);
     }
@@ -1679,8 +1744,26 @@ export const useChat = create<ChatState>((rawSet, get) => {
     }
 
     closedTabIds.add(tabId);
-    set({ tabs: nextTabs, tabOrder: nextOrder, activeTabId: nextActive });
-    if (nextActive) await get().activateTab(nextActive);
+    const wasActive = st.activeTabId === tabId;
+    if (wasActive && nextActive) {
+      // activateTab() здесь бесполезен: activeTabId уже указывает на соседа и
+      // сработает early-return без проекции — экран останется со state закрытого
+      // таба. Применяем tabProjection соседа в том же set.
+      const neighbor = nextTabs.get(nextActive);
+      const cleared = neighbor && neighbor.unseenAssistantCount > 0 ? { ...neighbor, unseenAssistantCount: 0 } : neighbor;
+      if (cleared && cleared !== neighbor) nextTabs.set(nextActive, cleared);
+      set({
+        tabs: nextTabs,
+        tabOrder: nextOrder,
+        activeTabId: nextActive,
+        ...(cleared ? tabProjection(cleared) : {}),
+      });
+      // pi при close_session активной сессии сам переключается на ПЕРВУЮ
+      // оставшуюся — синхронизируем его с нашим выбором соседнего таба.
+      if (get().rpcRunning) await rpc.switchActiveSession(nextActive).catch(() => undefined);
+    } else {
+      set({ tabs: nextTabs, tabOrder: nextOrder, activeTabId: nextActive });
+    }
     rememberOpenTabsSnapshot(get());
   },
 
@@ -1766,13 +1849,13 @@ export const useChat = create<ChatState>((rawSet, get) => {
       });
       try {
         progress({ id: "sessions:remembered", label: "Читаем сохранённые вкладки сессий…" });
-        const startupRemembered = opts?.sessionFile ? { files: [] as string[] } : readRememberedOpenTabs(cwd);
+        const startupRemembered: RememberedOpenTabsState = opts?.sessionFile ? { tabs: [] } : readRememberedOpenTabs(cwd);
         progress({ id: "sessions:last", label: "Ищем последнюю сессию проекта…" });
         const legacyRememberedSessionFile = await invoke<string | null>("read_last_session_file", { cwd }).catch(() => null);
         const rememberedSessionFile =
           opts?.sessionFile ??
           startupRemembered.activeFile ??
-          startupRemembered.files[0] ??
+          startupRemembered.tabs[0]?.file ??
           legacyRememberedSessionFile;
         progress({
           id: "session:selected",
@@ -1852,8 +1935,8 @@ export const useChat = create<ChatState>((rawSet, get) => {
         progress({ id: "stats:load", label: "Считаем статистику сессии…" });
         await get().refreshSessionStats().catch(() => undefined);
         const activeFile = get().agentState?.sessionFile;
-        const rememberedOpenTabs = startupRemembered.files
-          .filter((file) => file && file !== activeFile);
+        const rememberedOpenTabs = startupRemembered.tabs
+          .filter((entry) => entry.file && entry.file !== activeFile);
         const targetActiveFile = startupRemembered.activeFile || activeFile;
         progress({
           id: "tabs:restore",
@@ -1867,7 +1950,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
           // Только для восстанавливаемых файлов, а не скан всех сессий проекта
           // (list_project_sessions гоняет полный проход каждого .jsonl дважды —
           // на имя и на счётчик сообщений — не нужный здесь, нам нужен лейбл).
-          const namesByFile = await invoke<Array<{ file: string; name?: string; first_user_text?: string }>>("get_session_labels", { files: rememberedOpenTabs })
+          const namesByFile = await invoke<Array<{ file: string; name?: string; first_user_text?: string }>>("get_session_labels", { files: rememberedOpenTabs.map((entry) => entry.file) })
             .then((list) => new Map(list.map((s) => [s.file, { name: s.name?.trim() || null, firstUserText: s.first_user_text?.trim() || null }] as const)))
             .catch(() => new Map<string, { name: string | null; firstUserText: string | null }>());
           const labelForFile = (file: string): string | null => {
@@ -1881,12 +1964,12 @@ export const useChat = create<ChatState>((rawSet, get) => {
             }
             return null;
           };
-          for (const file of rememberedOpenTabs) {
-            progress({ id: `tabs:restore:${file}`, label: "Восстанавливаем вкладку…", detail: file });
-            await get().openSessionTab(file, labelForFile(file), file === targetActiveFile).catch(() => null);
+          for (const entry of rememberedOpenTabs) {
+            progress({ id: `tabs:restore:${entry.file}`, label: "Восстанавливаем вкладку…", detail: entry.file });
+            await get().openSessionTab(entry.file, labelForFile(entry.file), entry.file === targetActiveFile, entry.cwd).catch(() => null);
           }
         }
-        const orderedFiles = startupRemembered.files;
+        const orderedFiles = startupRemembered.tabs.map((entry) => entry.file);
         if (orderedFiles.length > 0) {
           const idByFile = new Map<string, string>();
           for (const tab of get().tabs.values()) {
@@ -2289,6 +2372,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
       const attachedSkills = reconcileAttachedSkillsForSession(tabId, s.sessionFile, currentSkills);
       const planMode = s.planMode?.active ?? false;
       const planFilePath = s.planMode?.planFilePath ?? null;
+      const tabCwd = s.cwd ? { cwd: s.cwd } : {};
       get().ensureTab(tabId, {
         agentState: s,
         pendingMessageCount: s.pendingMessageCount ?? 0,
@@ -2296,6 +2380,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
         attachedSkills,
         planMode,
         planFilePath,
+        ...tabCwd,
       });
       if (!get().activeTabId || get().activeTabId === tabId) {
         get().updateTab(tabId, {
@@ -2305,6 +2390,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
           attachedSkills,
           planMode,
           planFilePath,
+          ...tabCwd,
         });
         get().syncFromTab(tabId);
       }
@@ -2510,6 +2596,7 @@ export const useChat = create<ChatState>((rawSet, get) => {
       set({ rpcRunning: false, agentState: null });
       await new Promise((r) => setTimeout(r, 150));
       await get().startRpc();
+      void invoke("touch_workspace", { path: next }).catch(() => undefined);
     } catch (e) {
       get().setError((e as Error).message);
     } finally {

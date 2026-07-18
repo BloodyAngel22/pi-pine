@@ -9,6 +9,12 @@ function labelFor(tabId: string, name?: string | null): string {
   return tabId === "session-1" ? "main" : tabId;
 }
 
+function projectName(cwd: string): string {
+  const trimmed = cwd.replace(/\/+$/, "");
+  const idx = trimmed.lastIndexOf("/");
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
 function indicatorClass(tab: ReturnType<typeof useChat.getState>["tabs"] extends Map<string, infer T> ? T : never): string {
   const state = tab.agentState;
   if (tab.pendingUserAction) return "bg-yellow-400 animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.55)]";
@@ -46,6 +52,13 @@ export function SessionTabs() {
         .filter((t): t is SessionTabState => Boolean(t)),
     [tabOrder, tabs],
   );
+
+  // Бейдж проекта показываем только когда открыты табы из разных директорий —
+  // иначе он дублировал бы cwd из статус-бара на каждом табе.
+  const multiProject = useMemo(() => {
+    const cwds = new Set(orderedTabs.map((t) => t.cwd).filter(Boolean));
+    return cwds.size > 1;
+  }, [orderedTabs]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -141,7 +154,7 @@ export function SessionTabs() {
               setRenaming(tab.tabId);
               setDraft(labelFor(tab.tabId, tab.sessionName));
             }}
-            title={labelFor(tab.tabId, tab.sessionName)}
+            title={tab.cwd ? `${labelFor(tab.tabId, tab.sessionName)} — ${tab.cwd}` : labelFor(tab.tabId, tab.sessionName)}
           >
             <span className={clsx("h-2 w-2 rounded-full shrink-0", indicatorClass(tab))} />
             {renaming === tab.tabId ? (
@@ -159,6 +172,11 @@ export function SessionTabs() {
               />
             ) : (
               <span className="truncate min-w-0 flex-1">{labelFor(tab.tabId, tab.sessionName)}</span>
+            )}
+            {multiProject && tab.cwd && (
+              <span className="max-w-[72px] shrink-0 truncate rounded bg-(--color-bg-mute) px-1 py-px text-[10px] text-(--color-fg-dim)">
+                {projectName(tab.cwd)}
+              </span>
             )}
             {tab.pendingUserAction && (
               <Chip
