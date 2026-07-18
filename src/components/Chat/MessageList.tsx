@@ -8,6 +8,7 @@ import { useChunkedRender } from "@/lib/useChunkedRender";
 import { Message } from "./Message";
 import { PlanTodoInline } from "./PlanTodoInline";
 import { ActivityIndicator } from "./ActivityIndicator";
+import { AgentWorkGlyph } from "./AgentWorkGlyph";
 import { t } from "@/i18n/ru";
 import { floatingControlVariants, messageItemVariants, softEase } from "@/lib/motionPresets";
 
@@ -351,6 +352,8 @@ export function MessageList({ tabId, active = true, onCopy, onFork, onRegenerate
           </motion.div>
         )}
       </AnimatePresence>
+
+      {active && <AgentWorkGlyph />}
     </div>
   );
 }

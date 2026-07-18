@@ -568,16 +568,6 @@ select {
 .pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-glyph {
   animation: pi-activity-orbit 1.8s linear infinite;
 }
-/* Comet sweep: soft trailing arc, rotates together with the glyph for free. */
-.pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-glyph::before {
-  content: "";
-  position: absolute;
-  inset: 4%;
-  border-radius: 999px;
-  background: conic-gradient(from 90deg, currentColor 0deg, transparent 70deg, transparent 360deg);
-  opacity: 0.16;
-  pointer-events: none;
-}
 .pi-activity[data-active="true"][data-pattern="orbit"] .pi-activity-mark-a {
   animation: pi-activity-orbit-blink-a 1.2s ease-in-out infinite;
 }
@@ -768,6 +758,81 @@ select {
   animation: pi-activity-aperture 1.65s cubic-bezier(0.22, 1, 0.36, 1) 0.36s infinite;
 }
 
+/* Spin: the whole glyph turns with a fast-slow-fast mechanical rhythm; marks stay fixed. */
+.pi-activity[data-pattern="spin"] .pi-activity-mark {
+  width: max(3px, 15%);
+  height: max(3px, 15%);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+.pi-activity[data-pattern="spin"] .pi-activity-mark-a {
+  top: 20%;
+  left: 50%;
+  opacity: 0.85;
+}
+.pi-activity[data-pattern="spin"] .pi-activity-mark-b {
+  top: 68%;
+  left: 72%;
+  opacity: 0.55;
+}
+.pi-activity[data-pattern="spin"] .pi-activity-mark-c {
+  top: 68%;
+  left: 28%;
+  opacity: 0.32;
+}
+.pi-activity[data-active="true"][data-pattern="spin"] .pi-activity-glyph {
+  animation: pi-activity-spin 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+/* Shimmer: a wave of brightness runs across three fixed dots, like light on water. */
+.pi-activity[data-pattern="shimmer"] .pi-activity-mark {
+  width: max(3px, 16%);
+  height: max(3px, 16%);
+  top: 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+.pi-activity[data-pattern="shimmer"] .pi-activity-mark-a {
+  left: 24%;
+}
+.pi-activity[data-pattern="shimmer"] .pi-activity-mark-b {
+  left: 50%;
+}
+.pi-activity[data-pattern="shimmer"] .pi-activity-mark-c {
+  left: 76%;
+}
+.pi-activity[data-active="true"][data-pattern="shimmer"] .pi-activity-mark-a {
+  animation: pi-activity-shimmer 1.8s ease-in-out infinite;
+}
+.pi-activity[data-active="true"][data-pattern="shimmer"] .pi-activity-mark-b {
+  animation: pi-activity-shimmer 1.8s ease-in-out 0.2s infinite;
+}
+.pi-activity[data-active="true"][data-pattern="shimmer"] .pi-activity-mark-c {
+  animation: pi-activity-shimmer 1.8s ease-in-out 0.4s infinite;
+}
+
+/* Ripple: hollow rings pulse outward from the center, like a radar ping. */
+.pi-activity[data-pattern="ripple"] .pi-activity-mark {
+  top: 50%;
+  left: 50%;
+  width: 30%;
+  height: 30%;
+  border-radius: 999px;
+  background: transparent;
+  border: calc(var(--pi-activity-size) * 0.08) solid currentColor;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.35);
+}
+.pi-activity[data-active="true"][data-pattern="ripple"] .pi-activity-mark-a {
+  animation: pi-activity-ripple 1.8s ease-out infinite;
+}
+.pi-activity[data-active="true"][data-pattern="ripple"] .pi-activity-mark-b {
+  animation: pi-activity-ripple 1.8s ease-out 0.5s infinite;
+}
+.pi-activity[data-active="true"][data-pattern="ripple"] .pi-activity-mark-c {
+  animation: pi-activity-ripple 1.8s ease-out 1s infinite;
+}
+
 .pi-activity[data-active="false"] {
   opacity: 0.58;
 }
@@ -827,6 +892,19 @@ select {
   0%, 100% { opacity: 0.34; transform: translate(-50%, -50%) rotate(var(--pi-aperture-angle)) scaleX(0.62); box-shadow: 0 0 0 transparent; }
   48%, 70% { opacity: 0.9; transform: translate(-50%, -50%) rotate(var(--pi-aperture-angle)) scaleX(1); box-shadow: 0 0 3px currentColor; }
 }
+@keyframes pi-activity-spin {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(200deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes pi-activity-shimmer {
+  0%, 100% { opacity: 0.22; box-shadow: 0 0 0 transparent; }
+  50% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+}
+@keyframes pi-activity-ripple {
+  0% { transform: translate(-50%, -50%) scale(0.35); opacity: 0.65; }
+  80%, 100% { transform: translate(-50%, -50%) scale(1.15); opacity: 0; }
+}
 @keyframes pi-activity-reduced-pulse {
   0%, 100% { opacity: 0.38; }
   50% { opacity: 0.82; }
@@ -834,6 +912,59 @@ select {
 @media (prefers-reduced-motion: reduce) {
   .pi-activity[data-active="true"] .pi-activity-glyph,
   .pi-activity[data-active="true"] .pi-activity-mark {
+    animation: pi-activity-reduced-pulse 2.4s ease-in-out infinite !important;
+  }
+}
+
+/* Persistent "agent turn" widget: glyph + elapsed clock + context delta,
+   anchored to the bottom of the Messages panel and visible for the whole
+   duration of one user request (streaming + tools + sub-agents + retries +
+   compaction) — unlike .pi-activity, which is scoped to a single
+   message/tool block and disappears with it. */
+.pi-turn-widget {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  color: var(--color-fg-mute);
+  font-size: 0.8rem;
+  line-height: 1;
+  user-select: none;
+}
+.pi-turn-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  transform-origin: center;
+  animation: pi-turn-morph 4.5s ease-in-out infinite;
+}
+.pi-turn-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg);
+}
+.pi-turn-ctx {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-mute);
+}
+@keyframes pi-turn-morph {
+  0% { transform: rotate(0deg) scale(1, 1); filter: drop-shadow(0 0 0 transparent); }
+  40% { transform: rotate(140deg) scale(1, 1); filter: drop-shadow(0 0 0 transparent); }
+  50% { transform: rotate(175deg) scale(0.8, 1.2); filter: drop-shadow(0 0 4px currentColor); }
+  60% { transform: rotate(210deg) scale(1.15, 0.85); filter: drop-shadow(0 0 4px currentColor); }
+  100% { transform: rotate(360deg) scale(1, 1); filter: drop-shadow(0 0 0 transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pi-turn-glyph {
     animation: pi-activity-reduced-pulse 2.4s ease-in-out infinite !important;
   }
 }

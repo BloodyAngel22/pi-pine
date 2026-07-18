@@ -4,13 +4,35 @@ import clsx from "clsx";
 export type ActivityTone = "agent" | "tool" | "subagent" | "research" | "compact";
 export type ActivitySize = "compact" | "sm" | "md" | "lg";
 
-type ActivityPattern = "orbit" | "braid" | "cursor-fold" | "weave" | "hinge" | "ledger" | "aperture";
+type ActivityPattern =
+  | "orbit"
+  | "braid"
+  | "cursor-fold"
+  | "weave"
+  | "hinge"
+  | "ledger"
+  | "aperture"
+  | "spin"
+  | "shimmer"
+  | "ripple";
 
-const PATTERNS: ActivityPattern[] = ["orbit", "braid", "cursor-fold", "weave", "hinge", "ledger", "aperture"];
+const PATTERNS: ActivityPattern[] = [
+  "orbit",
+  "braid",
+  "cursor-fold",
+  "weave",
+  "hinge",
+  "ledger",
+  "aperture",
+  "spin",
+  "shimmer",
+  "ripple",
+];
 
 function pickPattern(except?: ActivityPattern): ActivityPattern {
   const pool = except ? PATTERNS.filter((pattern) => pattern !== except) : PATTERNS;
-  return pool[Math.floor(Math.random() * pool.length)] ?? "dots";
+  const index = Math.floor(Math.random() * pool.length);
+  return pool[index] ?? pool[0];
 }
 
 function nextDelayMs(): number {
