@@ -129,8 +129,7 @@ export interface CustomAgentConfig {
   source: "project" | "user";
 }
 
-/** "idle" — тулы зарегистрированы из дискового кэша схем, процесс сервера ещё не запускался (ленивый коннект при первом вызове тула). */
-export type McpServerRpcStatus = "connected" | "connecting" | "retrying" | "error" | "disabled" | "idle";
+export type McpServerRpcStatus = "connected" | "connecting" | "retrying" | "error" | "disabled";
 
 export interface McpToolInfo {
   name: string;
